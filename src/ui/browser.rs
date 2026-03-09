@@ -391,26 +391,25 @@ fn render_list(
                 Block::default().style(Style::default().bg(bg).fg(palette.text)),
                 row,
             );
-            let content = row.inner(Margin {
-                horizontal: 1,
-                vertical: 0,
-            });
             let columns = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([
-                    Constraint::Length(4),
+                    Constraint::Length(1),
+                    Constraint::Length(3),
                     Constraint::Min(8),
                     Constraint::Length(12),
                     Constraint::Length(10),
                 ])
-                .split(content);
+                .split(row);
 
             frame.render_widget(
+                Paragraph::new("▌")
+                    .alignment(Alignment::Left)
+                    .style(Style::default().bg(bg).fg(if selected { palette.accent } else { bg })),
+                columns[0],
+            );
+            frame.render_widget(
                 Paragraph::new(Line::from(vec![
-                    Span::styled(
-                        "▌",
-                        Style::default().fg(if selected { palette.accent } else { bg }),
-                    ),
                     Span::raw(" "),
                     Span::styled(
                         theme::entry_symbol(entry),
@@ -418,12 +417,12 @@ fn render_list(
                     ),
                 ]))
                 .style(Style::default().bg(bg).fg(palette.text)),
-                columns[0],
+                columns[1],
             );
             frame.render_widget(
                 Paragraph::new(helpers::clamp_label(
                     &entry.name,
-                    columns[1].width.saturating_sub(1) as usize,
+                    columns[2].width.saturating_sub(1) as usize,
                 ))
                 .style(if selected {
                     Style::default()
@@ -433,7 +432,7 @@ fn render_list(
                 } else {
                     Style::default().bg(bg).fg(palette.text)
                 }),
-                columns[1],
+                columns[2],
             );
             frame.render_widget(
                 Paragraph::new(if entry.is_dir() {
@@ -443,7 +442,7 @@ fn render_list(
                 })
                 .alignment(Alignment::Right)
                 .style(Style::default().bg(bg).fg(palette.muted)),
-                columns[2],
+                columns[3],
             );
             frame.render_widget(
                 Paragraph::new(
@@ -454,9 +453,19 @@ fn render_list(
                 )
                 .alignment(Alignment::Right)
                 .style(Style::default().bg(bg).fg(palette.muted)),
-                columns[3],
+                columns[4],
             );
         } else {
+            let columns = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Length(1), Constraint::Min(1)])
+                .split(row);
+            frame.render_widget(
+                Paragraph::new("▌")
+                    .alignment(Alignment::Left)
+                    .style(Style::default().bg(bg).fg(if selected { palette.accent } else { bg })),
+                columns[0],
+            );
             let secondary = if row_height >= 3 {
                 if entry.is_dir() {
                     entry
@@ -482,11 +491,6 @@ fn render_list(
                 Paragraph::new(vec![
                     Line::from(vec![
                         Span::styled(
-                            "▌",
-                            Style::default().fg(if selected { palette.accent } else { bg }),
-                        ),
-                        Span::raw(" "),
-                        Span::styled(
                             theme::entry_symbol(entry),
                             Style::default().fg(icon_color).add_modifier(Modifier::BOLD),
                         ),
@@ -507,7 +511,7 @@ fn render_list(
                     ]),
                 ])
                 .style(Style::default().bg(bg).fg(palette.text)),
-                row,
+                columns[1],
             );
         }
         state.entry_hits.push(EntryHit {
