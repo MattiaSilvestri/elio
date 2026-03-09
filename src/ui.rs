@@ -415,19 +415,20 @@ fn render_tile(
 ) {
     let icon_color = entry_color(entry, palette);
     let background = if selected {
-        palette.selected_bg
+        mix_color(palette.selected_bg, icon_color, 22)
     } else {
         palette.surface
     };
     let band_bg = if selected {
-        palette.chrome_alt
+        mix_color(palette.chrome_alt, icon_color, 90)
     } else {
         palette.elevated
     };
-    let rail_bg = if selected {
-        palette.selected_border
+    let band_fg = palette.text;
+    let band_icon = if selected {
+        band_fg
     } else {
-        background
+        icon_color
     };
 
     frame.render_widget(
@@ -435,29 +436,21 @@ fn render_tile(
         rect,
     );
 
-    let rail = Rect {
+    let band = Rect {
         x: rect.x,
         y: rect.y,
-        width: 1,
-        height: rect.height,
-    };
-    frame.render_widget(Block::default().style(Style::default().bg(rail_bg)), rail);
-
-    let band = Rect {
-        x: rect.x.saturating_add(1),
-        y: rect.y,
-        width: rect.width.saturating_sub(1),
+        width: rect.width,
         height: 1,
     };
     frame.render_widget(
-        Block::default().style(Style::default().bg(band_bg).fg(palette.text)),
+        Block::default().style(Style::default().bg(band_bg).fg(band_fg)),
         band,
     );
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(
                 entry_symbol(entry),
-                Style::default().fg(icon_color).add_modifier(
+                Style::default().fg(band_icon).add_modifier(
                     Modifier::BOLD
                         | if spec.emphasize_icon {
                             Modifier::ITALIC
@@ -470,11 +463,11 @@ fn render_tile(
             Span::styled(
                 clamp_label(&entry.name, band.width.saturating_sub(5) as usize),
                 Style::default()
-                    .fg(palette.text)
+                    .fg(band_fg)
                     .add_modifier(Modifier::BOLD),
             ),
         ]))
-        .style(Style::default().bg(band_bg).fg(palette.text)),
+        .style(Style::default().bg(band_bg).fg(band_fg)),
         band.inner(Margin {
             horizontal: 1,
             vertical: 0,
@@ -1141,6 +1134,21 @@ fn palette() -> Palette {
         button_bg: Color::Rgb(29, 39, 52),
         button_disabled_bg: Color::Rgb(20, 27, 37),
         path_bg: Color::Rgb(28, 37, 49),
+    }
+}
+
+fn mix_color(base: Color, tint: Color, tint_weight: u8) -> Color {
+    match (base, tint) {
+        (Color::Rgb(br, bg, bb), Color::Rgb(tr, tg, tb)) => {
+            let weight = u16::from(tint_weight);
+            let base_weight = 255 - weight;
+            Color::Rgb(
+                ((u16::from(br) * base_weight + u16::from(tr) * weight) / 255) as u8,
+                ((u16::from(bg) * base_weight + u16::from(tg) * weight) / 255) as u8,
+                ((u16::from(bb) * base_weight + u16::from(tb) * weight) / 255) as u8,
+            )
+        }
+        _ => base,
     }
 }
 
