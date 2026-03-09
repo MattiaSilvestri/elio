@@ -5,6 +5,8 @@ use std::{
     process::Command,
 };
 
+const SEARCH_CANDIDATE_LIMIT: usize = 30_000;
+
 #[derive(Clone, Debug)]
 pub struct SearchCandidate {
     pub path: PathBuf,
@@ -15,9 +17,34 @@ pub struct SearchCandidate {
     pub is_dir: bool,
 }
 
-pub fn collect_candidates(cwd: &Path, show_hidden: bool) -> Result<Vec<SearchCandidate>> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SearchCandidateScope {
+    Files,
+    Folders,
+}
+
+pub fn collect_candidates(
+    cwd: &Path,
+    show_hidden: bool,
+    scope: SearchCandidateScope,
+) -> Result<Vec<SearchCandidate>> {
     let mut command = Command::new("fd");
-    command.args([".", "--strip-cwd-prefix", "--follow", "--exclude", ".git"]);
+    command.args([
+        ".",
+        "--strip-cwd-prefix",
+        "--exclude",
+        ".git",
+        "--max-results",
+        "30000",
+    ]);
+    match scope {
+        SearchCandidateScope::Files => {
+            command.args(["--type", "file"]);
+        }
+        SearchCandidateScope::Folders => {
+            command.args(["--type", "directory"]);
+        }
+    }
     if show_hidden {
         command.arg("--hidden");
     }
@@ -59,11 +86,12 @@ pub fn collect_candidates(cwd: &Path, show_hidden: bool) -> Result<Vec<SearchCan
         });
     }
 
+    if candidates.len() > SEARCH_CANDIDATE_LIMIT {
+        candidates.truncate(SEARCH_CANDIDATE_LIMIT);
+    }
+
     candidates.sort_by(|left, right| {
-        right
-            .is_dir
-            .cmp(&left.is_dir)
-            .then_with(|| left.relative_key.cmp(&right.relative_key))
+        left.relative_key.cmp(&right.relative_key)
     });
     Ok(candidates)
 }

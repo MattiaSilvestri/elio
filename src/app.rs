@@ -242,10 +242,10 @@ impl SearchScope {
         }
     }
 
-    fn accepts(self, candidate: &SearchCandidate) -> bool {
+    fn candidate_scope(self) -> crate::search::SearchCandidateScope {
         match self {
-            Self::Folders => candidate.is_dir,
-            Self::Files => !candidate.is_dir,
+            Self::Folders => crate::search::SearchCandidateScope::Folders,
+            Self::Files => crate::search::SearchCandidateScope::Files,
         }
     }
 
@@ -270,6 +270,7 @@ pub struct SearchRow {
 struct SearchCache {
     cwd: PathBuf,
     show_hidden: bool,
+    scope: SearchScope,
     candidates: Arc<Vec<SearchCandidate>>,
 }
 
@@ -278,6 +279,7 @@ struct SearchBuild {
     token: u64,
     cwd: PathBuf,
     show_hidden: bool,
+    scope: SearchScope,
     result: Result<Arc<Vec<SearchCandidate>>, String>,
 }
 
@@ -286,6 +288,7 @@ struct SearchRequest {
     token: u64,
     cwd: PathBuf,
     show_hidden: bool,
+    scope: SearchScope,
 }
 
 pub struct App {
@@ -394,7 +397,6 @@ impl App {
         self.clamp_selection();
         self.sync_scroll();
         self.refresh_preview();
-        self.prewarm_search_index();
         self.clear_wheel_scroll();
         Ok(())
     }
@@ -426,14 +428,15 @@ impl App {
                     self.search_cache = Some(SearchCache {
                         cwd: build.cwd,
                         show_hidden: build.show_hidden,
+                        scope: build.scope,
                         candidates: candidates.clone(),
                     });
-                    if let Some(search) = &mut self.search {
+                    if let Some(search) = &mut self.search
+                        && search.scope == build.scope
+                    {
                         search.candidates = candidates;
-                        search.cached_matches = HashMap::from([(
-                            String::new(),
-                            search_scope_indices(&search.candidates, search.scope),
-                        )]);
+                        search.cached_matches =
+                            HashMap::from([(String::new(), (0..search.candidates.len()).collect())]);
                         search.loading = false;
                         search.error = None;
                     }
@@ -441,7 +444,9 @@ impl App {
                 }
                 Err(error) => {
                     self.search_cache = None;
-                    if let Some(search) = &mut self.search {
+                    if let Some(search) = &mut self.search
+                        && search.scope == build.scope
+                    {
                         search.candidates = Arc::new(Vec::new());
                         search.matches.clear();
                         search.cached_matches = HashMap::from([(String::new(), Vec::new())]);
@@ -920,10 +925,14 @@ impl App {
         let cached = self
             .search_cache
             .as_ref()
-            .filter(|cache| cache.cwd == self.cwd && cache.show_hidden == self.show_hidden)
+            .filter(|cache| {
+                cache.cwd == self.cwd
+                    && cache.show_hidden == self.show_hidden
+                    && cache.scope == scope
+            })
             .map(|cache| cache.candidates.clone());
         let candidates = cached.clone().unwrap_or_else(|| Arc::new(Vec::new()));
-        let base_matches = search_scope_indices(&candidates, scope);
+        let base_matches = (0..candidates.len()).collect::<Vec<_>>();
         let matches = base_matches
             .iter()
             .copied()
@@ -931,7 +940,7 @@ impl App {
             .collect::<Vec<_>>();
         let loading = self.search_loading || cached.is_none();
         if cached.is_none() && !self.search_loading {
-            self.prewarm_search_index();
+            self.prewarm_search_index(scope);
         }
         self.search = Some(SearchOverlay {
             scope,
@@ -1148,7 +1157,7 @@ impl App {
         previous != search.scroll
     }
 
-    fn prewarm_search_index(&mut self) {
+    fn prewarm_search_index(&mut self, scope: SearchScope) {
         self.search_token = self.search_token.wrapping_add(1);
         self.search_loading = true;
         self.search_cache = None;
@@ -1156,10 +1165,13 @@ impl App {
             token: self.search_token,
             cwd: self.cwd.clone(),
             show_hidden: self.show_hidden,
+            scope,
         };
         if self.search_request_tx.send(request).is_err() {
             self.search_loading = false;
-            if let Some(search) = &mut self.search {
+            if let Some(search) = &mut self.search
+                && search.scope == scope
+            {
                 search.loading = false;
                 search.error = Some("Search worker unavailable".to_string());
             }
@@ -1673,8 +1685,9 @@ fn spawn_search_worker(
                 token,
                 cwd,
                 show_hidden,
+                scope,
             } = request;
-            let result = crate::search::collect_candidates(&cwd, show_hidden)
+            let result = crate::search::collect_candidates(&cwd, show_hidden, scope.candidate_scope())
                 .map(Arc::new)
                 .map_err(|error| error.to_string());
             if result_tx
@@ -1682,6 +1695,7 @@ fn spawn_search_worker(
                     token,
                     cwd,
                     show_hidden,
+                    scope,
                     result,
                 })
                 .is_err()
@@ -1766,13 +1780,6 @@ fn read_text_preview(path: &Path) -> Result<Option<String>> {
     }
 }
 
-fn search_scope_indices(candidates: &[SearchCandidate], scope: SearchScope) -> Vec<usize> {
-    candidates
-        .iter()
-        .enumerate()
-        .filter_map(|(index, candidate)| scope.accepts(candidate).then_some(index))
-        .collect()
-}
 
 #[cfg(test)]
 mod tests {
