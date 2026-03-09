@@ -234,8 +234,22 @@ impl App {
                     self.status.clear();
                 }
             }
-            MouseEventKind::ScrollDown => Self::queue_scroll(&mut self.wheel_scroll.search, 1),
-            MouseEventKind::ScrollUp => Self::queue_scroll(&mut self.wheel_scroll.search, -1),
+            MouseEventKind::ScrollDown => {
+                Self::queue_scroll(
+                    &mut self.wheel_scroll.search,
+                    1,
+                    self.wheel_step_divisor,
+                    WHEEL_SCROLL_QUEUE_LIMIT_SEARCH,
+                )
+            }
+            MouseEventKind::ScrollUp => {
+                Self::queue_scroll(
+                    &mut self.wheel_scroll.search,
+                    -1,
+                    self.wheel_step_divisor,
+                    WHEEL_SCROLL_QUEUE_LIMIT_SEARCH,
+                )
+            }
             _ => {}
         }
         Ok(())

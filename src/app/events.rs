@@ -257,30 +257,70 @@ impl App {
             MouseEventKind::ScrollDown => {
                 if self.view_mode == ViewMode::Grid {
                     if mouse.modifiers.contains(KeyModifiers::SHIFT) {
-                        Self::queue_scroll(&mut self.wheel_scroll.horizontal, 1);
+                        Self::queue_scroll(
+                            &mut self.wheel_scroll.horizontal,
+                            1,
+                            self.wheel_step_divisor,
+                            WHEEL_SCROLL_QUEUE_LIMIT,
+                        );
                     } else {
-                        Self::queue_scroll(&mut self.wheel_scroll.vertical, 1);
+                        Self::queue_scroll(
+                            &mut self.wheel_scroll.vertical,
+                            1,
+                            self.wheel_step_divisor,
+                            WHEEL_SCROLL_QUEUE_LIMIT,
+                        );
                     }
                 } else {
-                    Self::queue_scroll(&mut self.wheel_scroll.vertical, 1);
+                    Self::queue_scroll(
+                        &mut self.wheel_scroll.vertical,
+                        1,
+                        self.wheel_step_divisor,
+                        WHEEL_SCROLL_QUEUE_LIMIT,
+                    );
                 }
             }
             MouseEventKind::ScrollUp => {
                 if self.view_mode == ViewMode::Grid {
                     if mouse.modifiers.contains(KeyModifiers::SHIFT) {
-                        Self::queue_scroll(&mut self.wheel_scroll.horizontal, -1);
+                        Self::queue_scroll(
+                            &mut self.wheel_scroll.horizontal,
+                            -1,
+                            self.wheel_step_divisor,
+                            WHEEL_SCROLL_QUEUE_LIMIT,
+                        );
                     } else {
-                        Self::queue_scroll(&mut self.wheel_scroll.vertical, -1);
+                        Self::queue_scroll(
+                            &mut self.wheel_scroll.vertical,
+                            -1,
+                            self.wheel_step_divisor,
+                            WHEEL_SCROLL_QUEUE_LIMIT,
+                        );
                     }
                 } else {
-                    Self::queue_scroll(&mut self.wheel_scroll.vertical, -1);
+                    Self::queue_scroll(
+                        &mut self.wheel_scroll.vertical,
+                        -1,
+                        self.wheel_step_divisor,
+                        WHEEL_SCROLL_QUEUE_LIMIT,
+                    );
                 }
             }
             MouseEventKind::ScrollLeft if self.view_mode == ViewMode::Grid => {
-                Self::queue_scroll(&mut self.wheel_scroll.horizontal, -1);
+                Self::queue_scroll(
+                    &mut self.wheel_scroll.horizontal,
+                    -1,
+                    self.wheel_step_divisor,
+                    WHEEL_SCROLL_QUEUE_LIMIT,
+                );
             }
             MouseEventKind::ScrollRight if self.view_mode == ViewMode::Grid => {
-                Self::queue_scroll(&mut self.wheel_scroll.horizontal, 1);
+                Self::queue_scroll(
+                    &mut self.wheel_scroll.horizontal,
+                    1,
+                    self.wheel_step_divisor,
+                    WHEEL_SCROLL_QUEUE_LIMIT,
+                );
             }
             _ => {}
         }
@@ -298,8 +338,23 @@ impl App {
         }
     }
 
-    pub(super) fn queue_scroll(lane: &mut ScrollLane, delta: isize) {
-        lane.pending = (lane.pending + delta).clamp(-WHEEL_SCROLL_QUEUE_LIMIT, WHEEL_SCROLL_QUEUE_LIMIT);
+    pub(super) fn queue_scroll(
+        lane: &mut ScrollLane,
+        delta: isize,
+        step_divisor: isize,
+        queue_limit: isize,
+    ) {
+        if step_divisor <= 1 {
+            lane.pending = (lane.pending + delta).clamp(-queue_limit, queue_limit);
+            return;
+        }
+
+        lane.remainder += delta;
+        while lane.remainder.abs() >= step_divisor {
+            let step = lane.remainder.signum();
+            lane.pending = (lane.pending + step).clamp(-queue_limit, queue_limit);
+            lane.remainder -= step * step_divisor;
+        }
     }
 
     fn consume_scroll_step(lane: &mut ScrollLane, cooldown: Duration) -> Option<isize> {
@@ -368,10 +423,13 @@ impl App {
 
     pub(super) fn clear_wheel_scroll(&mut self) {
         self.wheel_scroll.vertical.pending = 0;
+        self.wheel_scroll.vertical.remainder = 0;
         self.wheel_scroll.vertical.last_step_at = None;
         self.wheel_scroll.horizontal.pending = 0;
+        self.wheel_scroll.horizontal.remainder = 0;
         self.wheel_scroll.horizontal.last_step_at = None;
         self.wheel_scroll.search.pending = 0;
+        self.wheel_scroll.search.remainder = 0;
         self.wheel_scroll.search.last_step_at = None;
     }
 

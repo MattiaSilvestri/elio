@@ -15,13 +15,14 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-pub(crate) use self::support::{folder_color, format_size, format_time_ago, rect_contains};
+pub(crate) use self::support::{classify_path, folder_color, format_size, format_time_ago, rect_contains};
 
 const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(450);
 const WHEEL_SCROLL_INTERVAL_HORIZONTAL: Duration = Duration::from_millis(36);
 const WHEEL_SCROLL_INTERVAL_VERTICAL: Duration = Duration::from_millis(42);
-const WHEEL_SCROLL_INTERVAL_SEARCH: Duration = Duration::from_millis(38);
+const WHEEL_SCROLL_INTERVAL_SEARCH: Duration = Duration::from_millis(72);
 const WHEEL_SCROLL_QUEUE_LIMIT: isize = 8;
+const WHEEL_SCROLL_QUEUE_LIMIT_SEARCH: isize = 2;
 const SEARCH_MATCH_LIMIT: usize = 250;
 const SEARCH_CACHE_LIMIT: usize = 32;
 
@@ -78,6 +79,55 @@ pub enum EntryKind {
     File,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FileClass {
+    Directory,
+    Code,
+    Config,
+    Document,
+    Image,
+    Audio,
+    Video,
+    Archive,
+    Font,
+    Data,
+    File,
+}
+
+impl FileClass {
+    pub fn detail_label(self) -> &'static str {
+        match self {
+            Self::Directory => "Folder",
+            Self::Code => "Code file",
+            Self::Config => "Config file",
+            Self::Document => "Document",
+            Self::Image => "Image file",
+            Self::Audio => "Audio file",
+            Self::Video => "Video file",
+            Self::Archive => "Archive file",
+            Self::Font => "Font file",
+            Self::Data => "Data file",
+            Self::File => "File",
+        }
+    }
+
+    pub fn badge(self) -> &'static str {
+        match self {
+            Self::Directory => "󰉋 DIR",
+            Self::Code => "󰆍 CODE",
+            Self::Config => "󰒓 CFG",
+            Self::Document => "󰈙 DOC",
+            Self::Image => "󰋩 IMG",
+            Self::Audio => "󰎆 AUDIO",
+            Self::Video => "󰈫 VIDEO",
+            Self::Archive => "󰗄 ARC",
+            Self::Font => "󰛖 FONT",
+            Self::Data => "󰆼 DATA",
+            Self::File => "󰈔 FILE",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Entry {
     pub path: PathBuf,
@@ -103,33 +153,11 @@ impl Entry {
     }
 
     pub fn detail_label(&self) -> &'static str {
-        match self.kind {
-            EntryKind::Directory => "Folder",
-            EntryKind::File => match support::extension_class(&self.path) {
-                "code" => "Code file",
-                "image" => "Image file",
-                "audio" => "Audio file",
-                "video" => "Video file",
-                "archive" => "Archive file",
-                "text" => "Text file",
-                _ => "File",
-            },
-        }
+        support::classify_path(&self.path, self.kind).detail_label()
     }
 
     pub fn badge(&self) -> &'static str {
-        match self.kind {
-            EntryKind::Directory => "󰉋 DIR",
-            EntryKind::File => match support::extension_class(&self.path) {
-                "code" => "󰆍 CODE",
-                "image" => "󰋩 IMG",
-                "audio" => "󰎆 AUDIO",
-                "video" => "󰈫 VIDEO",
-                "archive" => "󰗄 ARC",
-                "text" => "󰈙 TXT",
-                _ => "󰈔 FILE",
-            },
-        }
+        support::classify_path(&self.path, self.kind).badge()
     }
 }
 
@@ -198,6 +226,7 @@ struct ClickState {
 #[derive(Clone, Debug)]
 struct ScrollLane {
     pending: isize,
+    remainder: isize,
     last_step_at: Option<Instant>,
 }
 
@@ -307,6 +336,7 @@ pub struct App {
     search_rx: mpsc::Receiver<SearchBuild>,
     last_click: Option<ClickState>,
     wheel_scroll: ScrollState,
+    wheel_step_divisor: isize,
 }
 
 impl App {
@@ -346,17 +376,21 @@ impl App {
             wheel_scroll: ScrollState {
                 horizontal: ScrollLane {
                     pending: 0,
+                    remainder: 0,
                     last_step_at: None,
                 },
                 vertical: ScrollLane {
                     pending: 0,
+                    remainder: 0,
                     last_step_at: None,
                 },
                 search: ScrollLane {
                     pending: 0,
+                    remainder: 0,
                     last_step_at: None,
                 },
             },
+            wheel_step_divisor: wheel_step_divisor(),
         };
         app.reload()?;
         Ok(app)
@@ -369,5 +403,15 @@ impl App {
 
     pub fn selected_entry(&self) -> Option<&Entry> {
         self.entries.get(self.selected)
+    }
+}
+
+fn wheel_step_divisor() -> isize {
+    let term = env::var("TERM").unwrap_or_default();
+    let term_program = env::var("TERM_PROGRAM").unwrap_or_default();
+    if term.contains("ghostty") || term_program.eq_ignore_ascii_case("ghostty") {
+        3
+    } else {
+        1
     }
 }

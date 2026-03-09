@@ -168,7 +168,7 @@ pub(super) fn render_search_overlay(
                 );
             }
 
-            let icon = if row.is_dir { "󰉋" } else { "󰈔" };
+            let icon = theme::path_symbol(std::path::Path::new(&row.relative), row.is_dir);
             let icon_color = theme::path_color(std::path::Path::new(&row.relative), row.is_dir, palette);
             let name_width = rect.width.saturating_sub(6) as usize;
             let path_width = rect.width.saturating_sub(4) as usize;

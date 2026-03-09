@@ -5,7 +5,7 @@ use crate::app::{
 };
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Margin, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Paragraph, Wrap},
@@ -388,68 +388,93 @@ fn render_list(
         };
         if row_height == 1 {
             frame.render_widget(
+                Block::default().style(Style::default().bg(bg).fg(palette.text)),
+                row,
+            );
+            let content = row.inner(Margin {
+                horizontal: 1,
+                vertical: 0,
+            });
+            let columns = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([
+                    Constraint::Length(4),
+                    Constraint::Min(8),
+                    Constraint::Length(12),
+                    Constraint::Length(10),
+                ])
+                .split(content);
+
+            frame.render_widget(
                 Paragraph::new(Line::from(vec![
                     Span::styled(
                         "▌",
-                        Style::default().fg(if selected {
-                            palette.accent
-                        } else {
-                            palette.panel_alt
-                        }),
+                        Style::default().fg(if selected { palette.accent } else { bg }),
                     ),
                     Span::raw(" "),
                     Span::styled(
                         theme::entry_symbol(entry),
                         Style::default().fg(icon_color).add_modifier(Modifier::BOLD),
                     ),
-                    Span::raw(" "),
-                    Span::styled(
-                        helpers::clamp_label(&entry.name, 28),
-                        if selected {
-                            Style::default()
-                                .fg(palette.text)
-                                .add_modifier(Modifier::BOLD)
-                        } else {
-                            Style::default().fg(palette.text)
-                        },
-                    ),
-                    Span::styled("  ", Style::default()),
-                    Span::styled(
-                        if entry.is_dir() {
-                            "folder".to_string()
-                        } else {
-                            format_size(entry.size)
-                        },
-                        Style::default().fg(palette.muted),
-                    ),
-                    Span::styled("  •  ", Style::default().fg(palette.muted)),
-                    Span::styled(
-                        entry
-                            .modified
-                            .map(format_time_ago)
-                            .unwrap_or_else(|| "unknown".to_string()),
-                        Style::default().fg(palette.muted),
-                    ),
                 ]))
                 .style(Style::default().bg(bg).fg(palette.text)),
-                row,
+                columns[0],
+            );
+            frame.render_widget(
+                Paragraph::new(helpers::clamp_label(
+                    &entry.name,
+                    columns[1].width.saturating_sub(1) as usize,
+                ))
+                .style(if selected {
+                    Style::default()
+                        .bg(bg)
+                        .fg(palette.text)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().bg(bg).fg(palette.text)
+                }),
+                columns[1],
+            );
+            frame.render_widget(
+                Paragraph::new(if entry.is_dir() {
+                    String::new()
+                } else {
+                    format_size(entry.size)
+                })
+                .alignment(Alignment::Right)
+                .style(Style::default().bg(bg).fg(palette.muted)),
+                columns[2],
+            );
+            frame.render_widget(
+                Paragraph::new(
+                    entry
+                        .modified
+                        .map(format_time_ago)
+                        .unwrap_or_else(|| "unknown".to_string()),
+                )
+                .alignment(Alignment::Right)
+                .style(Style::default().bg(bg).fg(palette.muted)),
+                columns[3],
             );
         } else {
             let secondary = if row_height >= 3 {
-                format!(
-                    "{}  •  {}",
-                    if entry.is_dir() {
-                        "folder".to_string()
-                    } else {
-                        format_size(entry.size)
-                    },
+                if entry.is_dir() {
                     entry
                         .modified
                         .map(format_time_ago)
                         .unwrap_or_else(|| "unknown".to_string())
-                )
+                } else {
+                    format!(
+                        "{}  •  {}",
+                        format_size(entry.size),
+                        entry
+                            .modified
+                            .map(format_time_ago)
+                            .unwrap_or_else(|| "unknown".to_string())
+                    )
+                }
             } else if entry.is_dir() {
-                "folder".to_string()
+                String::new()
             } else {
                 format_size(entry.size)
             };

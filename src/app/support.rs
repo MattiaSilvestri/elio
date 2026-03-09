@@ -141,16 +141,18 @@ pub(crate) fn format_time_ago(time: SystemTime) -> String {
 }
 
 pub(crate) fn folder_color(entry: &Entry) -> Color {
-    match entry.kind {
-        EntryKind::Directory => Color::Rgb(65, 143, 222),
-        EntryKind::File => match extension_class(&entry.path) {
-            "image" => Color::Rgb(86, 156, 214),
-            "audio" => Color::Rgb(138, 110, 214),
-            "video" => Color::Rgb(204, 112, 79),
-            "archive" => Color::Rgb(191, 142, 74),
-            "code" => Color::Rgb(76, 152, 120),
-            _ => Color::Rgb(98, 109, 122),
-        },
+    match classify_path(&entry.path, entry.kind) {
+        FileClass::Directory => Color::Rgb(65, 143, 222),
+        FileClass::Code => Color::Rgb(87, 196, 155),
+        FileClass::Config => Color::Rgb(121, 188, 255),
+        FileClass::Document => Color::Rgb(112, 182, 117),
+        FileClass::Image => Color::Rgb(86, 156, 214),
+        FileClass::Audio => Color::Rgb(138, 110, 214),
+        FileClass::Video => Color::Rgb(204, 112, 79),
+        FileClass::Archive => Color::Rgb(191, 142, 74),
+        FileClass::Font => Color::Rgb(196, 148, 92),
+        FileClass::Data => Color::Rgb(92, 192, 201),
+        FileClass::File => Color::Rgb(98, 109, 122),
     }
 }
 
@@ -261,21 +263,29 @@ pub(super) fn detached_open(program: &str, args: &[&str], target: &Path) -> std:
     Ok(())
 }
 
-pub(super) fn extension_class(path: &Path) -> &'static str {
+pub(crate) fn classify_path(path: &Path, kind: EntryKind) -> FileClass {
+    if kind == EntryKind::Directory {
+        return FileClass::Directory;
+    }
+
     let ext = path
         .extension()
         .and_then(OsStr::to_str)
         .unwrap_or_default()
         .to_ascii_lowercase();
     match ext.as_str() {
-        "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "c" | "cpp" | "h" | "java" | "json"
-        | "toml" | "yaml" | "yml" | "md" | "sh" => "code",
-        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "avif" => "image",
-        "mp3" | "wav" | "flac" | "ogg" | "m4a" => "audio",
-        "mp4" | "mkv" | "mov" | "webm" | "avi" => "video",
-        "zip" | "tar" | "gz" | "xz" | "bz2" | "7z" => "archive",
-        "txt" | "log" | "ini" | "csv" => "text",
-        _ => "file",
+        "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "c" | "cpp" | "h" | "hpp"
+        | "java" | "lua" | "php" | "rb" | "swift" | "kt" => FileClass::Code,
+        "sh" | "bash" | "zsh" | "fish" => FileClass::Code,
+        "json" | "toml" | "yaml" | "yml" | "ini" | "conf" | "cfg" | "ron" => FileClass::Config,
+        "md" | "txt" | "rst" | "pdf" | "doc" | "docx" | "odt" => FileClass::Document,
+        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "avif" => FileClass::Image,
+        "mp3" | "wav" | "flac" | "ogg" | "m4a" => FileClass::Audio,
+        "mp4" | "mkv" | "mov" | "webm" | "avi" => FileClass::Video,
+        "zip" | "tar" | "gz" | "xz" | "bz2" | "7z" => FileClass::Archive,
+        "ttf" | "otf" | "woff" | "woff2" => FileClass::Font,
+        "csv" | "tsv" | "sql" | "sqlite" | "db" | "parquet" => FileClass::Data,
+        _ => FileClass::File,
     }
 }
 
@@ -359,6 +369,26 @@ mod tests {
     fn size_format_is_human_readable() {
         assert_eq!(format_size(512), "512 B");
         assert_eq!(format_size(2048), "2.0 KB");
+    }
+
+    #[test]
+    fn lockfiles_remain_plain_files() {
+        assert_eq!(
+            classify_path(Path::new("Cargo.lock"), EntryKind::File),
+            FileClass::File
+        );
+    }
+
+    #[test]
+    fn config_and_code_files_are_classified_separately() {
+        assert_eq!(
+            classify_path(Path::new("starship.toml"), EntryKind::File),
+            FileClass::Config
+        );
+        assert_eq!(
+            classify_path(Path::new("main.rs"), EntryKind::File),
+            FileClass::Code
+        );
     }
 
     #[test]

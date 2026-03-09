@@ -1,4 +1,4 @@
-use crate::app::{Entry, folder_color};
+use crate::app::{Entry, EntryKind, FileClass, classify_path, folder_color};
 use ratatui::style::Color;
 use std::path::Path;
 
@@ -73,38 +73,55 @@ pub(super) fn entry_color(entry: &Entry, palette: Palette) -> Color {
 }
 
 pub(super) fn entry_symbol(entry: &Entry) -> &'static str {
-    if entry.is_dir() { "󰉋" } else { "󰈔" }
+    symbol_for_class(classify_path(&entry.path, entry.kind))
 }
 
 pub(super) fn path_color(path: &Path, is_dir: bool, palette: Palette) -> Color {
-    if is_dir {
-        return palette.accent;
-    }
+    let kind = if is_dir {
+        EntryKind::Directory
+    } else {
+        EntryKind::File
+    };
+    color_for_class(classify_path(path, kind), palette)
+}
 
-    match extension_class(path) {
-        "image" => Color::Rgb(86, 156, 214),
-        "audio" => Color::Rgb(138, 110, 214),
-        "video" => Color::Rgb(204, 112, 79),
-        "archive" => Color::Rgb(191, 142, 74),
-        "code" => Color::Rgb(76, 152, 120),
-        _ => Color::Rgb(98, 109, 122),
+pub(super) fn path_symbol(path: &Path, is_dir: bool) -> &'static str {
+    let kind = if is_dir {
+        EntryKind::Directory
+    } else {
+        EntryKind::File
+    };
+    symbol_for_class(classify_path(path, kind))
+}
+
+fn symbol_for_class(class: FileClass) -> &'static str {
+    match class {
+        FileClass::Directory => "󰉋",
+        FileClass::Code => "󰆍",
+        FileClass::Config => "󰒓",
+        FileClass::Document => "󰈙",
+        FileClass::Image => "󰋩",
+        FileClass::Audio => "󰎆",
+        FileClass::Video => "󰈫",
+        FileClass::Archive => "󰗄",
+        FileClass::Font => "󰛖",
+        FileClass::Data => "󰆼",
+        FileClass::File => "󰈔",
     }
 }
 
-fn extension_class(path: &Path) -> &'static str {
-    let ext = path
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    match ext.as_str() {
-        "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "c" | "cpp" | "h" | "java" | "json"
-        | "toml" | "yaml" | "yml" | "md" | "sh" => "code",
-        "png" | "jpg" | "jpeg" | "gif" | "svg" | "webp" | "avif" => "image",
-        "mp3" | "wav" | "flac" | "ogg" | "m4a" => "audio",
-        "mp4" | "mkv" | "mov" | "webm" | "avi" => "video",
-        "zip" | "tar" | "gz" | "xz" | "bz2" | "7z" => "archive",
-        "txt" | "log" | "ini" | "csv" => "text",
-        _ => "file",
+fn color_for_class(class: FileClass, palette: Palette) -> Color {
+    match class {
+        FileClass::Directory => palette.accent,
+        FileClass::Code => Color::Rgb(87, 196, 155),
+        FileClass::Config => Color::Rgb(121, 188, 255),
+        FileClass::Document => Color::Rgb(112, 182, 117),
+        FileClass::Image => Color::Rgb(86, 156, 214),
+        FileClass::Audio => Color::Rgb(138, 110, 214),
+        FileClass::Video => Color::Rgb(204, 112, 79),
+        FileClass::Archive => Color::Rgb(191, 142, 74),
+        FileClass::Font => Color::Rgb(196, 148, 92),
+        FileClass::Data => Color::Rgb(92, 192, 201),
+        FileClass::File => Color::Rgb(98, 109, 122),
     }
 }
