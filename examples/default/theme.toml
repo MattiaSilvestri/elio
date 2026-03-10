@@ -874,19 +874,19 @@ icon = "󰕧"
 color = "#ff86d8"
 
 [directories."desktop"]
-icon = "󰟀"
+icon = "󰍹"
 color = "#7db0ff"
 
 [directories."Desktop"]
-icon = "󰟀"
+icon = "󰍹"
 color = "#7db0ff"
 
 [directories."escritorio"]
-icon = "󰟀"
+icon = "󰍹"
 color = "#7db0ff"
 
 [directories."Escritorio"]
-icon = "󰟀"
+icon = "󰍹"
 color = "#7db0ff"
 
 [directories."assets"]

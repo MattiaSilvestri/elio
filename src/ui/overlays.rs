@@ -297,8 +297,10 @@ pub(super) fn render_help(frame: &mut Frame<'_>, area: Rect, palette: Palette) {
                 .fg(palette.accent)
                 .add_modifier(Modifier::BOLD),
         )]),
-        helpers::help_row("Arrows / hjkl", "move selection", palette),
-        helpers::help_row("Enter", "open folder or file", palette),
+        helpers::help_row("↑↓ / jk", "move selection", palette),
+        helpers::help_row("← / h", "parent directory", palette),
+        helpers::help_row("→ / l", "enter selected folder", palette),
+        helpers::help_row("Enter", "open selected item", palette),
         helpers::help_row("Tab", "next pinned place", palette),
         helpers::help_row("Shift+Tab", "previous pinned place", palette),
         helpers::help_row("Backspace", "parent directory", palette),

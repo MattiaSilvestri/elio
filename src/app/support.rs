@@ -94,7 +94,7 @@ pub(super) fn build_sidebar_items() -> Vec<SidebarItem> {
     });
 
     for (title, folder, icon) in [
-        ("Desktop", "Desktop", "󰟀"),
+        ("Desktop", "Desktop", "󰍹"),
         ("Documents", "Documents", "󰈙"),
         ("Downloads", "Downloads", "󰉍"),
         ("Pictures", "Pictures", "󰉏"),

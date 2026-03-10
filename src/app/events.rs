@@ -122,8 +122,10 @@ impl App {
             KeyCode::Right | KeyCode::Char('l') => {
                 if self.view_mode == ViewMode::Grid {
                     self.move_by(1);
-                } else {
+                } else if self.selected_entry().is_some_and(Entry::is_dir) {
                     self.open_selected()?;
+                } else {
+                    self.status = "Press Enter to open files".to_string();
                 }
             }
             KeyCode::PageUp => self.page(-1),
@@ -594,5 +596,65 @@ impl App {
         self.last_click
             .as_ref()
             .is_some_and(|click| click.path == path && click.at.elapsed() <= DOUBLE_CLICK_WINDOW)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        env, fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn temp_path(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        env::temp_dir().join(format!("elio-events-{label}-{unique}"))
+    }
+
+    #[test]
+    fn right_arrow_does_not_open_selected_file_in_list_view() {
+        let root = temp_path("right-file");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let file_path = root.join("note.txt");
+        fs::write(&file_path, "hello").expect("failed to write temp file");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.select_index(0);
+
+        app.handle_event(Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)))
+            .expect("right arrow should be handled");
+
+        assert_eq!(app.cwd, root);
+        assert_eq!(
+            app.selected_entry().map(|entry| entry.path.as_path()),
+            Some(file_path.as_path())
+        );
+        assert_eq!(app.status_message(), "Press Enter to open files");
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn right_arrow_enters_selected_directory_in_list_view() {
+        let root = temp_path("right-dir");
+        let child = root.join("child");
+        fs::create_dir_all(&child).expect("failed to create temp dirs");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.select_index(0);
+
+        app.handle_event(Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE)))
+            .expect("right arrow should be handled");
+
+        assert_eq!(app.cwd, child);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
     }
 }
