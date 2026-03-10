@@ -1,16 +1,4 @@
-# Copy to ~/.config/elio/theme.toml to override the built-in theme.
-#
-# Supported sections:
-# [palette]                 -> UI chrome colors
-# [classes.<name>]          -> default icon/color per file class
-# [extensions.<ext>]        -> class/icon/color override for a file extension
-# [files."<exact-name>"]    -> class/icon/color override for an exact file name
-# [directories."<exact-name>"] -> class/icon/color override for an exact directory name
-#
-# Matching is case-insensitive. Exact file/directory rules win over extension rules.
-# Any key you omit falls back to the built-in theme.
-#
-# Colors use #RRGGBB.
+# Copy to ~/.config/elio/theme.toml to use the original blue-heavy Elio theme.
 
 [palette]
 bg = "#02050c"

@@ -3,8 +3,7 @@ use ratatui::style::Color;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
-    env, fs,
-    io,
+    env, fs, io,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -143,7 +142,10 @@ fn load_theme_from_disk() -> Theme {
         Ok(contents) => contents,
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Theme::default_theme(),
         Err(error) => {
-            eprintln!("elio: failed to read theme from {}: {error}", path.display());
+            eprintln!(
+                "elio: failed to read theme from {}: {error}",
+                path.display()
+            );
             return Theme::default_theme();
         }
     };
@@ -151,7 +153,10 @@ fn load_theme_from_disk() -> Theme {
     match Theme::from_config_str(&contents) {
         Ok(theme) => theme,
         Err(error) => {
-            eprintln!("elio: failed to load theme from {}: {error}", path.display());
+            eprintln!(
+                "elio: failed to load theme from {}: {error}",
+                path.display()
+            );
             Theme::default_theme()
         }
     }
@@ -167,6 +172,17 @@ fn theme_path() -> Option<PathBuf> {
 
 impl Theme {
     fn default_theme() -> Self {
+        Self::apply_config_on(
+            Self::base_theme(),
+            include_str!("../examples/default/theme.toml"),
+        )
+        .unwrap_or_else(|error| {
+            eprintln!("elio: failed to load built-in default theme: {error}");
+            Self::base_theme()
+        })
+    }
+
+    fn base_theme() -> Self {
         let mut classes = HashMap::new();
         classes.insert(
             FileClass::Directory,
@@ -440,7 +456,10 @@ impl Theme {
     }
 
     fn from_config_str(config: &str) -> anyhow::Result<Self> {
-        let mut theme = Self::default_theme();
+        Self::apply_config_on(Self::default_theme(), config)
+    }
+
+    fn apply_config_on(mut theme: Self, config: &str) -> anyhow::Result<Self> {
         let parsed: ThemeFile = toml::from_str(config)?;
         theme.apply_overrides(parsed)?;
         Ok(theme)
@@ -455,7 +474,10 @@ impl Theme {
             for (name, override_style) in classes {
                 let class = parse_class_name(&name)
                     .ok_or_else(|| anyhow::anyhow!("unknown class `{name}`"))?;
-                let style = self.classes.entry(class).or_insert_with(|| default_class_style(class));
+                let style = self
+                    .classes
+                    .entry(class)
+                    .or_insert_with(|| default_class_style(class));
                 if let Some(icon) = override_style.icon {
                     style.icon = icon;
                 }
@@ -479,9 +501,16 @@ impl Theme {
     }
 
     fn resolve(&self, path: &Path, kind: EntryKind) -> ResolvedAppearance<'_> {
-        let file_name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
         let normalized_name = normalize_key(file_name);
-        let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_ascii_lowercase();
+        let ext = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
 
         let exact_rule = match kind {
             EntryKind::Directory => self.directories.get(&normalized_name),
@@ -496,10 +525,11 @@ impl Theme {
             .or_else(|| ext_rule.and_then(|rule| rule.class))
             .unwrap_or_else(|| builtin_classify_path(path, kind));
 
-        let base = self
-            .classes
-            .get(&class)
-            .unwrap_or_else(|| self.classes.get(&FileClass::File).expect("default file style"));
+        let base = self.classes.get(&class).unwrap_or_else(|| {
+            self.classes
+                .get(&FileClass::File)
+                .expect("default file style")
+        });
 
         let icon = exact_rule
             .and_then(|rule| rule.icon.as_deref())
@@ -514,7 +544,10 @@ impl Theme {
     }
 }
 
-fn apply_palette_overrides(palette: &mut Palette, overrides: PaletteOverride) -> anyhow::Result<()> {
+fn apply_palette_overrides(
+    palette: &mut Palette,
+    overrides: PaletteOverride,
+) -> anyhow::Result<()> {
     apply_palette_color(&mut palette.bg, overrides.bg)?;
     apply_palette_color(&mut palette.chrome, overrides.chrome)?;
     apply_palette_color(&mut palette.chrome_alt, overrides.chrome_alt)?;
@@ -532,7 +565,10 @@ fn apply_palette_overrides(palette: &mut Palette, overrides: PaletteOverride) ->
     apply_palette_color(&mut palette.selected_border, overrides.selected_border)?;
     apply_palette_color(&mut palette.sidebar_active, overrides.sidebar_active)?;
     apply_palette_color(&mut palette.button_bg, overrides.button_bg)?;
-    apply_palette_color(&mut palette.button_disabled_bg, overrides.button_disabled_bg)?;
+    apply_palette_color(
+        &mut palette.button_disabled_bg,
+        overrides.button_disabled_bg,
+    )?;
     apply_palette_color(&mut palette.path_bg, overrides.path_bg)?;
     Ok(())
 }
@@ -556,10 +592,11 @@ fn apply_rule_map(
 
 fn parse_rule_override(value: RuleOverrideDef) -> anyhow::Result<RuleOverride> {
     match value {
-        RuleOverrideDef::Class(class) => Ok(rule_class(
-            parse_class_name(&class)
-                .ok_or_else(|| anyhow::anyhow!("unknown class `{class}`"))?,
-        )),
+        RuleOverrideDef::Class(class) => {
+            Ok(rule_class(parse_class_name(&class).ok_or_else(|| {
+                anyhow::anyhow!("unknown class `{class}`")
+            })?))
+        }
         RuleOverrideDef::Rich { class, icon, color } => Ok(RuleOverride {
             class: match class {
                 Some(class) => Some(
@@ -644,10 +681,8 @@ fn builtin_classify_path(path: &Path, kind: EntryKind) -> FileClass {
         .unwrap_or_default()
         .to_ascii_lowercase();
     match ext.as_str() {
-        "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "c" | "cpp" | "h" | "hpp"
-        | "java" | "lua" | "php" | "rb" | "swift" | "kt" | "sh" | "bash" | "zsh" | "fish" => {
-            FileClass::Code
-        }
+        "rs" | "js" | "ts" | "tsx" | "jsx" | "py" | "go" | "c" | "cpp" | "h" | "hpp" | "java"
+        | "lua" | "php" | "rb" | "swift" | "kt" | "sh" | "bash" | "zsh" | "fish" => FileClass::Code,
         "json" | "toml" | "yaml" | "yml" | "ini" | "conf" | "cfg" | "ron" | "env" => {
             FileClass::Config
         }

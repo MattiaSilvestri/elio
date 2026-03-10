@@ -123,7 +123,7 @@ class = "config"
 icon = "󰣖"
 ```
 
-There is also a fuller example in [examples/theme.toml](/home/regueiro/elio/examples/theme.toml).
+There are fuller examples in [examples/default/theme.toml](/home/regueiro/1Projects/elio/examples/default/theme.toml) and [examples/navi/theme.toml](/home/regueiro/1Projects/elio/examples/navi/theme.toml).
 
 ## Controls
 

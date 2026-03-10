@@ -1,5 +1,5 @@
-use super::{helpers, theme};
 use super::theme::Palette;
+use super::{helpers, theme};
 use crate::app::{
     App, Entry, EntryHit, FrameState, PathHit, ViewMetrics, format_size, format_time_ago,
 };
@@ -249,18 +249,15 @@ fn render_tile(
     spec: helpers::GridZoomSpec,
 ) {
     let icon_color = theme::entry_color(entry, palette);
-    let background = if selected {
+    let background = palette.surface;
+    let content_bg = if selected {
         theme::mix_color(palette.selected_bg, icon_color, 22)
     } else {
         palette.surface
     };
-    let band_bg = if selected {
-        theme::mix_color(palette.chrome_alt, icon_color, 90)
-    } else {
-        palette.elevated
-    };
+    let band_bg = palette.elevated;
     let band_fg = palette.text;
-    let band_icon = if selected { band_fg } else { icon_color };
+    let band_icon = icon_color;
 
     frame.render_widget(
         Block::default().style(Style::default().bg(background).fg(palette.text)),
@@ -293,9 +290,7 @@ fn render_tile(
             Span::raw(" "),
             Span::styled(
                 helpers::clamp_label(&entry.name, band.width.saturating_sub(5) as usize),
-                Style::default()
-                    .fg(band_fg)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(band_fg).add_modifier(Modifier::BOLD),
             ),
         ]))
         .style(Style::default().bg(band_bg).fg(band_fg)),
@@ -341,10 +336,16 @@ fn render_tile(
         modified,
         Style::default().fg(palette.muted),
     )));
-    frame.render_widget(
-        Paragraph::new(lines).style(Style::default().bg(background).fg(palette.text)),
-        content,
-    );
+    if content.height > 0 {
+        frame.render_widget(
+            Block::default().style(Style::default().bg(content_bg).fg(palette.text)),
+            content,
+        );
+        frame.render_widget(
+            Paragraph::new(lines).style(Style::default().bg(content_bg).fg(palette.text)),
+            content,
+        );
+    }
 }
 
 fn render_list(
@@ -400,9 +401,11 @@ fn render_list(
                 .split(row);
 
             frame.render_widget(
-                Paragraph::new("▌")
-                    .alignment(Alignment::Left)
-                    .style(Style::default().bg(bg).fg(if selected { palette.accent } else { bg })),
+                Paragraph::new("▌").alignment(Alignment::Left).style(
+                    Style::default()
+                        .bg(bg)
+                        .fg(if selected { palette.accent } else { bg }),
+                ),
                 columns[0],
             );
             frame.render_widget(
@@ -458,9 +461,11 @@ fn render_list(
                 .constraints([Constraint::Length(1), Constraint::Min(1)])
                 .split(row);
             frame.render_widget(
-                Paragraph::new("▌")
-                    .alignment(Alignment::Left)
-                    .style(Style::default().bg(bg).fg(if selected { palette.accent } else { bg })),
+                Paragraph::new("▌").alignment(Alignment::Left).style(
+                    Style::default()
+                        .bg(bg)
+                        .fg(if selected { palette.accent } else { bg }),
+                ),
                 columns[0],
             );
             let secondary = if row_height >= 3 {
@@ -493,10 +498,7 @@ fn render_list(
                         ),
                         Span::raw(" "),
                         Span::styled(
-                            helpers::clamp_label(
-                                &entry.name,
-                                row.width.saturating_sub(8) as usize,
-                            ),
+                            helpers::clamp_label(&entry.name, row.width.saturating_sub(8) as usize),
                             Style::default()
                                 .fg(palette.text)
                                 .add_modifier(Modifier::BOLD),
