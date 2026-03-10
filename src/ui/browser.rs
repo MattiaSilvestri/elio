@@ -535,22 +535,44 @@ fn render_preview(frame: &mut Frame<'_>, area: Rect, app: &App, palette: Palette
         .constraints([Constraint::Length(3), Constraint::Min(4)])
         .split(inner);
 
-    let title = app
-        .selected_entry()
-        .map(|entry| entry.name.clone())
-        .unwrap_or_else(|| "Nothing selected".to_string());
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            helpers::chip_span("selected", palette.accent_soft, palette.accent_text, false),
-            Span::styled("  ", Style::default()),
-            Span::styled(
-                helpers::clamp_label(&title, rows[0].width as usize),
+    let header_lines = if let Some(entry) = app.selected_entry() {
+        vec![
+            Line::from(Span::styled(
+                "Selected item",
+                Style::default().fg(palette.muted),
+            )),
+            Line::from(vec![
+                Span::styled(
+                    theme::entry_symbol(entry),
+                    Style::default()
+                        .fg(theme::entry_color(entry, palette))
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" "),
+                Span::styled(
+                    helpers::clamp_label(&entry.name, rows[0].width.saturating_sub(4) as usize),
+                    Style::default()
+                        .fg(palette.text)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]),
+        ]
+    } else {
+        vec![
+            Line::from(Span::styled(
+                "Selected item",
+                Style::default().fg(palette.muted),
+            )),
+            Line::from(Span::styled(
+                "Nothing selected",
                 Style::default()
                     .fg(palette.text)
                     .add_modifier(Modifier::BOLD),
-            ),
-        ]))
-        .style(Style::default().bg(palette.panel).fg(palette.text)),
+            )),
+        ]
+    };
+    frame.render_widget(
+        Paragraph::new(header_lines).style(Style::default().bg(palette.panel).fg(palette.text)),
         rows[0],
     );
 
