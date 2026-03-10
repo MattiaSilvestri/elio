@@ -38,7 +38,10 @@ pub(super) fn render_search_overlay(
         ])
         .split(inner);
 
-    let scope_label = app.search_scope().map(|scope| scope.label()).unwrap_or("Search");
+    let scope_label = app
+        .search_scope()
+        .map(|scope| scope.label())
+        .unwrap_or("Search");
     let summary = if app.search_is_loading() {
         "indexing…".to_string()
     } else {
@@ -65,7 +68,7 @@ pub(super) fn render_search_overlay(
     );
 
     frame.render_widget(
-        Block::default().style(Style::default().bg(palette.path_bg).fg(palette.text)),
+        helpers::rounded_block(palette.path_bg, palette.border),
         rows[1],
     );
     let query = if app.search_query().is_empty() {
@@ -107,8 +110,7 @@ pub(super) fn render_search_overlay(
         )
     };
     frame.render_widget(
-        Paragraph::new(query_line)
-        .style(Style::default().bg(palette.path_bg).fg(palette.text)),
+        Paragraph::new(query_line).style(Style::default().bg(palette.path_bg).fg(palette.text)),
         query_area,
     );
     frame.set_cursor_position((cursor_x, query_area.y));
@@ -120,7 +122,12 @@ pub(super) fn render_search_overlay(
 
     let rows_data = app.search_rows(visible_rows);
     if app.search_is_loading() {
-        helpers::render_empty_state(frame, results_area, "Indexing current folder tree…", palette);
+        helpers::render_empty_state(
+            frame,
+            results_area,
+            "Indexing current folder tree…",
+            palette,
+        );
     } else if let Some(error) = app.search_error() {
         helpers::render_empty_state(
             frame,
@@ -169,7 +176,8 @@ pub(super) fn render_search_overlay(
             }
 
             let icon = theme::path_symbol(std::path::Path::new(&row.relative), row.is_dir);
-            let icon_color = theme::path_color(std::path::Path::new(&row.relative), row.is_dir, palette);
+            let icon_color =
+                theme::path_color(std::path::Path::new(&row.relative), row.is_dir, palette);
             let name_width = rect.width.saturating_sub(6) as usize;
             let path_width = rect.width.saturating_sub(4) as usize;
             frame.render_widget(
@@ -197,7 +205,10 @@ pub(super) fn render_search_overlay(
                     Paragraph::new(Line::from(vec![
                         Span::raw("    "),
                         Span::styled(
-                            helpers::stable_path_label(std::path::Path::new(&row.relative), path_width.max(10)),
+                            helpers::stable_path_label(
+                                std::path::Path::new(&row.relative),
+                                path_width.max(10),
+                            ),
                             Style::default().fg(palette.muted),
                         ),
                     ]))
@@ -365,11 +376,7 @@ fn render_query_line(
     if cursor > available {
         start = cursor - available;
     }
-    let mut visible = chars
-        .iter()
-        .skip(start)
-        .take(available)
-        .collect::<String>();
+    let mut visible = chars.iter().skip(start).take(available).collect::<String>();
     if start > 0 && !visible.is_empty() {
         visible.remove(0);
         visible.insert(0, '…');

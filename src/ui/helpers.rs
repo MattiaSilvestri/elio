@@ -68,6 +68,14 @@ pub(super) fn panel_block<'a>(title: &'a str, bg: Color, palette: Palette) -> Bl
         .border_style(Style::default().fg(palette.border))
 }
 
+pub(super) fn rounded_block(bg: Color, border: Color) -> Block<'static> {
+    Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .style(Style::default().bg(bg))
+        .border_style(Style::default().fg(border))
+}
+
 pub(super) fn chip_span<'a>(label: &'a str, bg: Color, fg: Color, bold: bool) -> Span<'a> {
     let style = if bold {
         Style::default().bg(bg).fg(fg).add_modifier(Modifier::BOLD)

@@ -8,7 +8,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
 };
 
 pub(super) fn render_body(
@@ -59,30 +59,7 @@ fn render_sidebar(
     let block = helpers::panel_block(" Places ", palette.panel, palette);
     frame.render_widget(block, area);
     let inner = helpers::inner_with_padding(area);
-
-    let header = Rect {
-        x: inner.x,
-        y: inner.y,
-        width: inner.width,
-        height: 1,
-    };
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled("󰙅", Style::default().fg(palette.accent)),
-            Span::raw(" "),
-            Span::styled(
-                "Pinned Places",
-                Style::default()
-                    .bg(palette.panel)
-                    .fg(palette.muted)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]))
-        .style(Style::default().bg(palette.panel).fg(palette.muted)),
-        header,
-    );
-
-    let mut y = inner.y.saturating_add(2);
+    let mut y = inner.y;
     let row_height = 1u16;
     for item in &app.sidebar {
         if y.saturating_add(row_height) > inner.y.saturating_add(inner.height) {
@@ -139,54 +116,34 @@ fn render_entries(
     state: &mut FrameState,
     palette: Palette,
 ) {
-    let block = helpers::panel_block(" Directory ", palette.panel_alt, palette);
-    frame.render_widget(block, area);
-    let inner = helpers::inner_with_padding(area);
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Min(4),
-        ])
-        .split(inner);
-
-    let path_text = helpers::stable_path_label(&app.cwd, rows[0].width.saturating_sub(6) as usize);
-    frame.render_widget(
-        Block::default().style(Style::default().bg(palette.path_bg).fg(palette.text)),
-        rows[0],
-    );
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
+    let path_text = helpers::stable_path_label(&app.cwd, area.width.saturating_sub(10) as usize);
+    let block = Block::default()
+        .title(Line::from(vec![
             Span::styled(
-                "󰉖",
+                " 󰉖 ",
                 Style::default()
                     .fg(palette.accent)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::raw(" "),
             Span::styled(
                 path_text,
                 Style::default()
                     .fg(palette.accent_text)
                     .add_modifier(Modifier::BOLD),
             ),
+            Span::raw(" "),
         ]))
-        .style(Style::default().bg(palette.path_bg).fg(palette.text)),
-        rows[0].inner(Margin {
-            horizontal: 1,
-            vertical: 0,
-        }),
-    );
-    frame.render_widget(
-        Block::default().style(Style::default().bg(palette.panel_alt).fg(palette.text)),
-        rows[1],
-    );
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .style(Style::default().bg(palette.panel_alt).fg(palette.text))
+        .border_style(Style::default().fg(palette.border));
+    frame.render_widget(&block, area);
+    let inner = block.inner(area);
 
     if app.view_mode == crate::app::ViewMode::Grid {
-        render_grid(frame, rows[2], app, state, palette);
+        render_grid(frame, inner, app, state, palette);
     } else {
-        render_list(frame, rows[2], app, state, palette);
+        render_list(frame, inner, app, state, palette);
     }
 }
 
@@ -527,57 +484,43 @@ fn render_list(
 }
 
 fn render_preview(frame: &mut Frame<'_>, area: Rect, app: &App, palette: Palette) {
-    let block = helpers::panel_block(" Details ", palette.panel, palette);
+    let title_line = if let Some(entry) = app.selected_entry() {
+        Line::from(vec![
+            Span::styled(
+                format!(" {} ", theme::entry_symbol(entry)),
+                Style::default()
+                    .fg(theme::entry_color(entry, palette))
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                helpers::clamp_label(&entry.name, area.width.saturating_sub(10) as usize),
+                Style::default()
+                    .fg(palette.accent_text)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+        ])
+    } else {
+        Line::from(vec![
+            Span::styled(
+                " Details ",
+                Style::default()
+                    .fg(palette.accent_text)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw(" "),
+        ])
+    };
+    let block = Block::default()
+        .title(title_line)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .style(Style::default().bg(palette.panel).fg(palette.text))
+        .border_style(Style::default().fg(palette.border));
     frame.render_widget(block, area);
     let inner = helpers::inner_with_padding(area);
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(3), Constraint::Min(4)])
-        .split(inner);
-
-    let header_lines = if let Some(entry) = app.selected_entry() {
-        vec![
-            Line::from(Span::styled(
-                "Selected item",
-                Style::default().fg(palette.muted),
-            )),
-            Line::from(vec![
-                Span::styled(
-                    theme::entry_symbol(entry),
-                    Style::default()
-                        .fg(theme::entry_color(entry, palette))
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(" "),
-                Span::styled(
-                    helpers::clamp_label(&entry.name, rows[0].width.saturating_sub(4) as usize),
-                    Style::default()
-                        .fg(palette.text)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
-        ]
-    } else {
-        vec![
-            Line::from(Span::styled(
-                "Selected item",
-                Style::default().fg(palette.muted),
-            )),
-            Line::from(Span::styled(
-                "Nothing selected",
-                Style::default()
-                    .fg(palette.text)
-                    .add_modifier(Modifier::BOLD),
-            )),
-        ]
-    };
-    frame.render_widget(
-        Paragraph::new(header_lines).style(Style::default().bg(palette.panel).fg(palette.text)),
-        rows[0],
-    );
-
-    let preview = Paragraph::new(app.preview_lines(rows[1].height.saturating_sub(1) as usize))
+    let preview = Paragraph::new(app.preview_lines(inner.height.saturating_sub(1) as usize))
         .style(Style::default().bg(palette.panel).fg(palette.text))
         .wrap(Wrap { trim: false });
-    frame.render_widget(preview, rows[1]);
+    frame.render_widget(preview, inner);
 }
