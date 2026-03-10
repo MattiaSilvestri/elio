@@ -1,9 +1,12 @@
-use crate::app::{EntryKind, FileClass};
+use crate::{
+    app::{EntryKind, FileClass},
+    config,
+};
 use ratatui::style::Color;
 use serde::Deserialize;
 use std::{
     collections::HashMap,
-    env, fs, io,
+    fs, io,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -219,18 +222,14 @@ fn load_theme_from_disk() -> Theme {
 }
 
 fn theme_path() -> Option<PathBuf> {
-    if let Some(config_home) = env::var_os("XDG_CONFIG_HOME") {
-        return Some(PathBuf::from(config_home).join("elio/theme.toml"));
-    }
-
-    env::var_os("HOME").map(|home| PathBuf::from(home).join(".config/elio/theme.toml"))
+    config::config_dir().map(|dir| dir.join("theme.toml"))
 }
 
 impl Theme {
     fn default_theme() -> Self {
         Self::apply_config_on(
             Self::base_theme(),
-            include_str!("../examples/default/theme.toml"),
+            include_str!("../examples/themes/default/theme.toml"),
         )
         .unwrap_or_else(|error| {
             eprintln!("elio: failed to load built-in default theme: {error}");

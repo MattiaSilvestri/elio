@@ -4,11 +4,15 @@ mod helpers;
 mod overlays;
 mod theme;
 
-use crate::app::{App, FrameState};
+use crate::{
+    app::{App, FrameState},
+    config,
+};
 use ratatui::{Frame, widgets::Block};
 
 pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
     let palette = theme::palette();
+    let ui_config = config::ui();
 
     state.sidebar_hits.clear();
     state.entry_hits.clear();
@@ -33,18 +37,31 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
         area,
     );
 
-    let rows = ratatui::layout::Layout::default()
-        .direction(ratatui::layout::Direction::Vertical)
-        .constraints([
-            ratatui::layout::Constraint::Length(3),
-            ratatui::layout::Constraint::Min(10),
-            ratatui::layout::Constraint::Length(1),
-        ])
-        .split(area);
+    if ui_config.show_top_bar {
+        let rows = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([
+                ratatui::layout::Constraint::Length(3),
+                ratatui::layout::Constraint::Min(10),
+                ratatui::layout::Constraint::Length(1),
+            ])
+            .split(area);
 
-    chrome::render_toolbar(frame, rows[0], app, state, palette);
-    browser::render_body(frame, rows[1], app, state, palette);
-    chrome::render_status(frame, rows[2], app, palette);
+        chrome::render_toolbar(frame, rows[0], app, state, palette);
+        browser::render_body(frame, rows[1], app, state, palette);
+        chrome::render_status(frame, rows[2], app, palette);
+    } else {
+        let rows = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([
+                ratatui::layout::Constraint::Min(10),
+                ratatui::layout::Constraint::Length(1),
+            ])
+            .split(area);
+
+        browser::render_body(frame, rows[0], app, state, palette);
+        chrome::render_status(frame, rows[1], app, palette);
+    }
 
     if app.search_is_open() {
         overlays::render_search_overlay(frame, area, app, state, palette);

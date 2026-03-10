@@ -1,4 +1,5 @@
 mod app;
+mod config;
 mod appearance;
 mod search;
 mod ui;
@@ -22,6 +23,7 @@ const ACTIVE_SCROLL_POLL_INTERVAL: Duration = Duration::from_millis(16);
 const RELATIVE_TIME_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 fn main() -> Result<()> {
+    config::initialize();
     appearance::initialize();
     let mut terminal = init_terminal()?;
     let result = run(&mut terminal);

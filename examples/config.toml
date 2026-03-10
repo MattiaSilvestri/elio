@@ -1,0 +1,4 @@
+# Copy to ~/.config/elio/config.toml to customize Elio's behavior.
+
+[ui]
+show_top_bar = false

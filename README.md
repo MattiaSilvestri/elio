@@ -4,13 +4,14 @@
 
 ## Features
 
-- Nautilus-like shell with a top toolbar, places sidebar, main file area, and details pane
+- Nautilus-like shell with a places sidebar, main file area, and details pane
 - Grid view by default, plus a denser list view
 - Mouse click, double click, and wheel support
 - Directory navigation, back/forward history, hidden-file toggle, sort cycling, instant auto-reload, and external open via `xdg-open`
 - Rich details pane with metadata plus folder, text, markdown, and code previews
 - Folder search with `f` and file search with `Ctrl+F`, both scoped to the current directory tree
 - Type-aware icons and colors for folders, config files, documents, code, archives, media, fonts, data files, and plain files
+- Configurable behavior from `~/.config/elio/config.toml`
 - Configurable appearance rules from `~/.config/elio/theme.toml`
 
 ## Run
@@ -18,6 +19,24 @@
 ```bash
 cargo run
 ```
+
+## Config
+
+General app settings live in:
+
+```bash
+~/.config/elio/config.toml
+```
+
+Supported sections:
+
+- `[ui]` for interface behavior
+
+The current config keys are:
+
+- `show_top_bar` to show or hide the optional toolbar at the top of the screen
+
+If the config file does not exist, `elio` uses built-in defaults. The example config is mirrored in [`examples/config.toml`](examples/config.toml).
 
 ## Theme
 
@@ -43,7 +62,7 @@ How theme loading works:
 - if the file does not exist, `elio` uses the built-in default theme
 - if the file exists but fails to read or parse, `elio` falls back to the built-in default theme and prints an error to `stderr`
 
-The built-in default theme is mirrored in [examples/default/theme.toml](/home/regueiro/1Projects/elio/examples/default/theme.toml). The older blue-heavy variant is kept in [examples/navi/theme.toml](/home/regueiro/1Projects/elio/examples/navi/theme.toml).
+The built-in default theme is mirrored in [`examples/themes/default/theme.toml`](examples/themes/default/theme.toml). The older blue-heavy variant is kept in [`examples/themes/navi/theme.toml`](examples/themes/navi/theme.toml).
 
 The current app UI colors all come from `[palette]`. That includes:
 
@@ -153,7 +172,7 @@ icon = ""
 color = "#ff8f40"
 ```
 
-There are fuller examples in [examples/default/theme.toml](/home/regueiro/1Projects/elio/examples/default/theme.toml) and [examples/navi/theme.toml](/home/regueiro/1Projects/elio/examples/navi/theme.toml).
+There are fuller examples in [`examples/themes/default/theme.toml`](examples/themes/default/theme.toml) and [`examples/themes/navi/theme.toml`](examples/themes/navi/theme.toml).
 
 ## Controls
 
