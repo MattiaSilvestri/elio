@@ -300,15 +300,21 @@ fn render_tile(
         }),
     );
 
-    let inner = rect.inner(Margin {
+    let content = Rect {
+        x: rect.x,
+        y: rect.y.saturating_add(1),
+        width: rect.width,
+        height: rect.height.saturating_sub(1),
+    };
+    let content_inner = content.inner(Margin {
         horizontal: spec.padding_x,
         vertical: 0,
     });
-    let content = Rect {
-        x: inner.x,
-        y: inner.y.saturating_add(1),
-        width: inner.width,
-        height: inner.height.saturating_sub(1),
+    let content_text = Rect {
+        x: content_inner.x,
+        y: content_inner.y,
+        width: content_inner.width,
+        height: content_inner.height,
     };
     let detail = (!entry.is_dir()).then(|| format_size(entry.size));
     let modified = entry
@@ -343,7 +349,7 @@ fn render_tile(
         );
         frame.render_widget(
             Paragraph::new(lines).style(Style::default().bg(content_bg).fg(palette.text)),
-            content,
+            content_text,
         );
     }
 }
