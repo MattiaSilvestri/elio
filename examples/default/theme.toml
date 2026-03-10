@@ -389,27 +389,27 @@ icon = "󰉋"
 color = "#5ba8ff"
 
 [directories."pictures"]
-icon = "󰋩"
+icon = "󰉏"
 color = "#24d9b8"
 
 [directories."Pictures"]
-icon = "󰋩"
+icon = "󰉏"
 color = "#24d9b8"
 
 [directories."imagenes"]
-icon = "󰋩"
+icon = "󰉏"
 color = "#24d9b8"
 
 [directories."Imagenes"]
-icon = "󰋩"
+icon = "󰉏"
 color = "#24d9b8"
 
 [directories."imágenes"]
-icon = "󰋩"
+icon = "󰉏"
 color = "#24d9b8"
 
 [directories."Imágenes"]
-icon = "󰋩"
+icon = "󰉏"
 color = "#24d9b8"
 
 [directories."documents"]
@@ -429,43 +429,43 @@ icon = "󰈙"
 color = "#8ddf6d"
 
 [directories."downloads"]
-icon = "󰇚"
+icon = "󰉍"
 color = "#f7c85e"
 
 [directories."Downloads"]
-icon = "󰇚"
+icon = "󰉍"
 color = "#f7c85e"
 
 [directories."descargas"]
-icon = "󰇚"
+icon = "󰉍"
 color = "#f7c85e"
 
 [directories."Descargas"]
-icon = "󰇚"
+icon = "󰉍"
 color = "#f7c85e"
 
 [directories."music"]
-icon = "󰎆"
+icon = "󱍙"
 color = "#d78eff"
 
 [directories."Music"]
-icon = "󰎆"
+icon = "󱍙"
 color = "#d78eff"
 
 [directories."musica"]
-icon = "󰎆"
+icon = "󱍙"
 color = "#d78eff"
 
 [directories."Musica"]
-icon = "󰎆"
+icon = "󱍙"
 color = "#d78eff"
 
 [directories."música"]
-icon = "󰎆"
+icon = "󱍙"
 color = "#d78eff"
 
 [directories."Música"]
-icon = "󰎆"
+icon = "󱍙"
 color = "#d78eff"
 
 [directories."videos"]
