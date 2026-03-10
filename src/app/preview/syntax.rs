@@ -36,6 +36,7 @@ pub(super) fn preview_code_syntax<'a>(
 pub(super) fn preview_syntax_hint(path: &Path) -> Option<&'static str> {
     let name = path.file_name()?.to_str()?.to_ascii_lowercase();
     match name.as_str() {
+        "pkgbuild" => Some("bash"),
         "cargo.lock" | "poetry.lock" => Some("toml"),
         "package.json" | "package-lock.json" | "tsconfig.json" | "deno.json" => Some("json"),
         "deno.jsonc" => Some("jsonc"),

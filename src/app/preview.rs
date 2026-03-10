@@ -12,6 +12,7 @@ use std::{
     fs::{self, File},
     io::Read,
     path::Path,
+    process::Command,
 };
 
 const PREVIEW_LIMIT_BYTES: usize = 64 * 1024;
@@ -66,6 +67,16 @@ pub(super) struct PreviewContent {
 struct TextPreview {
     text: String,
     bytes_truncated: bool,
+}
+
+#[derive(Default)]
+struct TorrentMetadata {
+    name: Option<String>,
+    announce: Option<String>,
+    comment: Option<String>,
+    created_by: Option<String>,
+    file_count: usize,
+    total_size: Option<u64>,
 }
 
 impl PreviewContent {
@@ -213,10 +224,27 @@ pub(super) fn build_preview(entry: &Entry) -> PreviewContent {
         return build_directory_preview(entry);
     }
 
+    let type_detail = appearance::specific_type_label(&entry.path, entry.kind);
+    if is_iso_path(&entry.path)
+        && let Some(preview) = build_iso_preview(&entry.path)
+    {
+        return preview;
+    }
+    if is_torrent_path(&entry.path)
+        && let Some(preview) = build_torrent_preview(&entry.path)
+    {
+        return preview;
+    }
+
     let text_preview = match read_text_preview(&entry.path) {
         Ok(Some(text)) => text,
-        Ok(None) => return binary_preview(),
-        Err(_) => return unavailable_preview("The file could not be read"),
+        Ok(None) => return apply_type_detail(binary_preview(), type_detail),
+        Err(_) => {
+            return apply_type_detail(
+                unavailable_preview("The file could not be read"),
+                type_detail,
+            );
+        }
     };
     let source_line_count = count_source_lines(&text_preview.text);
     let line_truncated = source_line_count > PREVIEW_RENDER_LINE_LIMIT;
@@ -286,7 +314,7 @@ pub(super) fn build_preview(entry: &Entry) -> PreviewContent {
         render_plain_text_preview(&text_preview.text),
     );
     finalize_text_preview(
-        preview,
+        apply_type_detail(preview, type_detail),
         source_line_count,
         text_preview.bytes_truncated,
         truncation_note,
@@ -353,6 +381,123 @@ fn build_directory_preview(entry: &Entry) -> PreviewContent {
     }
 }
 
+fn build_iso_preview(path: &Path) -> Option<PreviewContent> {
+    let output = Command::new("bsdtar").arg("-tf").arg(path).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let listing = String::from_utf8(output.stdout).ok()?;
+    let items = listing
+        .lines()
+        .map(trim_trailing_line_endings)
+        .map(|line| line.trim().trim_start_matches("./").to_string())
+        .filter(|line| !line.is_empty() && line != "." && line != "./")
+        .collect::<Vec<_>>();
+
+    Some(build_listing_preview(&items, "Image is empty"))
+}
+
+fn build_torrent_preview(path: &Path) -> Option<PreviewContent> {
+    const TORRENT_PREVIEW_LIMIT_BYTES: u64 = 1024 * 1024;
+
+    let mut bytes = Vec::with_capacity(TORRENT_PREVIEW_LIMIT_BYTES as usize);
+    File::open(path)
+        .ok()?
+        .take(TORRENT_PREVIEW_LIMIT_BYTES)
+        .read_to_end(&mut bytes)
+        .ok()?;
+
+    let mut index = 0usize;
+    let mut metadata = TorrentMetadata::default();
+    parse_torrent_root(&bytes, &mut index, &mut metadata)?;
+
+    let mut lines = Vec::new();
+    push_preview_line(
+        &mut lines,
+        "Name",
+        metadata.name.unwrap_or_else(|| "unknown".to_string()),
+    );
+    if let Some(tracker) = metadata.announce {
+        push_preview_line(&mut lines, "Tracker", tracker);
+    }
+    let files = if metadata.file_count > 0 {
+        metadata.file_count
+    } else {
+        1
+    };
+    push_preview_line(&mut lines, "Files", files.to_string());
+    if let Some(total_size) = metadata.total_size {
+        push_preview_line(&mut lines, "Size", crate::app::format_size(total_size));
+    }
+    if let Some(created_by) = metadata.created_by {
+        push_preview_line(&mut lines, "Created", created_by);
+    }
+    if let Some(comment) = metadata.comment {
+        push_preview_line(&mut lines, "Comment", comment);
+    }
+
+    let file_count = files;
+    Some(
+        PreviewContent::new(PreviewKind::Text, lines)
+            .with_detail("BitTorrent file")
+            .with_directory_counts(file_count, 0, file_count),
+    )
+}
+
+fn build_listing_preview(items: &[String], empty_label: &str) -> PreviewContent {
+    if items.is_empty() {
+        return status_preview(
+            PreviewKind::Directory,
+            "0 items",
+            [Line::from(empty_label.to_string())],
+        );
+    }
+
+    let palette = appearance::palette();
+    let total_items = items.len();
+    let folder_count = items
+        .iter()
+        .filter(|item| item.ends_with('/') || item.ends_with('\\'))
+        .count();
+    let file_count = total_items.saturating_sub(folder_count);
+    let mut lines = Vec::new();
+
+    for item in items.iter().take(PREVIEW_RENDER_LINE_LIMIT) {
+        let is_dir = item.ends_with('/') || item.ends_with('\\');
+        let display_name = item.trim_end_matches(['/', '\\']);
+        let appearance = appearance::resolve_path(
+            Path::new(display_name),
+            if is_dir {
+                EntryKind::Directory
+            } else {
+                EntryKind::File
+            },
+        );
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!("{} ", appearance.icon),
+                Style::default()
+                    .fg(appearance.color)
+                    .add_modifier(ratatui::style::Modifier::BOLD),
+            ),
+            Span::styled(item.clone(), Style::default().fg(palette.text)),
+        ]));
+    }
+
+    PreviewContent::new(PreviewKind::Directory, lines)
+        .with_detail(format!("{total_items} items"))
+        .with_directory_counts(total_items, folder_count, file_count)
+}
+
+fn push_preview_line(lines: &mut Vec<Line<'static>>, label: &str, value: String) {
+    let palette = appearance::palette();
+    lines.push(Line::from(vec![
+        Span::styled(format!("{label:<8}"), Style::default().fg(palette.muted)),
+        Span::styled(value, Style::default().fg(palette.text)),
+    ]));
+}
+
 fn render_plain_text_preview(text: &str) -> Vec<Line<'static>> {
     let palette = appearance::palette();
     let mut rendered = Vec::new();
@@ -392,6 +537,21 @@ fn finalize_text_preview(
     }
     if let Some(note) = truncation_note {
         preview = preview.with_truncation(note);
+    }
+    preview
+}
+
+fn apply_type_detail(
+    mut preview: PreviewContent,
+    type_detail: Option<&'static str>,
+) -> PreviewContent {
+    if let Some(detail) = type_detail
+        && matches!(
+            preview.detail.as_deref(),
+            None | Some("Binary file") | Some("Read error")
+        )
+    {
+        preview.detail = Some(detail.to_string());
     }
     preview
 }
@@ -498,6 +658,186 @@ fn is_markdown_path(path: &Path) -> bool {
             .map(|ext| ext.to_ascii_lowercase()),
         Some(ext) if matches!(ext.as_str(), "md" | "markdown" | "mdown" | "mkd" | "mdx")
     )
+}
+
+fn is_iso_path(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase()),
+        Some(ext) if ext == "iso"
+    )
+}
+
+fn is_torrent_path(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase()),
+        Some(ext) if ext == "torrent"
+    )
+}
+
+fn parse_torrent_root(
+    bytes: &[u8],
+    index: &mut usize,
+    metadata: &mut TorrentMetadata,
+) -> Option<()> {
+    expect_byte(bytes, index, b'd')?;
+    while peek_byte(bytes, *index)? != b'e' {
+        let key = parse_bencode_bytes(bytes, index)?;
+        match key {
+            b"announce" => metadata.announce = parse_bencode_string(bytes, index),
+            b"comment" => metadata.comment = parse_bencode_string(bytes, index),
+            b"created by" => metadata.created_by = parse_bencode_string(bytes, index),
+            b"info" => parse_torrent_info(bytes, index, metadata)?,
+            _ => skip_bencode_value(bytes, index)?,
+        }
+    }
+    expect_byte(bytes, index, b'e')
+}
+
+fn parse_torrent_info(
+    bytes: &[u8],
+    index: &mut usize,
+    metadata: &mut TorrentMetadata,
+) -> Option<()> {
+    expect_byte(bytes, index, b'd')?;
+    while peek_byte(bytes, *index)? != b'e' {
+        let key = parse_bencode_bytes(bytes, index)?;
+        match key {
+            b"name" => metadata.name = parse_bencode_string(bytes, index),
+            b"length" => {
+                let length = parse_bencode_int(bytes, index)?;
+                if length >= 0 {
+                    metadata.total_size = Some(length as u64);
+                    if metadata.file_count == 0 {
+                        metadata.file_count = 1;
+                    }
+                }
+            }
+            b"files" => parse_torrent_files(bytes, index, metadata)?,
+            _ => skip_bencode_value(bytes, index)?,
+        }
+    }
+    expect_byte(bytes, index, b'e')
+}
+
+fn parse_torrent_files(
+    bytes: &[u8],
+    index: &mut usize,
+    metadata: &mut TorrentMetadata,
+) -> Option<()> {
+    expect_byte(bytes, index, b'l')?;
+    let mut file_count = 0usize;
+    let mut total_size = 0u64;
+    while peek_byte(bytes, *index)? != b'e' {
+        let length = parse_torrent_file_entry(bytes, index)?;
+        file_count += 1;
+        total_size = total_size.saturating_add(length);
+    }
+    expect_byte(bytes, index, b'e')?;
+    metadata.file_count = file_count;
+    metadata.total_size = Some(total_size);
+    Some(())
+}
+
+fn parse_torrent_file_entry(bytes: &[u8], index: &mut usize) -> Option<u64> {
+    expect_byte(bytes, index, b'd')?;
+    let mut length = 0u64;
+    while peek_byte(bytes, *index)? != b'e' {
+        let key = parse_bencode_bytes(bytes, index)?;
+        if key == b"length" {
+            let value = parse_bencode_int(bytes, index)?;
+            if value >= 0 {
+                length = value as u64;
+            }
+        } else {
+            skip_bencode_value(bytes, index)?;
+        }
+    }
+    expect_byte(bytes, index, b'e')?;
+    Some(length)
+}
+
+fn skip_bencode_value(bytes: &[u8], index: &mut usize) -> Option<()> {
+    match peek_byte(bytes, *index)? {
+        b'd' => {
+            *index += 1;
+            while peek_byte(bytes, *index)? != b'e' {
+                parse_bencode_bytes(bytes, index)?;
+                skip_bencode_value(bytes, index)?;
+            }
+            *index += 1;
+            Some(())
+        }
+        b'l' => {
+            *index += 1;
+            while peek_byte(bytes, *index)? != b'e' {
+                skip_bencode_value(bytes, index)?;
+            }
+            *index += 1;
+            Some(())
+        }
+        b'i' => {
+            parse_bencode_int(bytes, index)?;
+            Some(())
+        }
+        b'0'..=b'9' => {
+            parse_bencode_bytes(bytes, index)?;
+            Some(())
+        }
+        _ => None,
+    }
+}
+
+fn parse_bencode_string(bytes: &[u8], index: &mut usize) -> Option<String> {
+    let value = parse_bencode_bytes(bytes, index)?;
+    Some(String::from_utf8_lossy(value).into_owned())
+}
+
+fn parse_bencode_bytes<'a>(bytes: &'a [u8], index: &mut usize) -> Option<&'a [u8]> {
+    let start = *index;
+    while matches!(peek_byte(bytes, *index)?, b'0'..=b'9') {
+        *index += 1;
+    }
+    let colon = *index;
+    expect_byte(bytes, index, b':')?;
+    let len = std::str::from_utf8(&bytes[start..colon])
+        .ok()?
+        .parse::<usize>()
+        .ok()?;
+    let end = (*index).checked_add(len)?;
+    let slice = bytes.get(*index..end)?;
+    *index = end;
+    Some(slice)
+}
+
+fn parse_bencode_int(bytes: &[u8], index: &mut usize) -> Option<i64> {
+    expect_byte(bytes, index, b'i')?;
+    let start = *index;
+    while peek_byte(bytes, *index)? != b'e' {
+        *index += 1;
+    }
+    let value = std::str::from_utf8(bytes.get(start..*index)?)
+        .ok()?
+        .parse()
+        .ok()?;
+    expect_byte(bytes, index, b'e')?;
+    Some(value)
+}
+
+fn peek_byte(bytes: &[u8], index: usize) -> Option<u8> {
+    bytes.get(index).copied()
+}
+
+fn expect_byte(bytes: &[u8], index: &mut usize, expected: u8) -> Option<()> {
+    if peek_byte(bytes, *index)? == expected {
+        *index += 1;
+        Some(())
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -624,8 +964,11 @@ mod tests {
         let root = temp_path("markdown-spacing");
         fs::create_dir_all(&root).expect("failed to create temp root");
         let path = root.join("README.md");
-        fs::write(&path, "# Heading\nParagraph text\n\n```rust\nlet x = 1;\n```\n")
-            .expect("failed to write markdown");
+        fs::write(
+            &path,
+            "# Heading\nParagraph text\n\n```rust\nlet x = 1;\n```\n",
+        )
+        .expect("failed to write markdown");
 
         let preview = build_preview(&file_entry(path));
 
@@ -750,6 +1093,170 @@ mod tests {
                 .iter()
                 .flat_map(|line| line.spans.iter())
                 .any(|span| span.content.contains("エリオ"))
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn pkgbuild_preview_uses_shell_renderer() {
+        let root = temp_path("pkgbuild");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let path = root.join("PKGBUILD");
+        fs::write(
+            &path,
+            "pkgname=elio\nbuild() {\n  cargo build --release\n}\n",
+        )
+        .expect("failed to write pkgbuild");
+
+        let preview = build_preview(&file_entry(path));
+
+        assert_eq!(preview.kind, PreviewKind::Code);
+        assert!(preview.detail.is_some());
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn keys_preview_uses_fallback_renderer() {
+        let root = temp_path("keys");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let path = root.join("bindings.keys");
+        fs::write(&path, "ctrl+h=left\nctrl+l=right\n").expect("failed to write keys");
+
+        let preview = build_preview(&file_entry(path));
+
+        assert_eq!(preview.kind, PreviewKind::Code);
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("INI"))
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn log_preview_uses_colored_fallback_renderer() {
+        let root = temp_path("log");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let path = root.join("server.log");
+        fs::write(
+            &path,
+            "2026-03-10T12:00:00Z ERROR request_id=42 path=/login failed\n",
+        )
+        .expect("failed to write log");
+
+        let preview = build_preview(&file_entry(path));
+
+        assert_eq!(preview.kind, PreviewKind::Code);
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("Log"))
+        );
+        assert!(
+            preview.lines[0]
+                .spans
+                .iter()
+                .any(|span| span.content.contains("ERROR"))
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn torrent_preview_shows_basic_metadata() {
+        let root = temp_path("torrent");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let path = root.join("sample.torrent");
+        let bytes = b"d8:announce20:https://tracker.test7:comment12:test torrent10:created by4:elio4:infod6:lengthi12345e4:name8:file.txt12:piece lengthi262144e6:pieces20:12345678901234567890ee";
+        fs::write(&path, bytes).expect("failed to write torrent");
+
+        let preview = build_preview(&file_entry(path));
+
+        assert_eq!(preview.kind, PreviewKind::Text);
+        assert_eq!(preview.detail.as_deref(), Some("BitTorrent file"));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("file.txt"))
+        );
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("tracker.test"))
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn srt_preview_keeps_specific_type_detail() {
+        let root = temp_path("srt");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let path = root.join("movie.srt");
+        fs::write(&path, "1\n00:00:01,000 --> 00:00:02,000\nHello\n").expect("failed to write srt");
+
+        let preview = build_preview(&file_entry(path));
+
+        assert_eq!(preview.kind, PreviewKind::Text);
+        assert_eq!(preview.detail.as_deref(), Some("SubRip subtitles"));
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn iso_binary_preview_keeps_specific_type_detail() {
+        let root = temp_path("iso");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let path = root.join("disk.iso");
+        fs::write(&path, [0xff, 0xfe, 0x00, 0x81]).expect("failed to write iso");
+
+        let preview = build_preview(&file_entry(path));
+
+        assert_eq!(preview.kind, PreviewKind::Binary);
+        assert_eq!(preview.detail.as_deref(), Some("ISO disk image"));
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn iso_preview_lists_contents_when_bsdtar_can_read_image() {
+        let root = temp_path("iso-listing");
+        let image_root = root.join("image-root");
+        fs::create_dir_all(image_root.join("docs")).expect("failed to create image tree");
+        fs::write(image_root.join("docs/readme.txt"), "hello").expect("failed to write image file");
+        let path = root.join("sample.iso");
+
+        let created = Command::new("bsdtar")
+            .arg("-cf")
+            .arg(&path)
+            .arg("-C")
+            .arg(&image_root)
+            .arg(".")
+            .status();
+        if !created.as_ref().is_ok_and(|status| status.success()) {
+            fs::remove_dir_all(root).expect("failed to remove temp root");
+            return;
+        }
+
+        let preview = build_preview(&file_entry(path));
+
+        assert_eq!(preview.kind, PreviewKind::Directory);
+        assert_eq!(preview.item_count, Some(2));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("docs/"))
         );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
