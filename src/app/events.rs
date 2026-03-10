@@ -261,7 +261,7 @@ impl App {
                             &mut self.wheel_scroll.preview_horizontal,
                             1,
                             self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL,
+                            WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL,
                         );
                     } else {
                         Self::queue_scroll(
@@ -313,7 +313,7 @@ impl App {
                             &mut self.wheel_scroll.preview_horizontal,
                             -1,
                             self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL,
+                            WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL,
                         );
                     } else {
                         Self::queue_scroll(
@@ -351,7 +351,7 @@ impl App {
                     );
                 }
             }
-            MouseEventKind::ScrollLeft if self.view_mode == ViewMode::Grid => {
+            MouseEventKind::ScrollLeft => {
                 if self
                     .frame_state
                     .preview_panel
@@ -363,9 +363,12 @@ impl App {
                             &mut self.wheel_scroll.preview_horizontal,
                             -1,
                             self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL,
+                            WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL,
                         );
                     }
+                    return Ok(());
+                }
+                if self.view_mode != ViewMode::Grid {
                     return Ok(());
                 }
                 self.focus_entry_scroll();
@@ -376,7 +379,7 @@ impl App {
                     WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL,
                 );
             }
-            MouseEventKind::ScrollRight if self.view_mode == ViewMode::Grid => {
+            MouseEventKind::ScrollRight => {
                 if self
                     .frame_state
                     .preview_panel
@@ -388,9 +391,12 @@ impl App {
                             &mut self.wheel_scroll.preview_horizontal,
                             1,
                             self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL,
+                            WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL,
                         );
                     }
+                    return Ok(());
+                }
+                if self.view_mode != ViewMode::Grid {
                     return Ok(());
                 }
                 self.focus_entry_scroll();
@@ -537,13 +543,13 @@ impl App {
     fn flush_preview_horizontal_scroll(&mut self) -> bool {
         let Some(step) = Self::consume_scroll_step(
             &mut self.wheel_scroll.preview_horizontal,
-            WHEEL_SCROLL_INTERVAL_HORIZONTAL,
+            WHEEL_SCROLL_INTERVAL_PREVIEW_HORIZONTAL,
         ) else {
             return false;
         };
 
         let previous = self.preview_horizontal_scroll;
-        let delta = self.preview_scroll_step();
+        let delta = self.preview_horizontal_scroll_step();
         if step < 0 {
             self.preview_horizontal_scroll = self.preview_horizontal_scroll.saturating_sub(delta);
         } else {
@@ -558,6 +564,13 @@ impl App {
             .preview_rows_visible
             .saturating_div(4)
             .clamp(2, 6)
+    }
+
+    fn preview_horizontal_scroll_step(&self) -> usize {
+        self.frame_state
+            .preview_cols_visible
+            .saturating_div(18)
+            .clamp(1, 3)
     }
 
     pub(super) fn sync_preview_scroll(&mut self) -> bool {
@@ -654,6 +667,45 @@ mod tests {
             .expect("right arrow should be handled");
 
         assert_eq!(app.cwd, child);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn preview_horizontal_scroll_works_in_list_view() {
+        let root = temp_path("preview-horizontal-list");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let file_path = root.join("long.rs");
+        fs::write(
+            &file_path,
+            "fn main() { let preview_line = \"this line is intentionally long for horizontal preview scrolling\"; }\n",
+        )
+        .expect("failed to write temp file");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.select_index(0);
+        app.set_frame_state(FrameState {
+            preview_panel: Some(Rect {
+                x: 0,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            preview_rows_visible: 6,
+            preview_cols_visible: 12,
+            ..FrameState::default()
+        });
+
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollRight,
+            column: 1,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        }))
+        .expect("scroll right should be handled");
+        assert!(app.process_pending_scroll());
+        assert_eq!(app.preview_horizontal_scroll, 1);
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
