@@ -108,12 +108,16 @@ pub(super) fn render_status(frame: &mut Frame<'_>, area: Rect, app: &App, palett
         .split(area);
 
     let right_text = if app.status_message().is_empty() {
-        "f folders  Ctrl+F files  ? help".to_string()
+        "f folders  ^F files  ? help".to_string()
     } else {
         helpers::truncate_middle(app.status_message(), sections[1].width as usize)
     };
     frame.render_widget(
-        Paragraph::new(app.selection_summary()).style(
+        Paragraph::new(helpers::truncate_middle(
+            &app.selection_summary(),
+            sections[0].width as usize,
+        ))
+        .style(
             Style::default()
                 .bg(palette.chrome)
                 .fg(palette.text)

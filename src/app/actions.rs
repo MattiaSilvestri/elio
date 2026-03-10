@@ -118,14 +118,17 @@ impl App {
 
     pub fn selection_summary(&self) -> String {
         match self.selected_entry() {
-            Some(entry) => format!(
-                "{} of {} selected  •  {}  •  {}",
-                self.selected.saturating_add(1),
-                self.entries.len(),
-                entry.kind_label(),
-                entry.name,
-            ),
-            None => format!("0 items  •  {}", self.cwd.display()),
+            Some(entry) => {
+                let suffix = if entry.is_dir() { "/" } else { "" };
+                format!(
+                    "{}/{}  {}{}",
+                    self.selected.saturating_add(1),
+                    self.entries.len(),
+                    entry.name,
+                    suffix,
+                )
+            }
+            None => format!("0/0  {}", self.cwd.display()),
         }
     }
 
@@ -576,6 +579,30 @@ mod tests {
             "reload should run once the throttle window has elapsed",
         );
         assert_eq!(app.entries.len(), 2);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn selection_summary_is_compact_for_files() {
+        let root = temp_path("selection-summary-file");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("note.txt"), "hello").expect("failed to write file");
+
+        let app = App::new_at(root.clone()).expect("failed to create app");
+        assert_eq!(app.selection_summary(), "1/1  note.txt");
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn selection_summary_marks_directories_with_trailing_slash() {
+        let root = temp_path("selection-summary-dir");
+        let child = root.join("child");
+        fs::create_dir_all(&child).expect("failed to create temp dirs");
+
+        let app = App::new_at(root.clone()).expect("failed to create app");
+        assert_eq!(app.selection_summary(), "1/1  child/");
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
