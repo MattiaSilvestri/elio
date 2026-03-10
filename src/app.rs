@@ -1,5 +1,6 @@
 mod actions;
 mod events;
+mod preview;
 mod searching;
 mod support;
 mod watching;
@@ -17,13 +18,14 @@ use std::{
 };
 
 pub(crate) use self::support::{format_size, format_time_ago, rect_contains};
-pub(crate) use crate::appearance::folder_color;
 
 const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(450);
-const WHEEL_SCROLL_INTERVAL_HORIZONTAL: Duration = Duration::from_millis(36);
+const WHEEL_SCROLL_INTERVAL_HORIZONTAL: Duration = Duration::from_millis(64);
 const WHEEL_SCROLL_INTERVAL_VERTICAL: Duration = Duration::from_millis(42);
+const WHEEL_SCROLL_INTERVAL_PREVIEW: Duration = Duration::from_millis(22);
 const WHEEL_SCROLL_INTERVAL_SEARCH: Duration = Duration::from_millis(72);
 const WHEEL_SCROLL_QUEUE_LIMIT: isize = 8;
+const WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL: isize = 3;
 const WHEEL_SCROLL_QUEUE_LIMIT_SEARCH: isize = 2;
 const SEARCH_MATCH_LIMIT: usize = 250;
 const SEARCH_CACHE_LIMIT: usize = 32;
@@ -97,24 +99,6 @@ pub(crate) enum FileClass {
     File,
 }
 
-impl FileClass {
-    pub fn badge(self) -> &'static str {
-        match self {
-            Self::Directory => "󰉋 DIR",
-            Self::Code => "󰆍 CODE",
-            Self::Config => "󰒓 CFG",
-            Self::Document => "󰈙 DOC",
-            Self::Image => "󰋩 IMG",
-            Self::Audio => "󰎆 AUDIO",
-            Self::Video => "󰈫 VIDEO",
-            Self::Archive => "󰗄 ARC",
-            Self::Font => "󰛖 FONT",
-            Self::Data => "󰆼 DATA",
-            Self::File => "󰈔 FILE",
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct Entry {
     pub path: PathBuf,
@@ -138,10 +122,6 @@ impl Entry {
             EntryKind::File => "File",
         }
     }
-
-    pub fn badge(&self) -> &'static str {
-        crate::appearance::classify_path(&self.path, self.kind).badge()
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -157,12 +137,14 @@ pub struct FrameState {
     pub entry_hits: Vec<EntryHit>,
     pub search_hits: Vec<SearchHit>,
     pub search_panel: Option<Rect>,
+    pub preview_panel: Option<Rect>,
     pub back_button: Option<Rect>,
     pub forward_button: Option<Rect>,
     pub parent_button: Option<Rect>,
     pub hidden_button: Option<Rect>,
     pub view_button: Option<Rect>,
     pub metrics: ViewMetrics,
+    pub preview_rows_visible: usize,
     pub search_rows_visible: usize,
 }
 
@@ -216,6 +198,7 @@ struct ScrollLane {
 struct ScrollState {
     horizontal: ScrollLane,
     vertical: ScrollLane,
+    preview: ScrollLane,
     search: ScrollLane,
 }
 
@@ -303,12 +286,13 @@ pub struct App {
     pub zoom_level: u8,
     pub sort_mode: SortMode,
     pub show_hidden: bool,
+    pub preview_scroll: usize,
     pub status: String,
     pub help_open: bool,
     pub should_quit: bool,
     back_history: Vec<PathBuf>,
     forward_history: Vec<PathBuf>,
-    preview_cache: Vec<Line<'static>>,
+    preview_cache: preview::PreviewContent,
     frame_state: FrameState,
     search: Option<SearchOverlay>,
     search_cache: Option<SearchCache>,
@@ -349,12 +333,13 @@ impl App {
             zoom_level: 1,
             sort_mode: SortMode::Name,
             show_hidden: false,
+            preview_scroll: 0,
             status: String::new(),
             help_open: false,
             should_quit: false,
             back_history: Vec::new(),
             forward_history: Vec::new(),
-            preview_cache: Vec::new(),
+            preview_cache: preview::PreviewContent::placeholder("No selection"),
             frame_state: FrameState::default(),
             search: None,
             search_cache: None,
@@ -379,6 +364,11 @@ impl App {
                     remainder: 0,
                     last_step_at: None,
                 },
+                preview: ScrollLane {
+                    pending: 0,
+                    remainder: 0,
+                    last_step_at: None,
+                },
                 search: ScrollLane {
                     pending: 0,
                     remainder: 0,
@@ -396,7 +386,7 @@ impl App {
 
     pub fn set_frame_state(&mut self, frame_state: FrameState) -> bool {
         self.frame_state = frame_state;
-        self.sync_scroll() | self.sync_search_scroll()
+        self.sync_scroll() | self.sync_search_scroll() | self.sync_preview_scroll()
     }
 
     pub fn selected_entry(&self) -> Option<&Entry> {

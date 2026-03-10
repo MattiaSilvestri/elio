@@ -14,11 +14,13 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
     state.entry_hits.clear();
     state.search_hits.clear();
     state.search_panel = None;
+    state.preview_panel = None;
     state.back_button = None;
     state.forward_button = None;
     state.parent_button = None;
     state.hidden_button = None;
     state.view_button = None;
+    state.preview_rows_visible = 0;
 
     let area = frame.area();
     frame.render_widget(

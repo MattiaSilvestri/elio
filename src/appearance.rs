@@ -1,4 +1,4 @@
-use crate::app::{Entry, EntryKind, FileClass};
+use crate::app::{EntryKind, FileClass};
 use ratatui::style::Color;
 use serde::Deserialize;
 use std::{
@@ -124,10 +124,6 @@ pub(crate) fn classify_path(path: &Path, kind: EntryKind) -> FileClass {
 
 pub(crate) fn resolve_path(path: &Path, kind: EntryKind) -> ResolvedAppearance<'static> {
     active_theme().resolve(path, kind)
-}
-
-pub(crate) fn folder_color(entry: &Entry) -> Color {
-    resolve_path(&entry.path, entry.kind).color
 }
 
 fn active_theme() -> &'static Theme {
@@ -779,7 +775,7 @@ icon = "L"
         )
         .expect("theme should parse");
 
-        let resolved = theme.resolve(Path::new("poetry.lock"), EntryKind::File);
+        let resolved = theme.resolve(Path::new("custom.lock"), EntryKind::File);
         assert_eq!(resolved.class, FileClass::Data);
         assert_eq!(resolved.icon, "L");
     }

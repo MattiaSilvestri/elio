@@ -23,8 +23,8 @@ pub(super) fn render_body(
             .direction(Direction::Horizontal)
             .constraints([
                 Constraint::Length(24),
-                Constraint::Min(50),
-                Constraint::Length(34),
+                Constraint::Min(44),
+                Constraint::Length(42),
             ])
             .split(area)
     } else {
@@ -38,14 +38,14 @@ pub(super) fn render_body(
 
     if columns.len() == 3 {
         render_entries(frame, columns[1], app, state, palette);
-        render_preview(frame, columns[2], app, palette);
+        render_preview(frame, columns[2], app, state, palette);
     } else {
         let right = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(12), Constraint::Length(11)])
             .split(columns[1]);
         render_entries(frame, right[0], app, state, palette);
-        render_preview(frame, right[1], app, palette);
+        render_preview(frame, right[1], app, state, palette);
     }
 }
 
@@ -483,7 +483,15 @@ fn render_list(
     }
 }
 
-fn render_preview(frame: &mut Frame<'_>, area: Rect, app: &App, palette: Palette) {
+fn render_preview(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    app: &App,
+    state: &mut FrameState,
+    palette: Palette,
+) {
+    state.preview_panel = Some(area);
+
     let title_line = if let Some(entry) = app.selected_entry() {
         Line::from(vec![
             Span::styled(
@@ -519,8 +527,202 @@ fn render_preview(frame: &mut Frame<'_>, area: Rect, app: &App, palette: Palette
         .border_style(Style::default().fg(palette.border));
     frame.render_widget(block, area);
     let inner = helpers::inner_with_padding(area);
-    let preview = Paragraph::new(app.preview_lines(inner.height.saturating_sub(1) as usize))
-        .style(Style::default().bg(palette.panel).fg(palette.text))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(preview, inner);
+
+    let Some(entry) = app.selected_entry() else {
+        helpers::render_empty_state(frame, inner, "Nothing selected", palette);
+        return;
+    };
+
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(inner.height.min(5)), Constraint::Min(0)])
+        .split(inner);
+
+    render_preview_details(frame, sections[0], app, entry, palette);
+    if sections[1].height > 0 {
+        state.preview_rows_visible = sections[1].height.saturating_sub(1) as usize;
+        render_preview_body(frame, sections[1], app, entry, palette);
+    }
+}
+
+fn render_preview_details(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    app: &App,
+    entry: &Entry,
+    palette: Palette,
+) {
+    let mut lines = vec![
+        preview_stat_line("Type", entry.kind_label().to_string(), palette),
+        preview_stat_line(
+            "Size",
+            if entry.is_dir() {
+                "folder".to_string()
+            } else {
+                format_size(entry.size)
+            },
+            palette,
+        ),
+        preview_stat_line(
+            "Modified",
+            entry
+                .modified
+                .map(format_time_ago)
+                .unwrap_or_else(|| "unknown".to_string()),
+            palette,
+        ),
+        preview_stat_line(
+            "Access",
+            if entry.readonly {
+                "readonly".to_string()
+            } else {
+                "read/write".to_string()
+            },
+            palette,
+        ),
+        preview_stat_line(
+            "Hidden",
+            if entry.hidden {
+                "yes".to_string()
+            } else {
+                "no".to_string()
+            },
+            palette,
+        ),
+    ];
+
+    if entry.is_dir()
+        && let Some((items, folders, files)) = app.preview_directory_counts()
+    {
+        lines[1] = preview_stat_line("Items", items.to_string(), palette);
+        lines.push(preview_stat_line("Folders", folders.to_string(), palette));
+        lines.push(preview_stat_line("Files", files.to_string(), palette));
+    }
+
+    frame.render_widget(
+        Paragraph::new(lines)
+            .style(Style::default().bg(palette.panel).fg(palette.text))
+            .wrap(Wrap { trim: false }),
+        area,
+    );
+}
+
+fn render_preview_body(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    app: &App,
+    _entry: &Entry,
+    palette: Palette,
+) {
+    let sections = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(0)])
+        .split(area);
+    let body = if sections[1].width >= 6 {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(1)])
+            .split(sections[1])
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0)])
+            .split(sections[1])
+    };
+    let text_area = body[0];
+    let scrollbar_area = body.get(1).copied();
+    let visible_rows = text_area.height as usize;
+    let header_detail = app.preview_header_detail(visible_rows);
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!(" {}", app.preview_section_label()),
+                Style::default()
+                    .fg(palette.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("  ", Style::default().fg(palette.muted)),
+            Span::styled(
+                header_detail.unwrap_or_default(),
+                Style::default().fg(palette.muted),
+            ),
+        ]))
+        .style(Style::default().bg(palette.panel).fg(palette.text)),
+        sections[0],
+    );
+
+    frame.render_widget(
+        Paragraph::new(app.preview_lines(visible_rows))
+            .style(Style::default().bg(palette.panel).fg(palette.text)),
+        text_area,
+    );
+
+    if let Some(scrollbar_area) = scrollbar_area {
+        render_preview_scrollbar(frame, scrollbar_area, app, visible_rows, palette);
+    }
+}
+
+fn preview_stat_line(label: &str, value: String, palette: Palette) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(format!("{label:<9}"), Style::default().fg(palette.muted)),
+        Span::styled(value, Style::default().fg(palette.text)),
+    ])
+}
+
+fn render_preview_scrollbar(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    app: &App,
+    visible_rows: usize,
+    palette: Palette,
+) {
+    let total = app.preview_total_lines();
+    if area.height == 0 || total <= visible_rows.max(1) {
+        frame.render_widget(
+            Paragraph::new(" ").style(Style::default().bg(palette.panel).fg(palette.border)),
+            area,
+        );
+        return;
+    }
+
+    let track = vec![
+        Line::from(Span::styled("│", Style::default().fg(palette.border),));
+        area.height as usize
+    ];
+    frame.render_widget(
+        Paragraph::new(track).style(Style::default().bg(palette.panel)),
+        area,
+    );
+
+    let thumb_height = ((visible_rows.max(1) * area.height as usize) / total)
+        .max(1)
+        .min(area.height as usize);
+    let max_scroll = total.saturating_sub(visible_rows.max(1));
+    let thumb_max_top = area.height as usize - thumb_height;
+    let thumb_top = if max_scroll == 0 {
+        0
+    } else {
+        (app.preview_scroll_offset() * thumb_max_top) / max_scroll
+    };
+
+    let thumb = Rect {
+        x: area.x,
+        y: area.y + thumb_top as u16,
+        width: area.width,
+        height: thumb_height as u16,
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                "┃",
+                Style::default()
+                    .fg(palette.accent)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            thumb.height as usize
+        ])
+        .style(Style::default().bg(palette.panel)),
+        thumb,
+    );
 }

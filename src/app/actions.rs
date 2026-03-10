@@ -59,17 +59,40 @@ impl App {
 
     pub fn preview_lines(&self, max_lines: usize) -> Vec<Line<'static>> {
         self.preview_cache
-            .iter()
-            .take(max_lines)
-            .cloned()
-            .collect::<Vec<_>>()
+            .lines_for_viewport(self.preview_scroll, max_lines)
+    }
+
+    pub fn preview_section_label(&self) -> &'static str {
+        self.preview_cache.section_label()
+    }
+
+    pub fn preview_scroll_offset(&self) -> usize {
+        self.preview_scroll
+    }
+
+    pub fn preview_total_lines(&self) -> usize {
+        self.preview_cache.total_lines()
+    }
+
+    pub fn preview_directory_counts(&self) -> Option<(usize, usize, usize)> {
+        Some((
+            self.preview_cache.item_count?,
+            self.preview_cache.folder_count?,
+            self.preview_cache.file_count?,
+        ))
+    }
+
+    pub fn preview_header_detail(&self, visible_rows: usize) -> Option<String> {
+        self.preview_cache
+            .header_detail(self.preview_scroll, visible_rows)
     }
 
     pub(super) fn refresh_preview(&mut self) {
         self.preview_cache = match self.selected_entry() {
-            Some(entry) => support::build_preview(entry),
-            None => vec![Line::from("No selection")],
+            Some(entry) => preview::build_preview(entry),
+            None => preview::PreviewContent::placeholder("No selection"),
         };
+        self.preview_scroll = 0;
     }
 
     pub fn selection_summary(&self) -> String {
@@ -118,7 +141,7 @@ impl App {
     pub(super) fn set_selected_delta(&mut self, delta: isize) {
         if self.entries.is_empty() {
             self.selected = 0;
-            self.preview_cache = vec![Line::from("No selection")];
+            self.preview_cache = preview::PreviewContent::placeholder("No selection");
             return;
         }
 
@@ -201,10 +224,12 @@ impl App {
         if self.entries.is_empty() {
             self.selected = 0;
             self.scroll_row = 0;
-            self.preview_cache = vec![Line::from("No selection")];
+            self.preview_cache = preview::PreviewContent::placeholder("No selection");
+            self.preview_scroll = 0;
         } else if self.selected >= self.entries.len() {
             self.selected = self.entries.len() - 1;
         }
+        self.sync_preview_scroll();
     }
 
     pub(super) fn sync_scroll(&mut self) -> bool {

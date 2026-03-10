@@ -1,26 +1,18 @@
 use super::*;
 use anyhow::{Context, Result};
-use ratatui::{
-    layout::Rect,
-    style::{Modifier, Style},
-    text::{Line, Span},
-};
+use ratatui::layout::Rect;
 use std::{
     cmp::Ordering,
     collections::hash_map::DefaultHasher,
     env,
     ffi::OsStr,
-    fs::{self, File},
+    fs,
     hash::{Hash, Hasher},
     io,
-    io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
     time::{SystemTime, UNIX_EPOCH},
 };
-
-const PREVIEW_LIMIT_BYTES: usize = 8 * 1024;
-const PREVIEW_MAX_LINES: usize = 24;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct DirectoryFingerprint {
@@ -35,91 +27,6 @@ struct FingerprintPart {
     size: u64,
     modified: Option<(u64, u32)>,
     readonly: bool,
-}
-
-pub(super) fn build_preview(entry: &Entry) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-    lines.push(Line::from(vec![
-        Span::styled(
-            entry.badge().to_string(),
-            Style::default()
-                .fg(folder_color(entry))
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(" "),
-        Span::styled(
-            entry.name.clone(),
-            Style::default().add_modifier(Modifier::BOLD),
-        ),
-    ]));
-    lines.push(Line::from(format!("Type: {}", entry.kind_label())));
-    lines.push(Line::from(format!("Size: {}", format_size(entry.size))));
-    lines.push(Line::from(format!(
-        "Modified: {}",
-        entry
-            .modified
-            .map(format_time_ago)
-            .unwrap_or_else(|| "unknown".to_string())
-    )));
-    lines.push(Line::from(format!(
-        "Permissions: {}",
-        if entry.readonly {
-            "readonly"
-        } else {
-            "read/write"
-        }
-    )));
-    lines.push(Line::from(format!(
-        "Hidden: {}",
-        if entry.hidden { "yes" } else { "no" }
-    )));
-    lines.push(Line::from(String::new()));
-
-    if entry.is_dir() {
-        lines.push(Line::from(Span::styled(
-            "Contents",
-            Style::default().add_modifier(Modifier::BOLD),
-        )));
-        match fs::read_dir(&entry.path) {
-            Ok(children) => {
-                let mut count = 0usize;
-                for child in children
-                    .flatten()
-                    .take(PREVIEW_MAX_LINES.saturating_sub(lines.len()))
-                {
-                    count += 1;
-                    let name = child.file_name().to_string_lossy().to_string();
-                    lines.push(Line::from(format!("• {}", name)));
-                }
-                if count == 0 {
-                    lines.push(Line::from("Folder is empty"));
-                }
-            }
-            Err(_) => lines.push(Line::from("Folder preview unavailable")),
-        }
-        return lines;
-    }
-
-    lines.push(Line::from(Span::styled(
-        "Preview",
-        Style::default().add_modifier(Modifier::BOLD),
-    )));
-    match read_text_preview(&entry.path) {
-        Ok(Some(text)) => {
-            for line in text
-                .lines()
-                .take(PREVIEW_MAX_LINES.saturating_sub(lines.len()))
-            {
-                lines.push(Line::from(line.to_string()));
-            }
-            if lines.len() <= 7 {
-                lines.push(Line::from("File is empty"));
-            }
-        }
-        Ok(None) => lines.push(Line::from("Binary file or unsupported text encoding")),
-        Err(_) => lines.push(Line::from("Preview unavailable")),
-    }
-    lines
 }
 
 pub(crate) fn rect_contains(rect: Rect, x: u16, y: u16) -> bool {
@@ -346,25 +253,6 @@ pub(super) fn detached_open(program: &str, args: &[&str], target: &Path) -> std:
     command.stderr(Stdio::null());
     command.spawn()?;
     Ok(())
-}
-
-fn read_text_preview(path: &Path) -> Result<Option<String>> {
-    let mut file = File::open(path)?;
-    let mut buffer = vec![0; PREVIEW_LIMIT_BYTES];
-    let count = file.read(&mut buffer)?;
-    buffer.truncate(count);
-
-    if buffer.is_empty() {
-        return Ok(Some(String::new()));
-    }
-    if buffer.contains(&0) {
-        return Ok(None);
-    }
-
-    match String::from_utf8(buffer) {
-        Ok(text) => Ok(Some(text)),
-        Err(_) => Ok(None),
-    }
 }
 
 #[cfg(test)]
