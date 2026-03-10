@@ -672,6 +672,78 @@ mod tests {
     }
 
     #[test]
+    fn left_arrow_in_list_view_reselects_previous_directory_in_parent() {
+        let root = temp_path("left-parent-selection");
+        let alpha = root.join("alpha");
+        let child = root.join("child");
+        fs::create_dir_all(&alpha).expect("failed to create alpha dir");
+        fs::create_dir_all(&child).expect("failed to create child dir");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.select_index(1);
+        app.open_selected()
+            .expect("opening selected directory should succeed");
+
+        app.handle_event(Event::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)))
+            .expect("left arrow should be handled");
+
+        assert_eq!(app.cwd, root);
+        assert_eq!(
+            app.selected_entry().map(|entry| entry.path.as_path()),
+            Some(child.as_path())
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn go_back_reselects_previous_directory_in_parent() {
+        let root = temp_path("history-back-selection");
+        let alpha = root.join("alpha");
+        let child = root.join("child");
+        fs::create_dir_all(&alpha).expect("failed to create alpha dir");
+        fs::create_dir_all(&child).expect("failed to create child dir");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.select_index(1);
+        app.open_selected()
+            .expect("opening selected directory should succeed");
+
+        app.go_back().expect("go back should succeed");
+
+        assert_eq!(app.cwd, root);
+        assert_eq!(
+            app.selected_entry().map(|entry| entry.path.as_path()),
+            Some(child.as_path())
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn go_forward_reselects_previous_directory_in_parent() {
+        let root = temp_path("history-forward-selection");
+        let child = root.join("child");
+        fs::create_dir_all(&child).expect("failed to create child dir");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.select_index(0);
+        app.open_selected()
+            .expect("opening selected directory should succeed");
+        app.go_back().expect("go back should succeed");
+
+        app.go_forward().expect("go forward should succeed");
+
+        assert_eq!(app.cwd, child);
+        assert!(app.selected_entry().is_none());
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
     fn preview_horizontal_scroll_works_in_list_view() {
         let root = temp_path("preview-horizontal-list");
         fs::create_dir_all(&root).expect("failed to create temp root");

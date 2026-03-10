@@ -317,11 +317,16 @@ impl App {
     }
 
     pub(super) fn go_parent(&mut self) -> Result<()> {
+        let current = self.cwd.clone();
         let Some(parent) = self.cwd.parent() else {
             self.status = "Already at filesystem root".to_string();
             return Ok(());
         };
-        self.set_dir(parent.to_path_buf())
+        self.set_dir(parent.to_path_buf())?;
+        if let Some(index) = self.entries.iter().position(|entry| entry.path == current) {
+            self.select_index(index);
+        }
+        Ok(())
     }
 
     pub(super) fn step_pinned_place(&mut self, delta: isize) -> Result<()> {
@@ -354,8 +359,13 @@ impl App {
             self.status = "No previous folder".to_string();
             return Ok(());
         };
-        self.forward_history.push(self.cwd.clone());
-        self.set_dir_with_history(previous, false)
+        let current = self.cwd.clone();
+        self.forward_history.push(current.clone());
+        self.set_dir_with_history(previous, false)?;
+        if let Some(index) = self.entries.iter().position(|entry| entry.path == current) {
+            self.select_index(index);
+        }
+        Ok(())
     }
 
     pub(super) fn go_forward(&mut self) -> Result<()> {
@@ -363,8 +373,13 @@ impl App {
             self.status = "No next folder".to_string();
             return Ok(());
         };
-        self.back_history.push(self.cwd.clone());
-        self.set_dir_with_history(next, false)
+        let current = self.cwd.clone();
+        self.back_history.push(current.clone());
+        self.set_dir_with_history(next, false)?;
+        if let Some(index) = self.entries.iter().position(|entry| entry.path == current) {
+            self.select_index(index);
+        }
+        Ok(())
     }
 
     pub(super) fn open_in_system(&mut self) -> Result<()> {
