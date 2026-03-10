@@ -914,11 +914,11 @@ icon = "󰓾"
 color = "#ff9b61"
 
 [directories."bin"]
-icon = "󰜫"
+icon = ""
 color = "#4ecfff"
 
 [directories."lib"]
-icon = "󰌱"
+icon = ""
 color = "#7db0ff"
 
 [directories."vendor"]
