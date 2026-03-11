@@ -91,13 +91,9 @@ impl App {
 
                     self.preview_cache = build.result;
                     self.preview_load_state = None;
-                    let remembered_preview = self.remembered_preview_view_for(&build.entry.path);
-                    self.preview_scroll = remembered_preview.as_ref().map_or(0, |view| view.scroll);
-                    self.preview_horizontal_scroll = remembered_preview
-                        .as_ref()
-                        .map_or(0, |view| view.horizontal_scroll);
+                    self.preview_scroll = 0;
+                    self.preview_horizontal_scroll = 0;
                     self.sync_preview_scroll();
-                    self.remember_current_preview_view();
                     self.preview_metrics.applied_results += 1;
                     dirty = true;
                 }
@@ -376,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn archive_preview_restores_saved_scroll_after_async_refresh() {
+    fn archive_preview_resets_scroll_after_async_refresh() {
         let root = temp_path("archive-scroll-restore");
         fs::create_dir_all(&root).expect("failed to create temp root");
         let archive = root.join("a.zip");
@@ -418,7 +414,7 @@ mod tests {
 
         app.set_selected(0);
         assert_eq!(app.preview_section_label(), "Archive");
-        assert_eq!(app.preview_scroll, 2);
+        assert_eq!(app.preview_scroll, 0);
         assert!(
             app.preview_header_detail(10)
                 .as_deref()
@@ -433,7 +429,7 @@ mod tests {
         wait_for_background_preview(&mut app);
 
         assert_eq!(app.preview_section_label(), "Archive");
-        assert_eq!(app.preview_scroll, 2);
+        assert_eq!(app.preview_scroll, 0);
         assert!(
             app.preview_header_detail(10)
                 .as_deref()

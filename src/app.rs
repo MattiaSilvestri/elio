@@ -21,7 +21,9 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-pub(crate) use self::support::{format_size, format_time_ago, rect_contains};
+pub(crate) use self::support::{
+    format_size, format_time_ago, rect_contains, sanitize_terminal_text,
+};
 
 const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(450);
 const WHEEL_SCROLL_INTERVAL_HORIZONTAL: Duration = Duration::from_millis(64);
@@ -37,7 +39,6 @@ const SEARCH_MATCH_LIMIT: usize = 250;
 const SEARCH_CACHE_LIMIT: usize = 32;
 const PREVIEW_CACHE_LIMIT: usize = 24;
 const PREVIEW_PREFETCH_LIMIT: usize = 2;
-const PREVIEW_VIEW_MEMORY_LIMIT: usize = 128;
 const AUTO_RELOAD_INTERVAL: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -327,12 +328,6 @@ struct DirectoryViewMemory {
     scroll_row: usize,
 }
 
-#[derive(Clone, Debug, Default)]
-struct PreviewViewMemory {
-    scroll: usize,
-    horizontal_scroll: usize,
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PreviewLoadState {
     Placeholder(PathBuf),
@@ -382,8 +377,6 @@ pub struct App {
     preview_load_state: Option<PreviewLoadState>,
     preview_result_cache: HashMap<PathBuf, CachedPreview>,
     preview_result_order: VecDeque<PathBuf>,
-    preview_view_memory: HashMap<PathBuf, PreviewViewMemory>,
-    preview_view_order: VecDeque<PathBuf>,
     directory_view_memory: HashMap<PathBuf, DirectoryViewMemory>,
     directory_watch_tx: std::sync::mpsc::Sender<watching::DirectoryWatchEvent>,
     directory_watch_rx: std::sync::mpsc::Receiver<watching::DirectoryWatchEvent>,
@@ -437,8 +430,6 @@ impl App {
             preview_load_state: None,
             preview_result_cache: HashMap::new(),
             preview_result_order: VecDeque::new(),
-            preview_view_memory: HashMap::new(),
-            preview_view_order: VecDeque::new(),
             directory_view_memory: HashMap::new(),
             directory_watch_tx,
             directory_watch_rx,
@@ -493,7 +484,6 @@ impl App {
         self.frame_state = frame_state;
         let dirty = self.sync_scroll() | self.sync_search_scroll() | self.sync_preview_scroll();
         self.remember_current_directory_view();
-        self.remember_current_preview_view();
         dirty
     }
 

@@ -593,7 +593,6 @@ impl App {
         self.preview_scroll = self.preview_scroll.min(max_scroll);
         let max_horizontal = self.preview_max_horizontal_scroll(visible_cols);
         self.preview_horizontal_scroll = self.preview_horizontal_scroll.min(max_horizontal);
-        self.remember_current_preview_view();
         previous != self.preview_scroll || previous_horizontal != self.preview_horizontal_scroll
     }
 
@@ -1024,7 +1023,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_scroll_is_restored_when_reselecting_a_file() {
+    fn preview_scroll_resets_when_reselecting_a_file() {
         let root = temp_path("preview-scroll-restore");
         fs::create_dir_all(&root).expect("failed to create temp root");
         let long = root.join("a.txt");
@@ -1062,13 +1061,13 @@ mod tests {
             app.selected_entry().map(|entry| entry.path.as_path()),
             Some(long.as_path())
         );
-        assert_eq!(app.preview_scroll, 5);
+        assert_eq!(app.preview_scroll, 0);
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
 
     #[test]
-    fn preview_horizontal_scroll_is_restored_when_reselecting_code() {
+    fn preview_horizontal_scroll_resets_when_reselecting_code() {
         let root = temp_path("preview-horizontal-restore");
         fs::create_dir_all(&root).expect("failed to create temp root");
         let code = root.join("a.rs");
@@ -1106,7 +1105,7 @@ mod tests {
             app.selected_entry().map(|entry| entry.path.as_path()),
             Some(code.as_path())
         );
-        assert_eq!(app.preview_horizontal_scroll, 3);
+        assert_eq!(app.preview_horizontal_scroll, 0);
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }

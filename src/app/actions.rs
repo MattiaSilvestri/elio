@@ -90,8 +90,6 @@ impl App {
 
     pub(super) fn refresh_preview(&mut self) {
         self.preview_token = self.preview_token.wrapping_add(1);
-        let remembered_preview = self.remembered_preview_view_for_selected_entry();
-        let mut restore_preview_view = true;
         self.preview_cache = match self.selected_entry().cloned() {
             Some(entry) if preview::should_build_preview_in_background(&entry) => {
                 if let Some(preview) = self.cached_preview_for(&entry) {
@@ -124,11 +122,9 @@ impl App {
                     };
                     if !self.scheduler.submit_preview(request) {
                         self.preview_load_state = None;
-                        restore_preview_view = false;
                         preview::PreviewContent::placeholder("Preview worker unavailable")
                     } else {
                         self.preview_load_state = Some(PreviewLoadState::Placeholder(loading_path));
-                        restore_preview_view = false;
                         placeholder
                     }
                 }
@@ -139,21 +135,12 @@ impl App {
             }
             None => {
                 self.preview_load_state = None;
-                restore_preview_view = false;
                 preview::PreviewContent::placeholder("No selection")
             }
         };
-        if restore_preview_view {
-            self.preview_scroll = remembered_preview.as_ref().map_or(0, |view| view.scroll);
-            self.preview_horizontal_scroll = remembered_preview
-                .as_ref()
-                .map_or(0, |view| view.horizontal_scroll);
-            self.sync_preview_scroll();
-            self.remember_current_preview_view();
-        } else {
-            self.preview_scroll = 0;
-            self.preview_horizontal_scroll = 0;
-        }
+        self.preview_scroll = 0;
+        self.preview_horizontal_scroll = 0;
+        self.sync_preview_scroll();
         self.prefetch_nearby_previews();
     }
 
@@ -350,15 +337,6 @@ impl App {
         self.directory_view_memory.get(cwd).cloned()
     }
 
-    pub(super) fn remembered_preview_view_for(&self, path: &Path) -> Option<PreviewViewMemory> {
-        self.preview_view_memory.get(path).cloned()
-    }
-
-    fn remembered_preview_view_for_selected_entry(&self) -> Option<PreviewViewMemory> {
-        self.selected_entry()
-            .and_then(|entry| self.remembered_preview_view_for(&entry.path))
-    }
-
     pub(super) fn remember_current_directory_view(&mut self) {
         self.directory_view_memory.insert(
             self.cwd.clone(),
@@ -367,32 +345,6 @@ impl App {
                 scroll_row: self.scroll_row,
             },
         );
-    }
-
-    pub(super) fn remember_current_preview_view(&mut self) {
-        let Some(path) = self.selected_entry().map(|entry| entry.path.clone()) else {
-            return;
-        };
-        if self.preview_load_state.as_ref() == Some(&PreviewLoadState::Placeholder(path.clone())) {
-            return;
-        }
-
-        self.preview_view_memory.insert(
-            path.clone(),
-            PreviewViewMemory {
-                scroll: self.preview_scroll,
-                horizontal_scroll: self.preview_horizontal_scroll,
-            },
-        );
-        self.preview_view_order
-            .retain(|queued_path| queued_path != &path);
-        self.preview_view_order.push_back(path);
-
-        while self.preview_view_order.len() > PREVIEW_VIEW_MEMORY_LIMIT {
-            if let Some(stale_path) = self.preview_view_order.pop_front() {
-                self.preview_view_memory.remove(&stale_path);
-            }
-        }
     }
 
     pub fn selection_summary(&self) -> String {
@@ -425,9 +377,6 @@ impl App {
 
     pub(super) fn set_selected(&mut self, index: usize) {
         let next = index.min(self.entries.len().saturating_sub(1));
-        if next != self.selected {
-            self.remember_current_preview_view();
-        }
         if next != self.selected {
             self.selected = next;
             self.refresh_preview();
@@ -614,7 +563,6 @@ impl App {
             self.remembered_view_for(&normalized)
                 .and_then(|view| view.selected_path)
         });
-        self.remember_current_preview_view();
         self.status = format!("Opening {}", normalized.display());
         self.queue_directory_load(PendingDirectoryLoad {
             token: 0,
