@@ -1,10 +1,12 @@
 mod actions;
 mod events;
 mod preview;
+mod previewing;
 mod searching;
 mod support;
 mod watching;
 
+use self::previewing::spawn_preview_worker;
 use self::searching::spawn_search_worker;
 use crate::search::SearchCandidate;
 use anyhow::{Context, Result};
@@ -272,6 +274,19 @@ struct SearchRequest {
     scope: SearchScope,
 }
 
+#[derive(Debug)]
+struct PreviewBuild {
+    token: u64,
+    path: PathBuf,
+    result: preview::PreviewContent,
+}
+
+#[derive(Debug)]
+struct PreviewRequest {
+    token: u64,
+    entry: Entry,
+}
+
 pub struct App {
     pub cwd: PathBuf,
     pub entries: Vec<Entry>,
@@ -297,6 +312,9 @@ pub struct App {
     search_token: u64,
     search_request_tx: mpsc::Sender<SearchRequest>,
     search_rx: mpsc::Receiver<SearchBuild>,
+    preview_token: u64,
+    preview_request_tx: mpsc::Sender<PreviewRequest>,
+    preview_rx: mpsc::Receiver<PreviewBuild>,
     directory_watch_tx: mpsc::Sender<watching::DirectoryWatchEvent>,
     directory_watch_rx: mpsc::Receiver<watching::DirectoryWatchEvent>,
     directory_watch: Option<watching::DirectoryWatcher>,
@@ -318,8 +336,11 @@ impl App {
     pub fn new_at(cwd: PathBuf) -> Result<Self> {
         let (search_request_tx, search_request_rx) = mpsc::channel();
         let (search_tx, search_rx) = mpsc::channel();
+        let (preview_request_tx, preview_request_rx) = mpsc::channel();
+        let (preview_tx, preview_rx) = mpsc::channel();
         let (directory_watch_tx, directory_watch_rx) = mpsc::channel();
         spawn_search_worker(search_request_rx, search_tx);
+        spawn_preview_worker(preview_request_rx, preview_tx);
         let mut app = Self {
             cwd,
             entries: Vec::new(),
@@ -345,6 +366,9 @@ impl App {
             search_token: 0,
             search_request_tx,
             search_rx,
+            preview_token: 0,
+            preview_request_tx,
+            preview_rx,
             directory_watch_tx,
             directory_watch_rx,
             directory_watch: None,

@@ -206,6 +206,9 @@ pub(crate) fn inspect_path(path: &Path, kind: EntryKind) -> FileFacts {
     if let Some(facts) = inspect_exact_name(&name) {
         return facts;
     }
+    if let Some(facts) = inspect_archive_name(&name) {
+        return facts;
+    }
 
     let ext = path
         .extension()
@@ -283,6 +286,34 @@ fn inspect_exact_name(name: &str) -> Option<FileFacts> {
         }),
         _ => None,
     }
+}
+
+fn inspect_archive_name(name: &str) -> Option<FileFacts> {
+    let detail = if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
+        Some("TAR.GZ archive")
+    } else if name.ends_with(".tar.xz") || name.ends_with(".txz") {
+        Some("TAR.XZ archive")
+    } else if name.ends_with(".tar.bz2") || name.ends_with(".tbz2") || name.ends_with(".tbz") {
+        Some("TAR.BZ2 archive")
+    } else if name.ends_with(".tar.zst") || name.ends_with(".tzst") {
+        Some("TAR.ZST archive")
+    } else if name.ends_with(".zip") {
+        Some("ZIP archive")
+    } else if name.ends_with(".7z") {
+        Some("7z archive")
+    } else if name.ends_with(".jar") {
+        Some("Java archive")
+    } else if name.ends_with(".apk") {
+        Some("Android package")
+    } else if name.ends_with(".aab") {
+        Some("Android App Bundle")
+    } else if name.ends_with(".apkg") {
+        Some("Anki package")
+    } else {
+        None
+    }?;
+
+    Some(plain(FileClass::Archive, Some(detail)))
 }
 
 fn inspect_extension(ext: &str) -> FileFacts {
@@ -593,5 +624,21 @@ mod tests {
         assert_eq!(pages.builtin_class, FileClass::Document);
         assert_eq!(pages.preview.document_format, Some(DocumentFormat::Pages));
         assert_eq!(pages.specific_type_label, Some("Pages document"));
+    }
+
+    #[test]
+    fn archive_suffixes_keep_specific_labels_for_common_multi_part_formats() {
+        let tgz = inspect_path(Path::new("release.tar.gz"), EntryKind::File);
+        let txz = inspect_path(Path::new("release.tar.xz"), EntryKind::File);
+        let tbz2 = inspect_path(Path::new("release.tar.bz2"), EntryKind::File);
+        let zip = inspect_path(Path::new("release.zip"), EntryKind::File);
+        let seven_zip = inspect_path(Path::new("release.7z"), EntryKind::File);
+
+        assert_eq!(tgz.builtin_class, FileClass::Archive);
+        assert_eq!(tgz.specific_type_label, Some("TAR.GZ archive"));
+        assert_eq!(txz.specific_type_label, Some("TAR.XZ archive"));
+        assert_eq!(tbz2.specific_type_label, Some("TAR.BZ2 archive"));
+        assert_eq!(zip.specific_type_label, Some("ZIP archive"));
+        assert_eq!(seven_zip.specific_type_label, Some("7z archive"));
     }
 }

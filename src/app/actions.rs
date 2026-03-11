@@ -109,8 +109,21 @@ impl App {
     }
 
     pub(super) fn refresh_preview(&mut self) {
-        self.preview_cache = match self.selected_entry() {
-            Some(entry) => preview::build_preview(entry),
+        self.preview_token = self.preview_token.wrapping_add(1);
+        self.preview_cache = match self.selected_entry().cloned() {
+            Some(entry) if preview::should_build_preview_in_background(&entry) => {
+                let placeholder = preview::loading_preview_for(&entry);
+                let request = PreviewRequest {
+                    token: self.preview_token,
+                    entry,
+                };
+                if self.preview_request_tx.send(request).is_err() {
+                    preview::PreviewContent::placeholder("Preview worker unavailable")
+                } else {
+                    placeholder
+                }
+            }
+            Some(entry) => preview::build_preview(&entry),
             None => preview::PreviewContent::placeholder("No selection"),
         };
         self.preview_scroll = 0;
