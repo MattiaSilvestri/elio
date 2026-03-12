@@ -29,14 +29,17 @@ pub(crate) use self::support::{
 
 const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(450);
 const WHEEL_SCROLL_INTERVAL_HORIZONTAL: Duration = Duration::from_millis(64);
-const WHEEL_SCROLL_INTERVAL_VERTICAL: Duration = Duration::from_millis(32);
-const WHEEL_SCROLL_INTERVAL_PREVIEW: Duration = Duration::from_millis(22);
-const WHEEL_SCROLL_INTERVAL_PREVIEW_HORIZONTAL: Duration = Duration::from_millis(18);
+const WHEEL_SCROLL_INTERVAL_VERTICAL: Duration = Duration::from_millis(28);
+const WHEEL_SCROLL_INTERVAL_VERTICAL_HIGH_FREQUENCY: Duration = Duration::from_millis(36);
+const WHEEL_SCROLL_INTERVAL_PREVIEW: Duration = Duration::from_millis(12);
+const WHEEL_SCROLL_INTERVAL_PREVIEW_HORIZONTAL: Duration = Duration::from_millis(12);
 const WHEEL_SCROLL_INTERVAL_SEARCH: Duration = Duration::from_millis(72);
+const PREVIEW_AUTO_FOCUS_DELAY: Duration = Duration::from_millis(220);
 const WHEEL_SCROLL_QUEUE_LIMIT: isize = 8;
 const WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL: isize = 3;
 const WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL: isize = 10;
 const WHEEL_SCROLL_QUEUE_LIMIT_SEARCH: isize = 2;
+const WHEEL_SCROLL_BURST_WINDOW: Duration = Duration::from_millis(45);
 const SEARCH_MATCH_LIMIT: usize = 250;
 const SEARCH_CACHE_LIMIT: usize = 32;
 const PREVIEW_CACHE_LIMIT: usize = 24;
@@ -142,6 +145,7 @@ pub struct FrameState {
     pub entry_hits: Vec<EntryHit>,
     pub search_hits: Vec<SearchHit>,
     pub search_panel: Option<Rect>,
+    pub entries_panel: Option<Rect>,
     pub preview_panel: Option<Rect>,
     pub preview_content_area: Option<Rect>,
     pub back_button: Option<Rect>,
@@ -199,6 +203,9 @@ struct ScrollLane {
     pending: isize,
     remainder: isize,
     last_step_at: Option<Instant>,
+    last_input_at: Option<Instant>,
+    last_input_direction: isize,
+    burst_count: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -208,6 +215,18 @@ struct ScrollState {
     preview: ScrollLane,
     preview_horizontal: ScrollLane,
     search: ScrollLane,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WheelTarget {
+    Entries,
+    Preview,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum WheelProfile {
+    Default,
+    HighFrequency,
 }
 
 #[derive(Clone, Debug)]
@@ -400,7 +419,9 @@ pub struct App {
     use_polling_reload: bool,
     last_click: Option<ClickState>,
     wheel_scroll: ScrollState,
-    wheel_step_divisor: isize,
+    wheel_profile: WheelProfile,
+    last_wheel_target: Option<WheelTarget>,
+    last_selection_change_at: Instant,
     directory_fingerprint: support::DirectoryFingerprint,
     last_auto_reload_at: Instant,
 }
@@ -456,33 +477,15 @@ impl App {
             use_polling_reload: true,
             last_click: None,
             wheel_scroll: ScrollState {
-                horizontal: ScrollLane {
-                    pending: 0,
-                    remainder: 0,
-                    last_step_at: None,
-                },
-                vertical: ScrollLane {
-                    pending: 0,
-                    remainder: 0,
-                    last_step_at: None,
-                },
-                preview: ScrollLane {
-                    pending: 0,
-                    remainder: 0,
-                    last_step_at: None,
-                },
-                preview_horizontal: ScrollLane {
-                    pending: 0,
-                    remainder: 0,
-                    last_step_at: None,
-                },
-                search: ScrollLane {
-                    pending: 0,
-                    remainder: 0,
-                    last_step_at: None,
-                },
+                horizontal: ScrollLane::new(),
+                vertical: ScrollLane::new(),
+                preview: ScrollLane::new(),
+                preview_horizontal: ScrollLane::new(),
+                search: ScrollLane::new(),
             },
-            wheel_step_divisor: wheel_step_divisor(),
+            wheel_profile: detect_wheel_profile(),
+            last_wheel_target: Some(WheelTarget::Entries),
+            last_selection_change_at: Instant::now(),
             directory_fingerprint: support::DirectoryFingerprint::default(),
             last_auto_reload_at: Instant::now(),
         };
@@ -532,12 +535,35 @@ impl App {
     }
 }
 
-fn wheel_step_divisor() -> isize {
-    let term = env::var("TERM").unwrap_or_default();
-    let term_program = env::var("TERM_PROGRAM").unwrap_or_default();
-    if term.contains("ghostty") || term_program.eq_ignore_ascii_case("ghostty") {
-        3
+impl ScrollLane {
+    fn new() -> Self {
+        Self {
+            pending: 0,
+            remainder: 0,
+            last_step_at: None,
+            last_input_at: None,
+            last_input_direction: 0,
+            burst_count: 0,
+        }
+    }
+}
+
+fn detect_wheel_profile() -> WheelProfile {
+    let term = env::var("TERM").unwrap_or_default().to_ascii_lowercase();
+    let term_program = env::var("TERM_PROGRAM")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    let is_ghostty = term.contains("ghostty") || term_program.contains("ghostty");
+    let is_alacritty = term.contains("alacritty")
+        || term_program.contains("alacritty")
+        || env::var_os("ALACRITTY_SOCKET").is_some();
+    let is_vte = env::var_os("VTE_VERSION").is_some();
+    let is_warp = term_program.contains("warp") || env::var_os("WARP_SESSION_ID").is_some();
+
+    if is_ghostty || is_alacritty || is_vte || is_warp {
+        WheelProfile::HighFrequency
     } else {
-        1
+        WheelProfile::Default
     }
 }

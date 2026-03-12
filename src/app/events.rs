@@ -6,6 +6,65 @@ use crossterm::event::{
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+#[derive(Clone, Copy)]
+struct WheelTuning {
+    queue_limit: isize,
+    medium_threshold: u8,
+    fast_threshold: u8,
+    medium_divisor: isize,
+    fast_divisor: isize,
+}
+
+const ENTRY_WHEEL_TUNING: WheelTuning = WheelTuning {
+    queue_limit: WHEEL_SCROLL_QUEUE_LIMIT,
+    medium_threshold: 3,
+    fast_threshold: 6,
+    medium_divisor: 2,
+    fast_divisor: 4,
+};
+const ENTRY_HORIZONTAL_WHEEL_TUNING: WheelTuning = WheelTuning {
+    queue_limit: WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL,
+    medium_threshold: 2,
+    fast_threshold: 4,
+    medium_divisor: 2,
+    fast_divisor: 3,
+};
+const PREVIEW_WHEEL_TUNING: WheelTuning = WheelTuning {
+    queue_limit: WHEEL_SCROLL_QUEUE_LIMIT,
+    medium_threshold: 4,
+    fast_threshold: 8,
+    medium_divisor: 2,
+    fast_divisor: 4,
+};
+const PREVIEW_HORIZONTAL_WHEEL_TUNING: WheelTuning = WheelTuning {
+    queue_limit: WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL,
+    medium_threshold: 2,
+    fast_threshold: 4,
+    medium_divisor: 2,
+    fast_divisor: 3,
+};
+const SEARCH_WHEEL_TUNING: WheelTuning = WheelTuning {
+    queue_limit: WHEEL_SCROLL_QUEUE_LIMIT_SEARCH,
+    medium_threshold: 2,
+    fast_threshold: 4,
+    medium_divisor: 2,
+    fast_divisor: 3,
+};
+const HIGH_FREQUENCY_ENTRY_WHEEL_TUNING: WheelTuning = WheelTuning {
+    queue_limit: 4,
+    medium_threshold: 2,
+    fast_threshold: 4,
+    medium_divisor: 4,
+    fast_divisor: 8,
+};
+const HIGH_FREQUENCY_ENTRY_HORIZONTAL_WHEEL_TUNING: WheelTuning = WheelTuning {
+    queue_limit: 2,
+    medium_threshold: 2,
+    fast_threshold: 3,
+    medium_divisor: 3,
+    fast_divisor: 5,
+};
+
 impl App {
     pub fn handle_event(&mut self, event: Event) -> Result<()> {
         let result = match event {
@@ -95,6 +154,25 @@ impl App {
                 KeyCode::Char('0') => {
                     self.reset_zoom();
                     return Ok(());
+                }
+                _ => {}
+            }
+        }
+
+        if self.wheel_profile == WheelProfile::HighFrequency
+            && key.modifiers.contains(KeyModifiers::ALT)
+            && !key.modifiers.contains(KeyModifiers::CONTROL)
+        {
+            match key.code {
+                KeyCode::Left => {
+                    if self.handle_horizontal_navigation_key(-1) {
+                        return Ok(());
+                    }
+                }
+                KeyCode::Right => {
+                    if self.handle_horizontal_navigation_key(1) {
+                        return Ok(());
+                    }
                 }
                 _ => {}
             }
@@ -207,6 +285,7 @@ impl App {
 
         match mouse.kind {
             MouseEventKind::Down(MouseButton::Left) => {
+                self.update_wheel_target_from_position(mouse.column, mouse.row);
                 if let Some(rect) = self.frame_state.back_button
                     && rect_contains(rect, mouse.column, mouse.row)
                 {
@@ -276,174 +355,89 @@ impl App {
                 }
             }
             MouseEventKind::ScrollDown => {
-                if self
-                    .frame_state
-                    .preview_panel
-                    .is_some_and(|rect| rect_contains(rect, mouse.column, mouse.row))
-                {
-                    if self.step_pdf_page(1) {
-                        return Ok(());
-                    }
-                    self.focus_preview_scroll();
-                    if mouse.modifiers.contains(KeyModifiers::SHIFT)
-                        && self.preview_allows_horizontal_scroll()
-                    {
-                        Self::queue_scroll(
-                            &mut self.wheel_scroll.preview_horizontal,
-                            1,
-                            self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL,
-                        );
-                    } else {
-                        Self::queue_scroll(
-                            &mut self.wheel_scroll.preview,
-                            1,
-                            self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT,
-                        );
-                    }
-                    return Ok(());
-                }
-                self.focus_entry_scroll();
-                if self.view_mode == ViewMode::Grid {
-                    if mouse.modifiers.contains(KeyModifiers::SHIFT) {
-                        Self::queue_scroll(
-                            &mut self.wheel_scroll.horizontal,
-                            1,
-                            self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL,
-                        );
-                    } else {
-                        Self::queue_scroll(
-                            &mut self.wheel_scroll.vertical,
-                            1,
-                            self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT,
-                        );
-                    }
-                } else {
-                    Self::queue_scroll(
-                        &mut self.wheel_scroll.vertical,
-                        1,
-                        self.wheel_step_divisor,
-                        WHEEL_SCROLL_QUEUE_LIMIT,
-                    );
-                }
+                self.handle_wheel_event(mouse, 1);
             }
             MouseEventKind::ScrollUp => {
-                if self
-                    .frame_state
-                    .preview_panel
-                    .is_some_and(|rect| rect_contains(rect, mouse.column, mouse.row))
-                {
-                    if self.step_pdf_page(-1) {
-                        return Ok(());
-                    }
-                    self.focus_preview_scroll();
-                    if mouse.modifiers.contains(KeyModifiers::SHIFT)
-                        && self.preview_allows_horizontal_scroll()
-                    {
-                        Self::queue_scroll(
-                            &mut self.wheel_scroll.preview_horizontal,
-                            -1,
-                            self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL,
-                        );
-                    } else {
-                        Self::queue_scroll(
-                            &mut self.wheel_scroll.preview,
-                            -1,
-                            self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT,
-                        );
-                    }
-                    return Ok(());
-                }
-                self.focus_entry_scroll();
-                if self.view_mode == ViewMode::Grid {
-                    if mouse.modifiers.contains(KeyModifiers::SHIFT) {
-                        Self::queue_scroll(
-                            &mut self.wheel_scroll.horizontal,
-                            -1,
-                            self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL,
-                        );
-                    } else {
-                        Self::queue_scroll(
-                            &mut self.wheel_scroll.vertical,
-                            -1,
-                            self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT,
-                        );
-                    }
-                } else {
-                    Self::queue_scroll(
-                        &mut self.wheel_scroll.vertical,
-                        -1,
-                        self.wheel_step_divisor,
-                        WHEEL_SCROLL_QUEUE_LIMIT,
-                    );
-                }
+                self.handle_wheel_event(mouse, -1);
             }
             MouseEventKind::ScrollLeft => {
-                if self
-                    .frame_state
-                    .preview_panel
-                    .is_some_and(|rect| rect_contains(rect, mouse.column, mouse.row))
-                {
-                    self.focus_preview_scroll();
-                    if self.preview_allows_horizontal_scroll() {
-                        Self::queue_scroll(
-                            &mut self.wheel_scroll.preview_horizontal,
-                            -1,
-                            self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL,
-                        );
-                    }
-                    return Ok(());
-                }
-                if self.view_mode != ViewMode::Grid {
-                    return Ok(());
-                }
-                self.focus_entry_scroll();
-                Self::queue_scroll(
-                    &mut self.wheel_scroll.horizontal,
-                    -1,
-                    self.wheel_step_divisor,
-                    WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL,
-                );
+                self.handle_horizontal_wheel_event(mouse, -1);
             }
             MouseEventKind::ScrollRight => {
-                if self
-                    .frame_state
-                    .preview_panel
-                    .is_some_and(|rect| rect_contains(rect, mouse.column, mouse.row))
-                {
-                    self.focus_preview_scroll();
-                    if self.preview_allows_horizontal_scroll() {
-                        Self::queue_scroll(
-                            &mut self.wheel_scroll.preview_horizontal,
-                            1,
-                            self.wheel_step_divisor,
-                            WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL,
-                        );
-                    }
-                    return Ok(());
-                }
-                if self.view_mode != ViewMode::Grid {
-                    return Ok(());
-                }
-                self.focus_entry_scroll();
-                Self::queue_scroll(
-                    &mut self.wheel_scroll.horizontal,
-                    1,
-                    self.wheel_step_divisor,
-                    WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL,
-                );
+                self.handle_horizontal_wheel_event(mouse, 1);
+            }
+            MouseEventKind::Moved | MouseEventKind::Drag(_) => {
+                self.update_wheel_target_from_position(mouse.column, mouse.row);
             }
             _ => {}
         }
         Ok(())
+    }
+
+    fn handle_wheel_event(&mut self, mouse: MouseEvent, delta: isize) {
+        let target = self
+            .high_frequency_preview_target(false)
+            .or_else(|| self.resolve_wheel_target(mouse.column, mouse.row));
+        match target {
+            Some(WheelTarget::Preview) => {
+                if self.pdf_page_wheel_navigation_active() && self.step_pdf_page(delta) {
+                    return;
+                }
+                self.focus_preview_scroll();
+                if mouse.modifiers.contains(KeyModifiers::SHIFT)
+                    && self.preview_allows_horizontal_scroll()
+                {
+                    Self::queue_scroll(
+                        &mut self.wheel_scroll.preview_horizontal,
+                        delta,
+                        PREVIEW_HORIZONTAL_WHEEL_TUNING,
+                    );
+                } else {
+                    Self::queue_scroll(&mut self.wheel_scroll.preview, delta, PREVIEW_WHEEL_TUNING);
+                }
+            }
+            Some(WheelTarget::Entries) | None => {
+                self.focus_entry_scroll();
+                if self.view_mode == ViewMode::Grid && mouse.modifiers.contains(KeyModifiers::SHIFT)
+                {
+                    let tuning = self.entry_horizontal_wheel_tuning();
+                    Self::queue_scroll(&mut self.wheel_scroll.horizontal, delta, tuning);
+                } else {
+                    let tuning = self.entry_wheel_tuning();
+                    Self::queue_scroll(&mut self.wheel_scroll.vertical, delta, tuning);
+                }
+            }
+        }
+    }
+
+    fn handle_horizontal_wheel_event(&mut self, mouse: MouseEvent, delta: isize) {
+        let target = self
+            .high_frequency_preview_target(true)
+            .or_else(|| self.resolve_wheel_target(mouse.column, mouse.row));
+        match target {
+            Some(WheelTarget::Preview) => {
+                self.focus_preview_scroll();
+                if self.preview_allows_horizontal_scroll() {
+                    Self::queue_scroll(
+                        &mut self.wheel_scroll.preview_horizontal,
+                        delta,
+                        PREVIEW_HORIZONTAL_WHEEL_TUNING,
+                    );
+                }
+            }
+            Some(WheelTarget::Entries) | None => {
+                if self.view_mode != ViewMode::Grid {
+                    return;
+                }
+                self.focus_entry_scroll();
+                let tuning = self.entry_horizontal_wheel_tuning();
+                Self::queue_scroll(&mut self.wheel_scroll.horizontal, delta, tuning);
+            }
+        }
+    }
+
+    pub(super) fn queue_search_wheel(&mut self, delta: isize) {
+        Self::queue_scroll(&mut self.wheel_scroll.search, delta, SEARCH_WHEEL_TUNING);
     }
 
     pub fn open_selected(&mut self) -> Result<()> {
@@ -457,22 +451,41 @@ impl App {
         }
     }
 
-    pub(super) fn queue_scroll(
-        lane: &mut ScrollLane,
-        delta: isize,
-        step_divisor: isize,
-        queue_limit: isize,
-    ) {
-        if step_divisor <= 1 {
-            lane.pending = (lane.pending + delta).clamp(-queue_limit, queue_limit);
+    fn queue_scroll(lane: &mut ScrollLane, delta: isize, tuning: WheelTuning) {
+        let now = Instant::now();
+        let direction = delta.signum();
+        let continuing_burst = lane.last_input_direction == direction
+            && lane
+                .last_input_at
+                .is_some_and(|at| now.duration_since(at) <= WHEEL_SCROLL_BURST_WINDOW);
+
+        if continuing_burst {
+            lane.burst_count = lane.burst_count.saturating_add(1);
+        } else {
+            lane.remainder = 0;
+            lane.burst_count = 1;
+        }
+        lane.last_input_at = Some(now);
+        lane.last_input_direction = direction;
+
+        let divisor = if lane.burst_count >= tuning.fast_threshold {
+            tuning.fast_divisor
+        } else if lane.burst_count >= tuning.medium_threshold {
+            tuning.medium_divisor
+        } else {
+            1
+        };
+
+        if divisor <= 1 {
+            lane.pending = (lane.pending + delta).clamp(-tuning.queue_limit, tuning.queue_limit);
             return;
         }
 
         lane.remainder += delta;
-        while lane.remainder.abs() >= step_divisor {
+        while lane.remainder.abs() >= divisor {
             let step = lane.remainder.signum();
-            lane.pending = (lane.pending + step).clamp(-queue_limit, queue_limit);
-            lane.remainder -= step * step_divisor;
+            lane.pending = (lane.pending + step).clamp(-tuning.queue_limit, tuning.queue_limit);
+            lane.remainder -= step * divisor;
         }
     }
 
@@ -495,11 +508,13 @@ impl App {
     }
 
     fn focus_preview_scroll(&mut self) {
+        self.last_wheel_target = Some(WheelTarget::Preview);
         Self::reset_scroll_lane(&mut self.wheel_scroll.vertical);
         Self::reset_scroll_lane(&mut self.wheel_scroll.horizontal);
     }
 
     fn focus_entry_scroll(&mut self) {
+        self.last_wheel_target = Some(WheelTarget::Entries);
         Self::reset_scroll_lane(&mut self.wheel_scroll.preview);
         Self::reset_scroll_lane(&mut self.wheel_scroll.preview_horizontal);
     }
@@ -508,13 +523,15 @@ impl App {
         lane.pending = 0;
         lane.remainder = 0;
         lane.last_step_at = None;
+        lane.last_input_at = None;
+        lane.last_input_direction = 0;
+        lane.burst_count = 0;
     }
 
     fn flush_entry_vertical_scroll(&mut self) -> bool {
-        let Some(step) = Self::consume_scroll_step(
-            &mut self.wheel_scroll.vertical,
-            WHEEL_SCROLL_INTERVAL_VERTICAL,
-        ) else {
+        let interval = self.entry_scroll_interval();
+        let Some(step) = Self::consume_scroll_step(&mut self.wheel_scroll.vertical, interval)
+        else {
             return false;
         };
 
@@ -556,54 +573,44 @@ impl App {
     }
 
     fn flush_preview_scroll(&mut self) -> bool {
-        let Some(step) = Self::consume_scroll_step(
-            &mut self.wheel_scroll.preview,
-            WHEEL_SCROLL_INTERVAL_PREVIEW,
-        ) else {
-            return false;
-        };
-
-        let previous = self.preview_scroll;
-        let delta = self.preview_scroll_step();
-        if step < 0 {
-            self.preview_scroll = self.preview_scroll.saturating_sub(delta);
-        } else {
-            self.preview_scroll = self.preview_scroll.saturating_add(delta);
+        let mut dirty = false;
+        for _ in 0..2 {
+            let Some(step) = Self::consume_scroll_step(
+                &mut self.wheel_scroll.preview,
+                WHEEL_SCROLL_INTERVAL_PREVIEW,
+            ) else {
+                break;
+            };
+            dirty |= self.scroll_preview_lines(step);
         }
-        self.sync_preview_scroll();
-        previous != self.preview_scroll
+        dirty
     }
 
     fn flush_preview_horizontal_scroll(&mut self) -> bool {
-        let Some(step) = Self::consume_scroll_step(
-            &mut self.wheel_scroll.preview_horizontal,
-            WHEEL_SCROLL_INTERVAL_PREVIEW_HORIZONTAL,
-        ) else {
-            return false;
-        };
-
-        let previous = self.preview_horizontal_scroll;
-        let delta = self.preview_horizontal_scroll_step();
-        if step < 0 {
-            self.preview_horizontal_scroll = self.preview_horizontal_scroll.saturating_sub(delta);
-        } else {
-            self.preview_horizontal_scroll = self.preview_horizontal_scroll.saturating_add(delta);
+        let mut dirty = false;
+        for _ in 0..2 {
+            let Some(step) = Self::consume_scroll_step(
+                &mut self.wheel_scroll.preview_horizontal,
+                WHEEL_SCROLL_INTERVAL_PREVIEW_HORIZONTAL,
+            ) else {
+                break;
+            };
+            dirty |= self.scroll_preview_columns(step);
         }
-        self.sync_preview_scroll();
-        previous != self.preview_horizontal_scroll
+        dirty
     }
 
     fn preview_scroll_step(&self) -> usize {
         self.frame_state
             .preview_rows_visible
-            .saturating_div(4)
-            .clamp(2, 6)
+            .saturating_div(6)
+            .clamp(2, 4)
     }
 
     fn preview_horizontal_scroll_step(&self) -> usize {
         self.frame_state
             .preview_cols_visible
-            .saturating_div(18)
+            .saturating_div(20)
             .clamp(1, 3)
     }
 
@@ -622,21 +629,186 @@ impl App {
     }
 
     pub(super) fn clear_wheel_scroll(&mut self) {
-        self.wheel_scroll.vertical.pending = 0;
-        self.wheel_scroll.vertical.remainder = 0;
-        self.wheel_scroll.vertical.last_step_at = None;
-        self.wheel_scroll.horizontal.pending = 0;
-        self.wheel_scroll.horizontal.remainder = 0;
-        self.wheel_scroll.horizontal.last_step_at = None;
-        self.wheel_scroll.preview.pending = 0;
-        self.wheel_scroll.preview.remainder = 0;
-        self.wheel_scroll.preview.last_step_at = None;
-        self.wheel_scroll.preview_horizontal.pending = 0;
-        self.wheel_scroll.preview_horizontal.remainder = 0;
-        self.wheel_scroll.preview_horizontal.last_step_at = None;
-        self.wheel_scroll.search.pending = 0;
-        self.wheel_scroll.search.remainder = 0;
-        self.wheel_scroll.search.last_step_at = None;
+        Self::reset_scroll_lane(&mut self.wheel_scroll.vertical);
+        Self::reset_scroll_lane(&mut self.wheel_scroll.horizontal);
+        Self::reset_scroll_lane(&mut self.wheel_scroll.preview);
+        Self::reset_scroll_lane(&mut self.wheel_scroll.preview_horizontal);
+        Self::reset_scroll_lane(&mut self.wheel_scroll.search);
+    }
+
+    fn entry_wheel_tuning(&self) -> WheelTuning {
+        match self.wheel_profile {
+            WheelProfile::Default => ENTRY_WHEEL_TUNING,
+            WheelProfile::HighFrequency => HIGH_FREQUENCY_ENTRY_WHEEL_TUNING,
+        }
+    }
+
+    fn entry_horizontal_wheel_tuning(&self) -> WheelTuning {
+        match self.wheel_profile {
+            WheelProfile::Default => ENTRY_HORIZONTAL_WHEEL_TUNING,
+            WheelProfile::HighFrequency => HIGH_FREQUENCY_ENTRY_HORIZONTAL_WHEEL_TUNING,
+        }
+    }
+
+    fn entry_scroll_interval(&self) -> Duration {
+        match self.wheel_profile {
+            WheelProfile::Default => WHEEL_SCROLL_INTERVAL_VERTICAL,
+            WheelProfile::HighFrequency => WHEEL_SCROLL_INTERVAL_VERTICAL_HIGH_FREQUENCY,
+        }
+    }
+
+    fn handle_horizontal_navigation_key(&mut self, delta: isize) -> bool {
+        if self.last_wheel_target == Some(WheelTarget::Preview) {
+            if self.wheel_profile == WheelProfile::HighFrequency {
+                let _ = self.scroll_preview_columns(delta);
+                return true;
+            }
+            if self.preview_allows_horizontal_scroll()
+                && self.preview_max_horizontal_scroll(self.frame_state.preview_cols_visible.max(1))
+                    > 0
+            {
+                return self.scroll_preview_columns(delta);
+            }
+            self.last_wheel_target = Some(WheelTarget::Entries);
+        }
+
+        if self.wheel_profile == WheelProfile::HighFrequency
+            && self.high_frequency_preview_target(true) == Some(WheelTarget::Preview)
+            && self.preview_allows_horizontal_scroll()
+        {
+            self.last_wheel_target = Some(WheelTarget::Preview);
+            let _ = self.scroll_preview_columns(delta);
+            return true;
+        }
+
+        if self.wheel_profile == WheelProfile::HighFrequency && self.view_mode == ViewMode::Grid {
+            self.last_wheel_target = Some(WheelTarget::Entries);
+            self.focus_entry_scroll();
+            let tuning = self.entry_horizontal_wheel_tuning();
+            Self::queue_scroll(&mut self.wheel_scroll.horizontal, delta, tuning);
+            return true;
+        }
+
+        false
+    }
+
+    fn pdf_page_wheel_navigation_active(&self) -> bool {
+        self.preview_uses_image_overlay() || self.preview_prefers_pdf_surface()
+    }
+
+    fn preview_has_vertical_overflow(&self) -> bool {
+        let visible_cols = self.frame_state.preview_cols_visible.max(1);
+        let visible_rows = self.frame_state.preview_rows_visible.max(1);
+        self.preview_total_lines(visible_cols) > visible_rows
+    }
+
+    fn preview_auto_focus_ready(&self) -> bool {
+        self.preview_has_vertical_overflow()
+            && self.last_selection_change_at.elapsed() >= PREVIEW_AUTO_FOCUS_DELAY
+    }
+
+    fn preview_horizontal_auto_focus_ready(&self) -> bool {
+        self.preview_allows_horizontal_scroll()
+            && self.preview_max_horizontal_scroll(self.frame_state.preview_cols_visible.max(1)) > 0
+            && self.last_selection_change_at.elapsed() >= PREVIEW_AUTO_FOCUS_DELAY
+    }
+
+    fn high_frequency_preview_target(&self, horizontal: bool) -> Option<WheelTarget> {
+        if self.wheel_profile != WheelProfile::HighFrequency {
+            return None;
+        }
+
+        if self.last_wheel_target == Some(WheelTarget::Preview) {
+            return Some(WheelTarget::Preview);
+        }
+
+        let preview_ready = if horizontal {
+            self.preview_horizontal_auto_focus_ready()
+        } else {
+            self.preview_auto_focus_ready()
+        };
+
+        preview_ready.then_some(WheelTarget::Preview)
+    }
+
+    fn scroll_preview_lines(&mut self, delta: isize) -> bool {
+        let previous = self.preview_scroll;
+        let step = self.preview_scroll_step();
+        if delta.is_negative() {
+            self.preview_scroll = self
+                .preview_scroll
+                .saturating_sub(step.saturating_mul(delta.unsigned_abs()));
+        } else {
+            self.preview_scroll = self
+                .preview_scroll
+                .saturating_add(step.saturating_mul(delta as usize));
+        }
+        self.sync_preview_scroll();
+        previous != self.preview_scroll
+    }
+
+    fn scroll_preview_columns(&mut self, delta: isize) -> bool {
+        let previous = self.preview_horizontal_scroll;
+        let step = self.preview_horizontal_scroll_step();
+        if delta.is_negative() {
+            self.preview_horizontal_scroll = self
+                .preview_horizontal_scroll
+                .saturating_sub(step.saturating_mul(delta.unsigned_abs()));
+        } else {
+            self.preview_horizontal_scroll = self
+                .preview_horizontal_scroll
+                .saturating_add(step.saturating_mul(delta as usize));
+        }
+        self.sync_preview_scroll();
+        previous != self.preview_horizontal_scroll
+    }
+
+    fn panel_target_at(&self, column: u16, row: u16) -> Option<WheelTarget> {
+        if self
+            .frame_state
+            .preview_panel
+            .is_some_and(|rect| rect_contains(rect, column, row))
+        {
+            Some(WheelTarget::Preview)
+        } else if self
+            .frame_state
+            .entries_panel
+            .is_some_and(|rect| rect_contains(rect, column, row))
+        {
+            Some(WheelTarget::Entries)
+        } else {
+            None
+        }
+    }
+
+    fn update_wheel_target_from_position(&mut self, column: u16, row: u16) {
+        if let Some(target) = self.panel_target_at(column, row) {
+            self.last_wheel_target = Some(target);
+        }
+    }
+
+    fn resolve_wheel_target(&mut self, column: u16, row: u16) -> Option<WheelTarget> {
+        if let Some(target) = self.panel_target_at(column, row) {
+            self.last_wheel_target = Some(target);
+            return Some(target);
+        }
+
+        if let Some(preview) = self.frame_state.preview_panel
+            && column >= preview.x
+        {
+            self.last_wheel_target = Some(WheelTarget::Preview);
+            return self.last_wheel_target;
+        }
+
+        if let Some(entries) = self.frame_state.entries_panel
+            && column >= entries.x
+            && column < entries.x.saturating_add(entries.width)
+        {
+            self.last_wheel_target = Some(WheelTarget::Entries);
+            return self.last_wheel_target;
+        }
+
+        self.last_wheel_target
     }
 
     fn is_double_click(&self, path: &Path) -> bool {
@@ -1043,6 +1215,382 @@ mod tests {
         .expect("scroll right should be handled");
         assert!(app.process_pending_scroll());
         assert_eq!(app.preview_horizontal_scroll, 1);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn wheel_burst_smoothing_coalesces_dense_input() {
+        let mut lane = ScrollLane::new();
+
+        for _ in 0..6 {
+            App::queue_scroll(&mut lane, 1, ENTRY_WHEEL_TUNING);
+        }
+
+        assert!(lane.pending.abs() < 6);
+        assert!(lane.pending > 0);
+    }
+
+    #[test]
+    fn browser_wheel_updates_selection_and_preview_immediately() {
+        let root = temp_path("wheel-selection-preview");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            fs::write(root.join(name), name).expect("failed to write temp file");
+        }
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.select_index(0);
+        app.set_frame_state(FrameState {
+            entries_panel: Some(Rect {
+                x: 0,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            metrics: ViewMetrics {
+                cols: 1,
+                rows_visible: 1,
+            },
+            ..FrameState::default()
+        });
+        let initial_preview_token = app.preview_token;
+
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 1,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        }))
+        .expect("scroll down should be handled");
+        assert!(app.process_pending_scroll());
+
+        assert_eq!(app.selected, 1);
+        assert_eq!(app.scroll_row, 1);
+        assert!(app.preview_token > initial_preview_token);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn browser_wheel_preserves_preview_when_selection_does_not_change() {
+        let root = temp_path("wheel-selection-clamp");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        for name in ["a.txt", "b.txt"] {
+            fs::write(root.join(name), name).expect("failed to write temp file");
+        }
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.set_frame_state(FrameState {
+            entries_panel: Some(Rect {
+                x: 0,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            metrics: ViewMetrics {
+                cols: 1,
+                rows_visible: 2,
+            },
+            ..FrameState::default()
+        });
+        app.select_index(0);
+        let initial_preview_token = app.preview_token;
+
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 1,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        }))
+        .expect("scroll up should be handled");
+        assert!(!app.process_pending_scroll());
+
+        assert_eq!(app.scroll_row, 0);
+        assert_eq!(app.selected, 0);
+        assert_eq!(app.preview_token, initial_preview_token);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn preview_wheel_uses_last_focused_panel_when_coordinates_miss() {
+        let root = temp_path("preview-wheel-focus");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let file_path = root.join("long.txt");
+        let contents = (0..40)
+            .map(|index| format!("line {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&file_path, contents).expect("failed to write temp file");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.select_index(0);
+        app.set_frame_state(FrameState {
+            entries_panel: Some(Rect {
+                x: 0,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            preview_panel: Some(Rect {
+                x: 21,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            preview_rows_visible: 4,
+            preview_cols_visible: 20,
+            ..FrameState::default()
+        });
+
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: 22,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        }))
+        .expect("preview click should be handled");
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 80,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        }))
+        .expect("wheel should fall back to last focused preview panel");
+
+        assert!(app.process_pending_scroll());
+        assert!(app.preview_scroll > 0);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn preview_wheel_follows_hovered_panel_without_click() {
+        let root = temp_path("preview-wheel-hover");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let file_path = root.join("long.txt");
+        let contents = (0..40)
+            .map(|index| format!("line {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&file_path, contents).expect("failed to write temp file");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.select_index(0);
+        app.set_frame_state(FrameState {
+            entries_panel: Some(Rect {
+                x: 0,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            preview_panel: Some(Rect {
+                x: 21,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            preview_rows_visible: 4,
+            preview_cols_visible: 20,
+            ..FrameState::default()
+        });
+
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: 22,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        }))
+        .expect("preview hover should be handled");
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 80,
+            row: 20,
+            modifiers: KeyModifiers::NONE,
+        }))
+        .expect("wheel should fall back to hovered preview panel");
+
+        assert!(app.process_pending_scroll());
+        assert!(app.preview_scroll > 0);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn preview_wheel_uses_preview_column_when_row_is_unreliable() {
+        let root = temp_path("preview-wheel-column-fallback");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let file_path = root.join("long.txt");
+        let contents = (0..40)
+            .map(|index| format!("line {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&file_path, contents).expect("failed to write temp file");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.select_index(0);
+        app.set_frame_state(FrameState {
+            entries_panel: Some(Rect {
+                x: 0,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            preview_panel: Some(Rect {
+                x: 21,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            preview_rows_visible: 4,
+            preview_cols_visible: 20,
+            ..FrameState::default()
+        });
+
+        app.handle_event(Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 22,
+            row: 20,
+            modifiers: KeyModifiers::NONE,
+        }))
+        .expect("wheel should use preview column fallback");
+
+        assert!(app.process_pending_scroll());
+        assert!(app.preview_scroll > 0);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn high_frequency_alt_right_scrolls_preview_instead_of_history() {
+        let root = temp_path("preview-horizontal-alt-right");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let file_path = root.join("long.rs");
+        fs::write(
+            &file_path,
+            "fn main() { let preview_line = \"this line is intentionally long for horizontal preview scrolling\"; }\n",
+        )
+        .expect("failed to write temp file");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.wheel_profile = WheelProfile::HighFrequency;
+        app.last_wheel_target = Some(WheelTarget::Entries);
+        app.select_index(0);
+        app.last_selection_change_at =
+            Instant::now() - PREVIEW_AUTO_FOCUS_DELAY - Duration::from_millis(1);
+        app.set_frame_state(FrameState {
+            preview_panel: Some(Rect {
+                x: 21,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            preview_rows_visible: 6,
+            preview_cols_visible: 12,
+            ..FrameState::default()
+        });
+
+        app.handle_event(Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::ALT)))
+            .expect("alt-right should be handled");
+
+        assert!(app.preview_horizontal_scroll > 0);
+        assert_eq!(app.selected, 0);
+        assert_eq!(app.last_wheel_target, Some(WheelTarget::Preview));
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn high_frequency_down_arrow_keeps_browser_navigation() {
+        let root = temp_path("high-frequency-down-keeps-browser");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        for name in ["a.txt", "b.txt", "c.txt"] {
+            fs::write(root.join(name), name).expect("failed to write temp file");
+        }
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.wheel_profile = WheelProfile::HighFrequency;
+        app.select_index(0);
+        app.last_wheel_target = Some(WheelTarget::Preview);
+        app.last_selection_change_at =
+            Instant::now() - PREVIEW_AUTO_FOCUS_DELAY - Duration::from_millis(1);
+        app.set_frame_state(FrameState {
+            preview_panel: Some(Rect {
+                x: 21,
+                y: 0,
+                width: 20,
+                height: 8,
+            }),
+            preview_rows_visible: 4,
+            preview_cols_visible: 20,
+            ..FrameState::default()
+        });
+
+        app.handle_event(Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)))
+            .expect("down arrow should be handled");
+
+        assert_eq!(app.selected, 1);
+        assert_eq!(app.preview_scroll, 0);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn high_frequency_right_arrow_in_list_view_still_enters_directory() {
+        let root = temp_path("high-frequency-right-enters");
+        let child = root.join("child");
+        fs::create_dir_all(&child).expect("failed to create child dir");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.wheel_profile = WheelProfile::HighFrequency;
+        app.select_index(0);
+        app.last_wheel_target = Some(WheelTarget::Preview);
+
+        app.handle_event(Event::Key(KeyEvent::new(
+            KeyCode::Right,
+            KeyModifiers::NONE,
+        )))
+        .expect("right arrow should be handled");
+        wait_for_directory_load(&mut app);
+
+        assert_eq!(app.cwd, child);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn high_frequency_alt_right_does_not_trigger_history_navigation() {
+        let root = temp_path("high-frequency-alt-right-no-history");
+        let child = root.join("child");
+        fs::create_dir_all(&child).expect("failed to create child dir");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.view_mode = ViewMode::List;
+        app.wheel_profile = WheelProfile::HighFrequency;
+        app.select_index(0);
+        app.open_selected()
+            .expect("opening selected directory should succeed");
+        wait_for_directory_load(&mut app);
+        app.go_back().expect("go back should succeed");
+        wait_for_directory_load(&mut app);
+
+        app.handle_event(Event::Key(KeyEvent::new(KeyCode::Right, KeyModifiers::ALT)))
+            .expect("alt-right should be handled");
+
+        assert_eq!(app.cwd, root);
+        assert_eq!(
+            app.selected_entry().map(|entry| entry.path.as_path()),
+            Some(child.as_path())
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }

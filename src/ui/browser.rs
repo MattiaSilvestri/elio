@@ -119,6 +119,7 @@ fn render_entries(
     state: &mut FrameState,
     palette: Palette,
 ) {
+    state.entries_panel = Some(area);
     let path_text = helpers::stable_path_label(&app.cwd, area.width.saturating_sub(10) as usize);
     let block = Block::default()
         .borders(Borders::ALL)

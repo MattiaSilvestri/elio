@@ -1,6 +1,7 @@
 use super::*;
 use anyhow::{Result, anyhow, bail};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 impl App {
     pub fn reload(&mut self) -> Result<()> {
@@ -248,6 +249,7 @@ impl App {
             0
         };
         self.scroll_row = remembered_view.map_or(0, |view| view.scroll_row);
+        self.last_selection_change_at = Instant::now();
         self.clamp_selection();
         self.sync_scroll();
         self.remember_current_directory_view();
@@ -380,6 +382,7 @@ impl App {
         let next = index.min(self.entries.len().saturating_sub(1));
         if next != self.selected {
             self.selected = next;
+            self.last_selection_change_at = Instant::now();
             self.refresh_preview();
         } else {
             self.selected = next;

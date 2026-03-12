@@ -20,7 +20,7 @@ use std::{
 };
 
 const IDLE_POLL_INTERVAL: Duration = Duration::from_millis(100);
-const ACTIVE_SCROLL_POLL_INTERVAL: Duration = Duration::from_millis(16);
+const ACTIVE_SCROLL_POLL_INTERVAL: Duration = Duration::from_millis(12);
 const RELATIVE_TIME_REFRESH_INTERVAL: Duration = Duration::from_secs(1);
 
 fn main() -> Result<()> {
