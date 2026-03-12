@@ -834,7 +834,7 @@ fn render_archive_preview(config: ArchiveRenderConfig) -> PreviewContent {
         ),
         ("Comment", config.metadata.comment),
     ];
-    push_preview_section(&mut lines, "Archive", &summary, palette);
+    push_preview_section(&mut lines, "Summary", &summary, palette);
 
     for (title, fields) in config.extra_sections {
         push_preview_values_section(&mut lines, title, &fields, palette);

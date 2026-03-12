@@ -2672,6 +2672,8 @@ mod tests {
         assert_eq!(preview.kind, PreviewKind::Archive);
         assert_eq!(preview.detail.as_deref(), Some("ZIP archive"));
         assert!(header.contains("ZIP archive"));
+        assert!(line_texts.iter().any(|text| text.trim() == "Summary"));
+        assert!(!line_texts.iter().any(|text| text.trim() == "Archive"));
         assert!(
             line_texts
                 .iter()
