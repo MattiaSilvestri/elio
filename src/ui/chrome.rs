@@ -2,11 +2,11 @@ use super::helpers;
 use super::theme::Palette;
 use crate::app::{App, FrameState};
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::Line,
     widgets::{Block, BorderType, Borders, Paragraph},
-    Frame,
 };
 
 pub(super) fn render_toolbar(

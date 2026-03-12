@@ -828,7 +828,7 @@ mod tests {
         process::Command,
         time::{SystemTime, UNIX_EPOCH},
     };
-    use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
+    use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
     fn temp_path(label: &str) -> PathBuf {
         let unique = SystemTime::now()
@@ -1127,10 +1127,12 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Markdown);
         assert_eq!(preview.lines[0].spans[0].content, "Heading");
-        assert!(preview
-            .lines
-            .iter()
-            .any(|line| line.spans.iter().any(|span| span.content == "inline")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .any(|line| line.spans.iter().any(|span| span.content == "inline"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1164,10 +1166,12 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Markdown);
         assert_eq!(preview.lines[0].spans[1].content, "rust");
-        assert!(preview
-            .lines
-            .iter()
-            .any(|line| line_text(line).contains("fn main() {}")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .any(|line| line_text(line).contains("fn main() {}"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1245,18 +1249,24 @@ mod tests {
         let preview = build_preview(&file_entry(path));
 
         assert_eq!(preview.kind, PreviewKind::Markdown);
-        assert!(preview
-            .lines
-            .iter()
-            .any(|line| line.spans.iter().any(|span| span.content == "1. ")));
-        assert!(preview
-            .lines
-            .iter()
-            .any(|line| line.spans.iter().any(|span| span.content.contains("• "))));
-        assert!(preview
-            .lines
-            .iter()
-            .any(|line| line.spans.iter().any(|span| span.content == "2. ")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .any(|line| line.spans.iter().any(|span| span.content == "1. "))
+        );
+        assert!(
+            preview
+                .lines
+                .iter()
+                .any(|line| line.spans.iter().any(|span| span.content.contains("• ")))
+        );
+        assert!(
+            preview
+                .lines
+                .iter()
+                .any(|line| line.spans.iter().any(|span| span.content == "2. "))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1292,11 +1302,13 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert!(preview.detail.is_some_and(|detail| detail.contains('C')));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("printf")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("printf"))
+        );
         assert_eq!(
             span_color(&preview.lines[0], "#"),
             Some(code_palette.r#macro)
@@ -1378,9 +1390,11 @@ mod tests {
         let code_palette = appearance::code_preview_palette();
 
         assert_eq!(preview.kind, PreviewKind::Code);
-        assert!(preview
-            .detail
-            .is_some_and(|detail| detail.contains("TypeScript")));
+        assert!(
+            preview
+                .detail
+                .is_some_and(|detail| detail.contains("TypeScript"))
+        );
         assert_eq!(
             span_color(&preview.lines[0], "export"),
             Some(code_palette.keyword)
@@ -1419,11 +1433,13 @@ mod tests {
             Some(code_palette.parameter)
         );
         assert!(line_has_color(&preview.lines[0], code_palette.string));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("description")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("description"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1443,18 +1459,22 @@ mod tests {
         let code_palette = appearance::code_preview_palette();
 
         assert_eq!(preview.kind, PreviewKind::Code);
-        assert!(preview
-            .detail
-            .is_some_and(|detail| detail.contains("CMake")));
+        assert!(
+            preview
+                .detail
+                .is_some_and(|detail| detail.contains("CMake"))
+        );
         assert_ne!(
             span_color(&preview.lines[2], "add_executable"),
             Some(code_palette.fg)
         );
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("add_executable")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("add_executable"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1470,11 +1490,13 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert!(preview.detail.is_some_and(|detail| detail.contains("INI")));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("elio")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("elio"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1494,10 +1516,12 @@ mod tests {
         let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
 
         assert_eq!(preview.kind, PreviewKind::Code);
-        assert!(preview
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail.contains("Make")));
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("Make"))
+        );
         assert!(line_texts.iter().any(|text| text.contains(".PHONY")));
         assert!(line_texts.iter().any(|text| text.contains("$(CC)")));
 
@@ -1519,16 +1543,20 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert!(preview.detail.is_some());
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("div")));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("class")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("div"))
+        );
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("class"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1545,11 +1573,13 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert!(preview.detail.is_some());
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("color")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("color"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1591,29 +1621,41 @@ mod tests {
         assert_eq!(preview.kind, PreviewKind::Document);
         assert_eq!(preview.detail.as_deref(), Some("DOCX document"));
         assert_eq!(line_texts[0], "Document");
-        assert!(line_texts
-            .iter()
-            .all(|text| !text.contains("Format") || !text.contains("DOCX document")));
+        assert!(
+            line_texts
+                .iter()
+                .all(|text| !text.contains("Format") || !text.contains("DOCX document"))
+        );
         assert!(line_texts.iter().any(|text| text == "People"));
         assert!(line_texts.iter().any(|text| text == "Dates"));
         assert!(line_texts.iter().any(|text| text == "Stats"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Quarterly Report")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Quarterly Report"))
+        );
         assert!(line_texts.iter().any(|text| text.contains("Regueiro")));
         assert!(line_texts.iter().any(|text| text.contains("4,238")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Created") && text.contains("Mar 11, 2026 09:00 UTC")));
-        assert!(line_texts
-            .iter()
-            .all(|text| !text.contains("2026-03-11T09:00:00Z")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Application") && text.contains("LibreOffice")));
-        assert!(line_texts
-            .iter()
-            .all(|text| !text.contains("ApplicationLibreOffice")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Created") && text.contains("Mar 11, 2026 09:00 UTC"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .all(|text| !text.contains("2026-03-11T09:00:00Z"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Application") && text.contains("LibreOffice"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .all(|text| !text.contains("ApplicationLibreOffice"))
+        );
         assert!(
             line_texts
                 .iter()
@@ -1670,12 +1712,16 @@ mod tests {
         assert!(line_texts.iter().any(|text| text.contains("LibreOffice")));
         assert!(line_texts.iter().any(|text| text.contains("980")));
         assert!(line_texts.iter().any(|text| text.contains("6,400")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Created") && text.contains("Mar 10, 2026 18:00 UTC")));
-        assert!(line_texts
-            .iter()
-            .all(|text| !text.contains("2026-03-10T18:00:00Z")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Created") && text.contains("Mar 10, 2026 18:00 UTC"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .all(|text| !text.contains("2026-03-10T18:00:00Z"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1719,15 +1765,21 @@ mod tests {
         assert_eq!(preview.detail.as_deref(), Some("PPTX presentation"));
         assert!(line_texts.iter().any(|text| text.contains("Launch Deck")));
         assert!(line_texts.iter().any(|text| text.contains("PowerPoint")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Slides") && text.contains("24")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Notes") && text.contains("6")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Hidden Slides") && text.contains("2")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Slides") && text.contains("24"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Notes") && text.contains("6"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Hidden Slides") && text.contains("2"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1768,15 +1820,21 @@ mod tests {
         assert_eq!(preview.detail.as_deref(), Some("XLSX spreadsheet"));
         assert!(line_texts.iter().any(|text| text.contains("Q2 Budget")));
         assert!(line_texts.iter().any(|text| text.contains("Finance Team")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Application") && text.contains("Excel")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Company") && text.contains("Elio Labs")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Manager") && text.contains("Regueiro")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Application") && text.contains("Excel"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Company") && text.contains("Elio Labs"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Manager") && text.contains("Regueiro"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1809,21 +1867,31 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Document);
         assert_eq!(preview.detail.as_deref(), Some("ODS spreadsheet"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Operations Budget")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Application") && text.contains("LibreOffice Calc")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Tables") && text.contains("4")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Cells") && text.contains("512")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Objects") && text.contains("2")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Operations Budget"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Application") && text.contains("LibreOffice Calc"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Tables") && text.contains("4"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Cells") && text.contains("512"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Objects") && text.contains("2"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1867,20 +1935,28 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Document);
         assert_eq!(preview.detail.as_deref(), Some("EPUB ebook"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Variant") && text.contains("EPUB package")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Variant") && text.contains("EPUB package"))
+        );
         assert!(line_texts.iter().any(|text| text.contains("Elio Handbook")));
         assert!(line_texts.iter().any(|text| text.contains("Regueiro")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Language") && text.contains("en")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Publisher") && text.contains("Elio Docs")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Identifier") && text.contains("urn:uuid:elio-handbook")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Language") && text.contains("en"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Publisher") && text.contains("Elio Docs"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Identifier") && text.contains("urn:uuid:elio-handbook"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1901,22 +1977,32 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Document);
         assert_eq!(preview.detail.as_deref(), Some("PDF document"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Variant") && text.contains("PDF 1.4")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Quarterly Report")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Variant") && text.contains("PDF 1.4"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Quarterly Report"))
+        );
         assert!(line_texts.iter().any(|text| text.contains("Regueiro")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Application") && text.contains("Elio")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Pages") && text.contains("1")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Producer") && text.contains("Elio Test Suite")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Application") && text.contains("Elio"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Pages") && text.contains("1"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Producer") && text.contains("Elio Test Suite"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1933,11 +2019,13 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert!(preview.detail.is_some());
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("layout")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("layout"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1953,11 +2041,13 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert_eq!(preview.detail.as_deref(), Some("TOML (structured)"));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("server")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("server"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -1976,15 +2066,19 @@ mod tests {
         let preview = build_preview(&file_entry(path));
 
         assert_eq!(preview.kind, PreviewKind::Code);
-        assert!(preview
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail == "Desktop Entry (best-effort)"));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("エリオ")));
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail == "Desktop Entry (best-effort)")
+        );
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("エリオ"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2024,10 +2118,12 @@ mod tests {
         let code_palette = appearance::code_preview_palette();
 
         assert_eq!(preview.kind, PreviewKind::Code);
-        assert!(preview
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail.contains("Shell")));
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("Shell"))
+        );
         assert!(line_texts.iter().any(|text| text.contains("printf")));
         assert!(line_texts.iter().any(|text| text.contains("$(whoami)")));
         assert_eq!(
@@ -2062,10 +2158,12 @@ mod tests {
         let code_palette = appearance::code_preview_palette();
 
         assert_eq!(preview.kind, PreviewKind::Code);
-        assert!(preview
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail.contains("Shell")));
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("Shell"))
+        );
         assert!(line_texts.iter().any(|text| text.contains("export")));
         assert!(line_texts.iter().any(|text| text.contains("alias")));
         assert_ne!(
@@ -2112,10 +2210,12 @@ mod tests {
         let preview = build_preview(&file_entry(path));
 
         assert_eq!(preview.kind, PreviewKind::Code);
-        assert!(preview
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail.contains("INI")));
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("INI"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2135,16 +2235,20 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert_eq!(preview.detail.as_deref(), Some("Log (structured)"));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("ERROR")));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("request_id")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("ERROR"))
+        );
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("request_id"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2195,11 +2299,13 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert_eq!(preview.detail.as_deref(), Some("Log (best-effort)"));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("starting application")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("starting application"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2239,16 +2345,22 @@ mod tests {
         assert_eq!(preview.kind, PreviewKind::Text);
         assert_eq!(preview.detail.as_deref(), Some("BitTorrent file"));
         assert_eq!(line_texts.first().map(String::as_str), Some("Torrent"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Name") && text.contains("file.txt")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Mode") && text.contains("Single-file")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Name") && text.contains("file.txt"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Mode") && text.contains("Single-file"))
+        );
         assert!(line_texts.iter().any(|text| text.contains("Private")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Trackers") && text.contains("2 across 1 tier")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Trackers") && text.contains("2 across 1 tier"))
+        );
         assert!(line_texts.iter().any(|text| text == "Trackers"));
         assert!(line_texts.iter().any(|text| {
             text.contains("Tier 1") && text.contains("tracker.test") && text.contains("backup.test")
@@ -2322,23 +2434,31 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Text);
         assert_eq!(preview.detail.as_deref(), Some("BitTorrent file"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Mode") && text.contains("Multi-file")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Files") && text.contains("2")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Trackers") && text.contains("3 across 2 tiers")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Mode") && text.contains("Multi-file"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Files") && text.contains("2"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Trackers") && text.contains("3 across 2 tiers"))
+        );
         assert!(line_texts.iter().any(|text| text.contains("Tier 2")));
         assert!(line_texts.iter().any(|text| text.contains("series/")));
         assert!(line_texts.iter().any(|text| text.contains("season-01/")));
         assert!(line_texts.iter().any(|text| text.contains("ep1.mkv")));
         assert!(line_texts.iter().any(|text| text.contains("ep2.mkv")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Privacy") && text.contains("Public")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Privacy") && text.contains("Public"))
+        );
         assert!(!preview.truncated);
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
@@ -2401,21 +2521,31 @@ mod tests {
             true,
         );
 
-        assert!(entries
-            .iter()
-            .any(|entry| entry.path == "docs" && entry.is_dir));
-        assert!(entries
-            .iter()
-            .any(|entry| entry.path == "docs/readme.txt" && !entry.is_dir));
-        assert!(entries
-            .iter()
-            .any(|entry| entry.path == "EFI" && entry.is_dir));
-        assert!(entries
-            .iter()
-            .any(|entry| entry.path == "EFI/BOOT" && entry.is_dir));
-        assert!(entries
-            .iter()
-            .any(|entry| entry.path == "boot.catalog" && !entry.is_dir));
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.path == "docs" && entry.is_dir)
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.path == "docs/readme.txt" && !entry.is_dir)
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.path == "EFI" && entry.is_dir)
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.path == "EFI/BOOT" && entry.is_dir)
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.path == "boot.catalog" && !entry.is_dir)
+        );
     }
 
     #[test]
@@ -2443,12 +2573,16 @@ mod tests {
         assert_eq!(preview.detail.as_deref(), Some("ISO disk image"));
         assert!(header.contains("ISO disk image"));
         assert_eq!(line_texts.first().map(String::as_str), Some("Image"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Volume") && text.contains("ELIO_INSTALL")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text == "Contents" || text.ends_with("Contents")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Volume") && text.contains("ELIO_INSTALL"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text == "Contents" || text.ends_with("Contents"))
+        );
         assert!(line_texts.iter().any(|text| text.contains("boot/")));
         assert!(line_texts.iter().any(|text| text.contains("grub.cfg")));
         assert!(line_texts.iter().any(|text| text.contains("README.txt")));
@@ -2498,16 +2632,20 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Archive);
         assert_eq!(preview.detail.as_deref(), Some("ISO disk image"));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("docs/")));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("readme.txt")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("docs/"))
+        );
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("readme.txt"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2534,9 +2672,11 @@ mod tests {
         assert_eq!(preview.kind, PreviewKind::Archive);
         assert_eq!(preview.detail.as_deref(), Some("ZIP archive"));
         assert!(header.contains("ZIP archive"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Entries") && text.contains("4 total")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Entries") && text.contains("4 total"))
+        );
         assert!(line_texts.iter().any(|text| text.contains("docs/")));
         assert!(line_texts.iter().any(|text| text.contains("src/")));
         assert!(line_texts.iter().any(|text| text.contains("readme.txt")));
@@ -2623,9 +2763,11 @@ mod tests {
         assert!(line_texts
             .iter()
             .any(|text| text.contains("Format") && (text.contains("XZ") || text.contains("xz"))));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("fedora.aarch64.raw")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("fedora.aarch64.raw"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2642,21 +2784,31 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Binary);
         assert_eq!(preview.detail.as_deref(), Some("Windows executable"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Format") && text.contains("PE/COFF")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Architecture") && text.contains("x86_64")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Bits") && text.contains("64-bit")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Subsystem") && text.contains("Console")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Entry Point") && text.contains("0x1230")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Format") && text.contains("PE/COFF"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Architecture") && text.contains("x86_64"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Bits") && text.contains("64-bit"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Subsystem") && text.contains("Console"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Entry Point") && text.contains("0x1230"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2673,18 +2825,26 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Binary);
         assert_eq!(preview.detail.as_deref(), Some("ELF shared object"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Architecture") && text.contains("AArch64")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("ABI") && text.contains("Linux")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Entry Point") && text.contains("0x401000")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Sections") && text.contains("18")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Architecture") && text.contains("AArch64"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("ABI") && text.contains("Linux"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Entry Point") && text.contains("0x401000"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Sections") && text.contains("18"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2701,18 +2861,26 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Binary);
         assert_eq!(preview.detail.as_deref(), Some("Dynamic library"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Format") && text.contains("Mach-O")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Kind") && text.contains("Dynamic library")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Architecture") && text.contains("ARM64")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Load Commands") && text.contains("12")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Format") && text.contains("Mach-O"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Kind") && text.contains("Dynamic library"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Architecture") && text.contains("ARM64"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Load Commands") && text.contains("12"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2729,12 +2897,16 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Binary);
         assert_eq!(preview.detail.as_deref(), Some("DOS executable"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Format") && text.contains("MZ")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Bits") && text.contains("16-bit")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Format") && text.contains("MZ"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Bits") && text.contains("16-bit"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2751,15 +2923,19 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Binary);
         assert_eq!(preview.detail.as_deref(), Some("Mach-O universal binary"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Format") && text.contains("Mach-O (fat)")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Format") && text.contains("Mach-O (fat)"))
+        );
         assert!(line_texts.iter().any(|text| {
             text.contains("Architecture") && text.contains("x86") && text.contains("ARM64")
         }));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Sections") && text.contains("2")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Sections") && text.contains("2"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2786,15 +2962,21 @@ mod tests {
         assert_eq!(preview.kind, PreviewKind::Archive);
         assert_eq!(preview.detail.as_deref(), Some("Java archive"));
         assert!(line_texts.iter().any(|text| text == "Manifest"));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Title") && text.contains("Elio")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Version") && text.contains("1.2.3")));
-        assert!(line_texts
-            .iter()
-            .any(|text| text.contains("Main-Class") && text.contains("elio.Main")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Title") && text.contains("Elio"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Version") && text.contains("1.2.3"))
+        );
+        assert!(
+            line_texts
+                .iter()
+                .any(|text| text.contains("Main-Class") && text.contains("elio.Main"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2843,10 +3025,12 @@ mod tests {
         let preview = build_preview(&file_entry(path));
 
         assert_eq!(preview.kind, PreviewKind::Code);
-        assert!(preview
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail.contains("TOML")));
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("TOML"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -2864,11 +3048,13 @@ mod tests {
         assert_eq!(preview.kind, PreviewKind::Code);
         assert_eq!(preview.detail.as_deref(), Some("JSON (structured)"));
         assert_eq!(preview.source_lines, Some(1));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("nested")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("nested"))
+        );
         assert!(preview.lines.len() > 1);
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
@@ -2978,15 +3164,19 @@ mod tests {
         let preview = build_preview(&file_entry(path));
 
         assert_eq!(preview.kind, PreviewKind::Code);
-        assert!(preview
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail == ".env (structured)"));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("APP_ENV")));
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail == ".env (structured)")
+        );
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("APP_ENV"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -3003,11 +3193,13 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert_eq!(preview.detail.as_deref(), Some("JSONC (structured)"));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("name")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("name"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -3024,11 +3216,13 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert_eq!(preview.detail.as_deref(), Some("JSON5 (structured)"));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("trailing")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("trailing"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -3048,11 +3242,13 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Code);
         assert_eq!(preview.detail.as_deref(), Some("YAML (structured)"));
-        assert!(preview
-            .lines
-            .iter()
-            .flat_map(|line| line.spans.iter())
-            .any(|span| span.content.contains("services")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("services"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -3174,9 +3370,11 @@ mod tests {
         let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
 
         assert_ne!(preview.kind, PreviewKind::Binary);
-        assert!(line_texts
-            .iter()
-            .any(|line| line.contains("Hello from UTF-16")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|line| line.contains("Hello from UTF-16"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -3198,13 +3396,17 @@ mod tests {
         let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
 
         assert_ne!(preview.kind, PreviewKind::Binary);
-        assert!(line_texts
-            .iter()
-            .any(|line| line.contains("launcher started") || line.contains("request_id=42")));
-        assert!(preview
-            .detail
-            .as_deref()
-            .is_some_and(|detail| detail.contains("Log")));
+        assert!(
+            line_texts
+                .iter()
+                .any(|line| line.contains("launcher started") || line.contains("request_id=42"))
+        );
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("Log"))
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -3267,10 +3469,12 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Unavailable);
         assert_eq!(preview.detail.as_deref(), Some("Permission denied"));
-        assert!(preview
-            .lines
-            .iter()
-            .any(|line| line_text(line).contains("permission")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .any(|line| line_text(line).contains("permission"))
+        );
 
         fs::set_permissions(&locked, fs::Permissions::from_mode(0o755))
             .expect("failed to unlock dir");
@@ -3290,10 +3494,12 @@ mod tests {
 
         assert_eq!(preview.kind, PreviewKind::Unavailable);
         assert_eq!(preview.detail.as_deref(), Some("Permission denied"));
-        assert!(preview
-            .lines
-            .iter()
-            .any(|line| line_text(line).contains("permission")));
+        assert!(
+            preview
+                .lines
+                .iter()
+                .any(|line| line_text(line).contains("permission"))
+        );
 
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644))
             .expect("failed to unlock file");

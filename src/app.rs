@@ -1,4 +1,5 @@
 mod actions;
+mod directory_counts;
 mod events;
 mod jobs;
 mod pdf_preview;
@@ -23,7 +24,7 @@ use std::{
 };
 
 pub(crate) use self::support::{
-    format_size, format_time_ago, rect_contains, sanitize_terminal_text,
+    format_item_count, format_size, format_time_ago, rect_contains, sanitize_terminal_text,
 };
 
 const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(450);
@@ -40,6 +41,7 @@ const SEARCH_MATCH_LIMIT: usize = 250;
 const SEARCH_CACHE_LIMIT: usize = 32;
 const PREVIEW_CACHE_LIMIT: usize = 24;
 const PREVIEW_PREFETCH_LIMIT: usize = 2;
+const DIRECTORY_ITEM_COUNT_CACHE_LIMIT: usize = 128;
 const AUTO_RELOAD_INTERVAL: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -274,6 +276,13 @@ struct CachedPreview {
     preview: preview::PreviewContent,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct DirectoryItemCountKey {
+    path: PathBuf,
+    modified: Option<SystemTime>,
+    show_hidden: bool,
+}
+
 #[cfg(test)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PreviewMetricsSnapshot {
@@ -380,6 +389,8 @@ pub struct App {
     preview_load_state: Option<PreviewLoadState>,
     preview_result_cache: HashMap<PathBuf, CachedPreview>,
     preview_result_order: VecDeque<PathBuf>,
+    directory_item_count_cache: HashMap<DirectoryItemCountKey, Option<usize>>,
+    directory_item_count_order: VecDeque<DirectoryItemCountKey>,
     directory_view_memory: HashMap<PathBuf, DirectoryViewMemory>,
     directory_watch_tx: std::sync::mpsc::Sender<watching::DirectoryWatchEvent>,
     directory_watch_rx: std::sync::mpsc::Receiver<watching::DirectoryWatchEvent>,
@@ -434,6 +445,8 @@ impl App {
             preview_load_state: None,
             preview_result_cache: HashMap::new(),
             preview_result_order: VecDeque::new(),
+            directory_item_count_cache: HashMap::new(),
+            directory_item_count_order: VecDeque::new(),
             directory_view_memory: HashMap::new(),
             directory_watch_tx,
             directory_watch_rx,
@@ -487,6 +500,7 @@ impl App {
     pub fn set_frame_state(&mut self, frame_state: FrameState) -> bool {
         self.frame_state = frame_state;
         let dirty = self.sync_scroll() | self.sync_search_scroll() | self.sync_preview_scroll();
+        self.queue_visible_directory_item_counts();
         self.remember_current_directory_view();
         dirty
     }

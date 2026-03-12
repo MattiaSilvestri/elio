@@ -1,4 +1,4 @@
-use super::{format_hex, read_u16, read_u32, read_u64, BinaryMetadata, ByteOrder};
+use super::{BinaryMetadata, ByteOrder, format_hex, read_u16, read_u32, read_u64};
 
 pub(super) fn parse(bytes: &[u8]) -> Option<BinaryMetadata> {
     if bytes.get(0..4) != Some(b"\x7FELF".as_slice()) {

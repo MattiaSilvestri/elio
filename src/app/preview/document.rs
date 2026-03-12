@@ -1,6 +1,6 @@
 use super::{PreviewContent, PreviewKind};
 use crate::{appearance, file_facts::DocumentFormat};
-use quick_xml::{events::Event, Reader};
+use quick_xml::{Reader, events::Event};
 use ratatui::{
     style::Style,
     text::{Line, Span},

@@ -73,6 +73,13 @@ pub(crate) fn format_size(size: u64) -> String {
     format!("{} {}", format_decimal(value, precision), UNITS[unit])
 }
 
+pub(crate) fn format_item_count(count: usize) -> String {
+    match count {
+        1 => "1 item".to_string(),
+        _ => format!("{} items", format_with_grouping(count as u64)),
+    }
+}
+
 pub(crate) fn format_time_ago(time: SystemTime) -> String {
     let Ok(age) = SystemTime::now().duration_since(time) else {
         return "just now".to_string();
@@ -244,6 +251,21 @@ pub(super) fn scan_directory_fingerprint(
         });
     }
     Ok(fingerprint_from_parts(&mut parts))
+}
+
+pub(super) fn count_directory_items(dir: &Path, show_hidden: bool) -> io::Result<usize> {
+    let mut count = 0usize;
+    for item in fs::read_dir(dir)? {
+        let item = match item {
+            Ok(item) => item,
+            Err(_) => continue,
+        };
+        if !show_hidden && is_hidden(item.file_name().as_os_str()) {
+            continue;
+        }
+        count += 1;
+    }
+    Ok(count)
 }
 
 pub(super) fn sort_entries(entries: &mut [Entry], mode: SortMode) {
@@ -419,6 +441,13 @@ mod tests {
         assert_eq!(format_size(2_048), "2.05 kB");
         assert_eq!(format_size(5_488), "5.49 kB");
         assert_eq!(format_size(12_345_678), "12.3 MB");
+    }
+
+    #[test]
+    fn item_count_format_uses_singular_and_grouping() {
+        assert_eq!(format_item_count(1), "1 item");
+        assert_eq!(format_item_count(24), "24 items");
+        assert_eq!(format_item_count(1_234), "1,234 items");
     }
 
     #[test]

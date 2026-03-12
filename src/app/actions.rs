@@ -1,5 +1,5 @@
 use super::*;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use std::path::{Path, PathBuf};
 
 impl App {
@@ -73,14 +73,6 @@ impl App {
         self.preview_cache
             .max_line_width()
             .saturating_sub(visible_cols.max(1))
-    }
-
-    pub fn preview_directory_counts(&self) -> Option<(usize, usize, usize)> {
-        Some((
-            self.preview_cache.item_count?,
-            self.preview_cache.folder_count?,
-            self.preview_cache.file_count?,
-        ))
     }
 
     pub fn preview_header_detail(&self, visible_rows: usize) -> Option<String> {

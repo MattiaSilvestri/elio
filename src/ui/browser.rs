@@ -1,15 +1,14 @@
 use super::theme::Palette;
 use super::{helpers, theme};
 use crate::app::{
-    format_size, format_time_ago, App, Entry, EntryHit, FrameState, PathHit, ViewMetrics,
+    App, Entry, EntryHit, FrameState, PathHit, ViewMetrics, format_size, format_time_ago,
 };
-use crate::appearance;
 use ratatui::{
+    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
-    Frame,
 };
 
 pub(super) fn render_body(
@@ -197,6 +196,7 @@ fn render_grid(
         render_tile(
             frame,
             rect,
+            app,
             entry,
             entry_index == app.selected,
             palette,
@@ -212,6 +212,7 @@ fn render_grid(
 fn render_tile(
     frame: &mut Frame<'_>,
     rect: Rect,
+    app: &App,
     entry: &Entry,
     selected: bool,
     palette: Palette,
@@ -285,11 +286,8 @@ fn render_tile(
         width: content_inner.width,
         height: content_inner.height,
     };
-    let detail = (!entry.is_dir()).then(|| format_size(entry.size));
-    let modified = entry
-        .modified
-        .map(format_time_ago)
-        .unwrap_or_else(|| "unknown".to_string());
+    let detail = browser_entry_detail(app, entry);
+    let modified = browser_entry_modified(entry);
     let mut lines = Vec::new();
     if spec.show_kind_hint {
         lines.push(Line::from(Span::styled(
@@ -411,24 +409,15 @@ fn render_list(
                 columns[2],
             );
             frame.render_widget(
-                Paragraph::new(if entry.is_dir() {
-                    String::new()
-                } else {
-                    format_size(entry.size)
-                })
-                .alignment(Alignment::Right)
-                .style(Style::default().bg(bg).fg(palette.muted)),
+                Paragraph::new(browser_entry_detail(app, entry).unwrap_or_default())
+                    .alignment(Alignment::Right)
+                    .style(Style::default().bg(bg).fg(palette.muted)),
                 columns[3],
             );
             frame.render_widget(
-                Paragraph::new(
-                    entry
-                        .modified
-                        .map(format_time_ago)
-                        .unwrap_or_else(|| "unknown".to_string()),
-                )
-                .alignment(Alignment::Right)
-                .style(Style::default().bg(bg).fg(palette.muted)),
+                Paragraph::new(browser_entry_modified(entry))
+                    .alignment(Alignment::Right)
+                    .style(Style::default().bg(bg).fg(palette.muted)),
                 columns[4],
             );
         } else {
@@ -444,26 +433,16 @@ fn render_list(
                 ),
                 columns[0],
             );
-            let secondary = if row_height >= 3 {
-                if entry.is_dir() {
-                    entry
-                        .modified
-                        .map(format_time_ago)
-                        .unwrap_or_else(|| "unknown".to_string())
-                } else {
-                    format!(
-                        "{}  •  {}",
-                        format_size(entry.size),
-                        entry
-                            .modified
-                            .map(format_time_ago)
-                            .unwrap_or_else(|| "unknown".to_string())
-                    )
-                }
-            } else if entry.is_dir() {
-                String::new()
+            let secondary = if entry.is_dir() {
+                browser_directory_secondary(app, entry)
+            } else if row_height >= 3 {
+                format!(
+                    "{}  •  {}",
+                    browser_entry_detail(app, entry).unwrap_or_default(),
+                    browser_entry_modified(entry)
+                )
             } else {
-                format_size(entry.size)
+                browser_entry_detail(app, entry).unwrap_or_default()
             };
             frame.render_widget(
                 Paragraph::new(vec![
@@ -524,7 +503,7 @@ fn render_preview(
     } else {
         Line::from(vec![
             Span::styled(
-                " Details ",
+                " Preview ",
                 Style::default()
                     .fg(palette.accent_text)
                     .add_modifier(Modifier::BOLD),
@@ -547,61 +526,9 @@ fn render_preview(
         return;
     };
 
-    let sections = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(inner.height.min(3)), Constraint::Min(0)])
-        .split(inner);
-
-    render_preview_details(frame, sections[0], app, entry, palette);
-    if sections[1].height > 0 {
-        state.preview_rows_visible = sections[1].height.saturating_sub(1) as usize;
-        render_preview_body(frame, sections[1], app, state, entry, palette);
+    if inner.height > 0 {
+        render_preview_body(frame, inner, app, state, entry, palette);
     }
-}
-
-fn render_preview_details(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    app: &App,
-    entry: &Entry,
-    palette: Palette,
-) {
-    helpers::fill_area(frame, area, palette.panel, palette.text);
-    let mut lines = vec![
-        preview_stat_line(
-            "Type",
-            appearance::type_label_for_path(&entry.path, entry.kind).to_string(),
-            palette,
-        ),
-        preview_stat_line(
-            "Size",
-            if entry.is_dir() {
-                "folder".to_string()
-            } else {
-                format_size(entry.size)
-            },
-            palette,
-        ),
-        preview_stat_line(
-            "Modified",
-            entry
-                .modified
-                .map(format_time_ago)
-                .unwrap_or_else(|| "unknown".to_string()),
-            palette,
-        ),
-    ];
-
-    if let Some((items, _folders, _files)) = app.preview_directory_counts() {
-        lines[1] = preview_stat_line("Items", items.to_string(), palette);
-    }
-
-    frame.render_widget(
-        Paragraph::new(lines)
-            .style(Style::default().bg(palette.panel).fg(palette.text))
-            .wrap(Wrap { trim: false }),
-        area,
-    );
 }
 
 fn render_preview_body(
@@ -616,6 +543,7 @@ fn render_preview_body(
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Min(0)])
         .split(area);
+    state.preview_rows_visible = sections[1].height as usize;
     helpers::fill_area(frame, sections[0], palette.panel, palette.text);
     if sections[1].height > 0 {
         helpers::fill_area(frame, sections[1], palette.panel, palette.text);
@@ -688,11 +616,26 @@ fn render_preview_body(
     }
 }
 
-fn preview_stat_line(label: &str, value: String, palette: Palette) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(format!("{label:<9}"), Style::default().fg(palette.muted)),
-        Span::styled(value, Style::default().fg(palette.text)),
-    ])
+fn browser_entry_detail(app: &App, entry: &Entry) -> Option<String> {
+    if entry.is_dir() {
+        app.directory_item_count_label(entry)
+    } else {
+        Some(format_size(entry.size))
+    }
+}
+
+fn browser_entry_modified(entry: &Entry) -> String {
+    entry
+        .modified
+        .map(format_time_ago)
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn browser_directory_secondary(app: &App, entry: &Entry) -> String {
+    match app.directory_item_count_label(entry) {
+        Some(count) => format!("{count}  •  {}", browser_entry_modified(entry)),
+        None => browser_entry_modified(entry),
+    }
 }
 
 fn render_preview_scrollbar(
@@ -758,7 +701,7 @@ mod tests {
     use super::*;
     use crate::ui;
     use crossterm::event::{Event, KeyCode, KeyEvent};
-    use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
+    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
     use std::{
         fs,
         path::PathBuf,
@@ -780,6 +723,16 @@ mod tests {
             .expect("ui should render");
         app.set_frame_state(frame_state.clone());
         frame_state
+    }
+
+    fn wait_for_directory_counts(app: &mut App) {
+        for _ in 0..100 {
+            if app.process_background_jobs() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("timed out waiting for directory counts");
     }
 
     fn row_text(buffer: &Buffer, y: u16) -> String {
@@ -860,7 +813,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_details_do_not_render_access_metadata() {
+    fn preview_panel_does_not_repeat_generic_metadata() {
         let root = temp_path("preview-details");
         fs::create_dir_all(&root).expect("failed to create temp root");
         fs::write(root.join("report.txt"), "hello\n").expect("failed to write temp file");
@@ -872,16 +825,40 @@ mod tests {
         let rendered = buffer_text(terminal.backend().buffer());
 
         assert!(
-            !rendered.contains("Access"),
-            "preview details should no longer include access metadata, got: {rendered:?}"
+            !rendered.contains("Type     "),
+            "preview panel should not repeat generic type metadata, got: {rendered:?}"
         );
         assert!(
-            !rendered.contains("read/write"),
-            "preview details should no longer include access metadata, got: {rendered:?}"
+            !rendered.contains("Size     "),
+            "preview panel should not repeat generic size metadata, got: {rendered:?}"
         );
         assert!(
-            !rendered.contains("readonly"),
-            "preview details should no longer include access metadata, got: {rendered:?}"
+            !rendered.contains("Modified "),
+            "preview panel should not repeat generic modified metadata, got: {rendered:?}"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn visible_directory_rows_show_cached_item_counts() {
+        let root = temp_path("directory-counts");
+        let photos = root.join("photos");
+        fs::create_dir_all(&photos).expect("failed to create folder");
+        fs::write(photos.join("one.jpg"), "a").expect("failed to write first file");
+        fs::write(photos.join("two.jpg"), "b").expect("failed to write second file");
+
+        let mut app = App::new_at(root.clone()).expect("app should load temp directory");
+        let mut terminal = Terminal::new(TestBackend::new(90, 24)).expect("terminal should init");
+
+        draw_ui(&mut terminal, &mut app);
+        wait_for_directory_counts(&mut app);
+        draw_ui(&mut terminal, &mut app);
+
+        let rendered = buffer_text(terminal.backend().buffer());
+        assert!(
+            rendered.contains("2 items"),
+            "expected visible directory rows to show cached item counts, got: {rendered:?}"
         );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");

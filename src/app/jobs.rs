@@ -4,14 +4,16 @@ use std::{
     collections::{HashSet, VecDeque},
     hash::Hash,
     path::PathBuf,
-    sync::{mpsc, Arc, Condvar, Mutex, MutexGuard},
+    sync::{Arc, Condvar, Mutex, MutexGuard, mpsc},
     thread,
     time::{Duration, Instant, SystemTime},
 };
 
 const PREVIEW_WORKER_COUNT: usize = 2;
 const SEARCH_WORKER_COUNT: usize = 1;
+const DIRECTORY_ITEM_COUNT_WORKER_COUNT: usize = 1;
 const PREVIEW_QUEUE_LIMIT: usize = 8;
+const DIRECTORY_ITEM_COUNT_QUEUE_LIMIT: usize = 48;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PreviewPriority {
@@ -50,6 +52,21 @@ pub(super) struct DirectoryRequest {
 }
 
 #[derive(Debug)]
+pub(super) struct DirectoryItemCountBuild {
+    pub path: PathBuf,
+    pub modified: Option<SystemTime>,
+    pub show_hidden: bool,
+    pub item_count: Option<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct DirectoryItemCountRequest {
+    pub path: PathBuf,
+    pub modified: Option<SystemTime>,
+    pub show_hidden: bool,
+}
+
+#[derive(Debug)]
 pub(super) struct PreviewBuild {
     pub token: u64,
     pub entry: Entry,
@@ -66,6 +83,7 @@ pub(super) struct PreviewRequest {
 #[derive(Debug)]
 pub(super) enum JobResult {
     Directory(DirectoryBuild),
+    DirectoryItemCount(DirectoryItemCountBuild),
     Search(SearchBuild),
     Preview(Box<PreviewBuild>),
 }
@@ -91,6 +109,7 @@ pub struct SchedulerMetricsSnapshot {
 
 pub(super) struct JobScheduler {
     directory: DirectoryPool,
+    directory_item_count: DirectoryItemCountPool,
     search: SearchPool,
     preview: PreviewPool,
     result_rx: mpsc::Receiver<JobResult>,
@@ -104,6 +123,8 @@ impl JobScheduler {
             SEARCH_WORKER_COUNT,
             PREVIEW_WORKER_COUNT,
             PREVIEW_QUEUE_LIMIT,
+            DIRECTORY_ITEM_COUNT_WORKER_COUNT,
+            DIRECTORY_ITEM_COUNT_QUEUE_LIMIT,
         )
     }
 
@@ -111,11 +132,18 @@ impl JobScheduler {
         search_worker_count: usize,
         preview_worker_count: usize,
         preview_queue_limit: usize,
+        directory_item_count_worker_count: usize,
+        directory_item_count_queue_limit: usize,
     ) -> Self {
         let (result_tx, result_rx) = mpsc::channel();
         let metrics = Arc::new(Mutex::new(SchedulerMetrics::default()));
         Self {
             directory: DirectoryPool::new(1, result_tx.clone(), Arc::clone(&metrics)),
+            directory_item_count: DirectoryItemCountPool::new(
+                directory_item_count_worker_count,
+                directory_item_count_queue_limit,
+                result_tx.clone(),
+            ),
             search: SearchPool::new(search_worker_count, result_tx.clone(), Arc::clone(&metrics)),
             preview: PreviewPool::new(
                 preview_worker_count,
@@ -133,6 +161,10 @@ impl JobScheduler {
         self.directory.submit(request)
     }
 
+    pub(super) fn submit_directory_item_count(&self, request: DirectoryItemCountRequest) -> bool {
+        self.directory_item_count.submit(request)
+    }
+
     pub(super) fn submit_search(&self, request: SearchRequest) -> bool {
         self.search.submit(request)
     }
@@ -147,6 +179,7 @@ impl JobScheduler {
 
     pub(super) fn has_pending_work(&self) -> bool {
         self.directory.has_pending_work()
+            || self.directory_item_count.has_pending_work()
             || self.search.has_pending_work()
             || self.preview.has_pending_work()
     }
@@ -170,6 +203,8 @@ impl JobScheduler {
             search_worker_count,
             preview_worker_count,
             preview_queue_limit,
+            DIRECTORY_ITEM_COUNT_WORKER_COUNT,
+            DIRECTORY_ITEM_COUNT_QUEUE_LIMIT,
         )
     }
 
@@ -392,6 +427,147 @@ impl DirectoryJobKey {
             cwd: request.cwd.clone(),
             show_hidden: request.show_hidden,
             sort_mode: request.sort_mode,
+        }
+    }
+}
+
+struct DirectoryItemCountPool {
+    shared: Arc<DirectoryItemCountShared>,
+    workers: Vec<thread::JoinHandle<()>>,
+}
+
+struct DirectoryItemCountShared {
+    state: Mutex<DirectoryItemCountState>,
+    available: Condvar,
+}
+
+struct DirectoryItemCountState {
+    pending: VecDeque<DirectoryItemCountRequest>,
+    queued_keys: HashSet<DirectoryItemCountJobKey>,
+    active_keys: HashSet<DirectoryItemCountJobKey>,
+    closed: bool,
+    capacity: usize,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct DirectoryItemCountJobKey {
+    path: PathBuf,
+    modified: Option<SystemTime>,
+    show_hidden: bool,
+}
+
+impl DirectoryItemCountPool {
+    fn new(worker_count: usize, capacity: usize, result_tx: mpsc::Sender<JobResult>) -> Self {
+        let shared = Arc::new(DirectoryItemCountShared {
+            state: Mutex::new(DirectoryItemCountState {
+                pending: VecDeque::new(),
+                queued_keys: HashSet::new(),
+                active_keys: HashSet::new(),
+                closed: false,
+                capacity,
+            }),
+            available: Condvar::new(),
+        });
+        let mut workers = Vec::with_capacity(worker_count);
+        for _ in 0..worker_count {
+            let shared = Arc::clone(&shared);
+            let result_tx = result_tx.clone();
+            workers.push(thread::spawn(move || {
+                while let Some(request) = DirectoryItemCountShared::pop(&shared) {
+                    let key = DirectoryItemCountJobKey::from_request(&request);
+                    let item_count =
+                        support::count_directory_items(&request.path, request.show_hidden).ok();
+                    DirectoryItemCountShared::finish(&shared, &key);
+                    if result_tx
+                        .send(JobResult::DirectoryItemCount(DirectoryItemCountBuild {
+                            path: request.path,
+                            modified: request.modified,
+                            show_hidden: request.show_hidden,
+                            item_count,
+                        }))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }));
+        }
+        Self { shared, workers }
+    }
+
+    fn submit(&self, request: DirectoryItemCountRequest) -> bool {
+        let key = DirectoryItemCountJobKey::from_request(&request);
+        let mut state = lock_unpoison(&self.shared.state);
+        if state.closed {
+            return false;
+        }
+        if state.queued_keys.contains(&key) || state.active_keys.contains(&key) {
+            return true;
+        }
+        while state.pending.len() >= state.capacity {
+            let Some(stale) = state.pending.pop_front() else {
+                break;
+            };
+            state
+                .queued_keys
+                .remove(&DirectoryItemCountJobKey::from_request(&stale));
+        }
+        state.queued_keys.insert(key);
+        state.pending.push_back(request);
+        self.shared.available.notify_one();
+        true
+    }
+
+    fn has_pending_work(&self) -> bool {
+        let state = lock_unpoison(&self.shared.state);
+        !state.pending.is_empty() || !state.active_keys.is_empty()
+    }
+}
+
+impl Drop for DirectoryItemCountPool {
+    fn drop(&mut self) {
+        {
+            let mut state = lock_unpoison(&self.shared.state);
+            state.closed = true;
+            state.pending.clear();
+            state.queued_keys.clear();
+        }
+        self.shared.available.notify_all();
+        for worker in self.workers.drain(..) {
+            let _ = worker.join();
+        }
+    }
+}
+
+impl DirectoryItemCountShared {
+    fn pop(shared: &Arc<Self>) -> Option<DirectoryItemCountRequest> {
+        let mut state = lock_unpoison(&shared.state);
+        loop {
+            if state.closed {
+                return None;
+            }
+            if let Some(request) = state.pending.pop_front() {
+                let key = DirectoryItemCountJobKey::from_request(&request);
+                state.queued_keys.remove(&key);
+                state.active_keys.insert(key);
+                return Some(request);
+            }
+            state = wait_unpoison(&shared.available, state);
+        }
+    }
+
+    fn finish(shared: &Arc<Self>, key: &DirectoryItemCountJobKey) {
+        let mut state = lock_unpoison(&shared.state);
+        state.active_keys.remove(key);
+    }
+}
+
+impl DirectoryItemCountJobKey {
+    fn from_request(request: &DirectoryItemCountRequest) -> Self {
+        Self {
+            path: request.path.clone(),
+            modified: request.modified,
+            show_hidden: request.show_hidden,
         }
     }
 }

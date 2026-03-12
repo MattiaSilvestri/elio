@@ -191,13 +191,7 @@ pub(crate) fn resolve_path(path: &Path, kind: EntryKind) -> ResolvedAppearance<'
     active_theme().resolve(path, kind)
 }
 
-pub(crate) fn type_label_for_path(path: &Path, kind: EntryKind) -> &'static str {
-    specific_type_label(path, kind).unwrap_or(match kind {
-        EntryKind::Directory => "Folder",
-        EntryKind::File => "File",
-    })
-}
-
+#[cfg(test)]
 pub(crate) fn specific_type_label(path: &Path, kind: EntryKind) -> Option<&'static str> {
     file_facts::inspect_path(path, kind).specific_type_label
 }

@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use crossterm::terminal;
 use ratatui::layout::Rect;
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap, VecDeque},
+    collections::{HashMap, VecDeque, hash_map::DefaultHasher},
     env, fs,
     hash::{Hash, Hasher},
     path::{Path, PathBuf},

@@ -1,4 +1,4 @@
-use super::{read_u32, BinaryMetadata, ByteOrder};
+use super::{BinaryMetadata, ByteOrder, read_u32};
 
 pub(super) fn parse(bytes: &[u8]) -> Option<BinaryMetadata> {
     match bytes.get(0..4)? {
