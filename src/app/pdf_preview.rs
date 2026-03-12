@@ -39,7 +39,7 @@ const PDF_RENDER_MIN_DIMENSION_PX: u32 = 96;
 const PDF_PAGE_MIN: usize = 1;
 const PDF_PAGE_STATUS_PREFIX: &str = "PDF page ";
 const PDF_PREFETCH_DISTANCE: usize = 1;
-const PDF_SELECTION_ACTIVATION_DELAY: Duration = Duration::from_millis(60);
+const PDF_SELECTION_ACTIVATION_DELAY: Duration = Duration::from_millis(35);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum TerminalImageBackend {

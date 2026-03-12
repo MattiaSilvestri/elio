@@ -13,7 +13,7 @@ use std::{
 const PREVIEW_WORKER_COUNT: usize = 2;
 const SEARCH_WORKER_COUNT: usize = 1;
 const DIRECTORY_ITEM_COUNT_WORKER_COUNT: usize = 1;
-const PDF_PROBE_WORKER_COUNT: usize = 1;
+const PDF_PROBE_WORKER_COUNT: usize = 2;
 const PDF_RENDER_WORKER_COUNT: usize = 2;
 const PREVIEW_QUEUE_LIMIT: usize = 8;
 const DIRECTORY_ITEM_COUNT_QUEUE_LIMIT: usize = 48;

@@ -30,7 +30,7 @@ pub(crate) use self::support::{
 const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(450);
 const WHEEL_SCROLL_INTERVAL_HORIZONTAL: Duration = Duration::from_millis(64);
 const WHEEL_SCROLL_INTERVAL_VERTICAL: Duration = Duration::from_millis(28);
-const WHEEL_SCROLL_INTERVAL_VERTICAL_HIGH_FREQUENCY: Duration = Duration::from_millis(36);
+const WHEEL_SCROLL_INTERVAL_VERTICAL_HIGH_FREQUENCY: Duration = Duration::from_millis(28);
 const WHEEL_SCROLL_INTERVAL_PREVIEW: Duration = Duration::from_millis(12);
 const WHEEL_SCROLL_INTERVAL_PREVIEW_HORIZONTAL: Duration = Duration::from_millis(12);
 const WHEEL_SCROLL_INTERVAL_SEARCH: Duration = Duration::from_millis(72);
