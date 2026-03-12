@@ -32,6 +32,17 @@ impl App {
     }
 
     pub(super) fn queue_visible_directory_item_counts(&mut self) {
+        let viewport = DirectoryCountViewport {
+            fingerprint: self.directory_runtime.fingerprint,
+            scroll_row: self.scroll_row,
+            cols: self.frame_state.metrics.cols.max(1),
+            rows_visible: self.frame_state.metrics.rows_visible.max(1),
+        };
+        if self.directory_count_viewport == Some(viewport) {
+            return;
+        }
+        self.directory_count_viewport = Some(viewport);
+
         let requests = self
             .visible_entry_indices()
             .into_iter()

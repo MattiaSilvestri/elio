@@ -92,6 +92,7 @@ impl App {
     }
 
     pub(super) fn refresh_preview(&mut self) {
+        self.preview_state.deferred_refresh_at = None;
         self.sync_pdf_preview_selection();
         self.preview_state.token = self.preview_state.token.wrapping_add(1);
         self.preview_state.content = match self.selected_entry().cloned() {
@@ -148,6 +149,23 @@ impl App {
         self.preview_state.horizontal_scroll = 0;
         self.sync_preview_scroll();
         self.prefetch_nearby_previews();
+    }
+
+    pub(crate) fn process_preview_refresh_timers(&mut self) -> bool {
+        let Some(deadline) = self.preview_state.deferred_refresh_at else {
+            return false;
+        };
+        if Instant::now() < deadline {
+            return false;
+        }
+        self.refresh_preview();
+        true
+    }
+
+    pub(crate) fn pending_preview_refresh_timer(&self) -> Option<std::time::Duration> {
+        self.preview_state
+            .deferred_refresh_at
+            .map(|deadline| deadline.saturating_duration_since(Instant::now()))
     }
 
     fn cached_preview_for(&self, entry: &Entry) -> Option<preview::PreviewContent> {
@@ -419,11 +437,21 @@ impl App {
     }
 
     pub(super) fn set_selected(&mut self, index: usize) {
+        self.set_selected_with_preview_mode(index, PreviewRefreshMode::Immediate);
+    }
+
+    fn set_selected_with_preview_mode(&mut self, index: usize, preview_mode: PreviewRefreshMode) {
         let next = index.min(self.entries.len().saturating_sub(1));
         if next != self.selected {
             self.selected = next;
             self.last_selection_change_at = Instant::now();
-            self.refresh_preview();
+            match preview_mode {
+                PreviewRefreshMode::Immediate => self.refresh_preview(),
+                PreviewRefreshMode::Deferred => {
+                    self.preview_state.deferred_refresh_at =
+                        Some(Instant::now() + HIGH_FREQUENCY_PREVIEW_REFRESH_DELAY);
+                }
+            }
         } else {
             self.selected = next;
         }
@@ -439,15 +467,24 @@ impl App {
     }
 
     pub(super) fn set_selected_delta(&mut self, delta: isize) {
+        self.set_selected_delta_with_preview_mode(delta, PreviewRefreshMode::Immediate);
+    }
+
+    fn set_selected_delta_with_preview_mode(
+        &mut self,
+        delta: isize,
+        preview_mode: PreviewRefreshMode,
+    ) {
         if self.entries.is_empty() {
             self.selected = 0;
             self.preview_state.content = preview::PreviewContent::placeholder("No selection");
+            self.preview_state.deferred_refresh_at = None;
             return;
         }
 
         let max_index = self.entries.len().saturating_sub(1) as isize;
         let next = (self.selected as isize + delta).clamp(0, max_index) as usize;
-        self.set_selected(next);
+        self.set_selected_with_preview_mode(next, preview_mode);
     }
 
     pub(super) fn page(&mut self, direction: isize) {
@@ -460,10 +497,18 @@ impl App {
     }
 
     pub(super) fn move_vertical(&mut self, rows: isize) {
+        self.move_vertical_with_preview_mode(rows, PreviewRefreshMode::Immediate);
+    }
+
+    pub(super) fn move_vertical_with_preview_mode(
+        &mut self,
+        rows: isize,
+        preview_mode: PreviewRefreshMode,
+    ) {
         if self.view_mode == ViewMode::Grid {
-            self.move_grid_vertical(rows);
+            self.move_grid_vertical_with_preview_mode(rows, preview_mode);
         } else {
-            self.set_selected_delta(rows);
+            self.set_selected_delta_with_preview_mode(rows, preview_mode);
         }
     }
 
@@ -472,6 +517,14 @@ impl App {
     }
 
     pub(super) fn move_grid_vertical(&mut self, rows: isize) {
+        self.move_grid_vertical_with_preview_mode(rows, PreviewRefreshMode::Immediate);
+    }
+
+    fn move_grid_vertical_with_preview_mode(
+        &mut self,
+        rows: isize,
+        preview_mode: PreviewRefreshMode,
+    ) {
         if self.entries.is_empty() {
             self.selected = 0;
             return;
@@ -492,7 +545,7 @@ impl App {
             return;
         }
 
-        self.set_selected(target_index);
+        self.set_selected_with_preview_mode(target_index, preview_mode);
     }
 
     pub(super) fn adjust_zoom(&mut self, delta: i8) {

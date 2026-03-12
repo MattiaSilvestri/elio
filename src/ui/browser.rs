@@ -361,65 +361,11 @@ fn render_list(
         };
         if row_height == 1 {
             frame.render_widget(
-                Block::default().style(Style::default().bg(bg).fg(palette.text)),
-                row,
-            );
-            let columns = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([
-                    Constraint::Length(1),
-                    Constraint::Length(3),
-                    Constraint::Min(8),
-                    Constraint::Length(12),
-                    Constraint::Length(10),
-                ])
-                .split(row);
-
-            frame.render_widget(
-                Paragraph::new("▌").alignment(Alignment::Left).style(
-                    Style::default()
-                        .bg(bg)
-                        .fg(if selected { palette.accent } else { bg }),
-                ),
-                columns[0],
-            );
-            frame.render_widget(
-                Paragraph::new(Line::from(vec![
-                    Span::raw(" "),
-                    Span::styled(
-                        theme::entry_symbol(entry),
-                        Style::default().fg(icon_color).add_modifier(Modifier::BOLD),
-                    ),
-                ]))
-                .style(Style::default().bg(bg).fg(palette.text)),
-                columns[1],
-            );
-            frame.render_widget(
-                Paragraph::new(helpers::clamp_label(
-                    &entry.name,
-                    columns[2].width.saturating_sub(1) as usize,
+                Paragraph::new(render_compact_list_row(
+                    app, entry, selected, row.width, palette,
                 ))
-                .style(if selected {
-                    Style::default()
-                        .bg(bg)
-                        .fg(palette.text)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().bg(bg).fg(palette.text)
-                }),
-                columns[2],
-            );
-            frame.render_widget(
-                Paragraph::new(browser_entry_detail(app, entry).unwrap_or_default())
-                    .alignment(Alignment::Right)
-                    .style(Style::default().bg(bg).fg(palette.muted)),
-                columns[3],
-            );
-            frame.render_widget(
-                Paragraph::new(browser_entry_modified(entry))
-                    .alignment(Alignment::Right)
-                    .style(Style::default().bg(bg).fg(palette.muted)),
-                columns[4],
+                .style(Style::default().bg(bg).fg(palette.text)),
+                row,
             );
         } else {
             let columns = Layout::default()
@@ -589,6 +535,19 @@ fn render_preview_body(
         sections[0],
     );
 
+    if app.browser_wheel_burst_active() {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                "Scrolling...",
+                Style::default().fg(palette.muted),
+            )))
+            .style(Style::default().bg(palette.panel).fg(palette.text))
+            .alignment(Alignment::Center),
+            text_area,
+        );
+        return;
+    }
+
     if app.preview_prefers_pdf_surface() {
         if let Some(message) = app.pdf_preview_placeholder_message() {
             frame.render_widget(
@@ -710,6 +669,73 @@ fn render_preview_scrollbar(
         .style(Style::default().bg(palette.panel)),
         thumb,
     );
+}
+
+fn render_compact_list_row(
+    app: &App,
+    entry: &Entry,
+    selected: bool,
+    row_width: u16,
+    palette: Palette,
+) -> Line<'static> {
+    let detail_width = 12usize;
+    let modified_width = 10usize;
+    let marker = if selected { "▌" } else { " " };
+    let icon = theme::entry_symbol(entry);
+    let icon_style = Style::default()
+        .fg(theme::entry_color(entry, palette))
+        .add_modifier(Modifier::BOLD);
+    let name_style = if selected {
+        Style::default()
+            .fg(palette.text)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(palette.text)
+    };
+    let muted_style = Style::default().fg(palette.muted);
+    let name_width = row_width
+        .saturating_sub(1 + 3 + detail_width as u16 + modified_width as u16)
+        .max(1) as usize;
+    let name = helpers::clamp_label(&entry.name, name_width);
+    let detail = pad_left(
+        browser_entry_detail(app, entry).unwrap_or_default(),
+        detail_width,
+    );
+    let modified = pad_left(browser_entry_modified(entry), modified_width);
+
+    Line::from(vec![
+        Span::styled(
+            marker,
+            Style::default().fg(if selected {
+                palette.accent
+            } else {
+                palette.panel_alt
+            }),
+        ),
+        Span::raw(" "),
+        Span::styled(icon.to_string(), icon_style),
+        Span::raw(" "),
+        Span::styled(pad_right(name, name_width), name_style),
+        Span::styled(detail, muted_style),
+        Span::styled(modified, muted_style),
+    ])
+}
+
+fn pad_left(mut text: String, width: usize) -> String {
+    let visible = text.chars().count();
+    if visible >= width {
+        return helpers::clamp_label(&text, width);
+    }
+    text = format!("{}{}", " ".repeat(width - visible), text);
+    text
+}
+
+fn pad_right(text: String, width: usize) -> String {
+    let visible = text.chars().count();
+    if visible >= width {
+        return text;
+    }
+    format!("{text}{}", " ".repeat(width - visible))
 }
 
 #[cfg(test)]

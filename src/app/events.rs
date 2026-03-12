@@ -51,11 +51,11 @@ const SEARCH_WHEEL_TUNING: WheelTuning = WheelTuning {
     fast_divisor: 3,
 };
 const HIGH_FREQUENCY_ENTRY_WHEEL_TUNING: WheelTuning = WheelTuning {
-    queue_limit: 4,
-    medium_threshold: 2,
-    fast_threshold: 4,
-    medium_divisor: 4,
-    fast_divisor: 8,
+    queue_limit: 16,
+    medium_threshold: 4,
+    fast_threshold: 8,
+    medium_divisor: 1,
+    fast_divisor: 1,
 };
 const HIGH_FREQUENCY_ENTRY_HORIZONTAL_WHEEL_TUNING: WheelTuning = WheelTuning {
     queue_limit: 2,
@@ -372,6 +372,8 @@ impl App {
                 {
                     let tuning = self.entry_horizontal_wheel_tuning();
                     Self::queue_scroll(&mut self.wheel_scroll.horizontal, delta, tuning);
+                } else if self.wheel_profile == WheelProfile::HighFrequency {
+                    let _ = self.scroll_entry_immediately(delta);
                 } else {
                     let tuning = self.entry_wheel_tuning();
                     Self::queue_scroll(&mut self.wheel_scroll.vertical, delta, tuning);
@@ -422,25 +424,11 @@ impl App {
     }
 
     fn queue_scroll(lane: &mut ScrollLane, delta: isize, tuning: WheelTuning) {
-        let now = Instant::now();
-        let direction = delta.signum();
-        let continuing_burst = lane.last_input_direction == direction
-            && lane
-                .last_input_at
-                .is_some_and(|at| now.duration_since(at) <= WHEEL_SCROLL_BURST_WINDOW);
+        let burst_count = Self::register_scroll_input(lane, delta);
 
-        if continuing_burst {
-            lane.burst_count = lane.burst_count.saturating_add(1);
-        } else {
-            lane.remainder = 0;
-            lane.burst_count = 1;
-        }
-        lane.last_input_at = Some(now);
-        lane.last_input_direction = direction;
-
-        let divisor = if lane.burst_count >= tuning.fast_threshold {
+        let divisor = if burst_count >= tuning.fast_threshold {
             tuning.fast_divisor
-        } else if lane.burst_count >= tuning.medium_threshold {
+        } else if burst_count >= tuning.medium_threshold {
             tuning.medium_divisor
         } else {
             1
@@ -457,6 +445,25 @@ impl App {
             lane.pending = (lane.pending + step).clamp(-tuning.queue_limit, tuning.queue_limit);
             lane.remainder -= step * divisor;
         }
+    }
+
+    fn register_scroll_input(lane: &mut ScrollLane, delta: isize) -> u8 {
+        let now = Instant::now();
+        let direction = delta.signum();
+        let continuing_burst = lane.last_input_direction == direction
+            && lane
+                .last_input_at
+                .is_some_and(|at| now.duration_since(at) <= WHEEL_SCROLL_BURST_WINDOW);
+
+        if continuing_burst {
+            lane.burst_count = lane.burst_count.saturating_add(1);
+        } else {
+            lane.remainder = 0;
+            lane.burst_count = 1;
+        }
+        lane.last_input_at = Some(now);
+        lane.last_input_direction = direction;
+        lane.burst_count
     }
 
     fn consume_scroll_step(lane: &mut ScrollLane, cooldown: Duration) -> Option<isize> {
@@ -505,9 +512,22 @@ impl App {
             return false;
         };
 
-        let previous = self.selected;
-        self.move_vertical(step);
-        previous != self.selected
+        let mut dirty = false;
+        let total_steps =
+            self.entry_vertical_steps_per_flush(self.wheel_scroll.vertical.pending.abs() + 1);
+        for step_index in 0..total_steps {
+            if step_index > 0 {
+                if self.wheel_scroll.vertical.pending.signum() != step {
+                    break;
+                }
+                self.wheel_scroll.vertical.pending -= step;
+            }
+
+            let previous = self.selected;
+            self.move_vertical(step);
+            dirty |= previous != self.selected;
+        }
+        dirty
     }
 
     fn flush_entry_horizontal_scroll(&mut self) -> bool {
@@ -520,6 +540,22 @@ impl App {
 
         let previous = self.selected;
         self.move_by(step);
+        previous != self.selected
+    }
+
+    fn scroll_entry_immediately(&mut self, delta: isize) -> bool {
+        let burst_count = Self::register_scroll_input(&mut self.wheel_scroll.vertical, delta);
+        self.browser_wheel_post_burst_pending = true;
+        self.wheel_scroll.vertical.pending = 0;
+        self.wheel_scroll.vertical.remainder = 0;
+        let step = self.high_frequency_entry_step_multiplier(burst_count);
+        let preview_mode = if burst_count <= 1 {
+            PreviewRefreshMode::Immediate
+        } else {
+            PreviewRefreshMode::Deferred
+        };
+        let previous = self.selected;
+        self.move_vertical_with_preview_mode(delta * step, preview_mode);
         previous != self.selected
     }
 
@@ -606,6 +642,7 @@ impl App {
         Self::reset_scroll_lane(&mut self.wheel_scroll.preview);
         Self::reset_scroll_lane(&mut self.wheel_scroll.preview_horizontal);
         Self::reset_scroll_lane(&mut self.wheel_scroll.search);
+        self.browser_wheel_post_burst_pending = false;
     }
 
     fn entry_wheel_tuning(&self) -> WheelTuning {
@@ -627,6 +664,24 @@ impl App {
             WheelProfile::Default => WHEEL_SCROLL_INTERVAL_VERTICAL,
             WheelProfile::HighFrequency => WHEEL_SCROLL_INTERVAL_VERTICAL_HIGH_FREQUENCY,
         }
+    }
+
+    fn entry_vertical_steps_per_flush(&self, pending: isize) -> usize {
+        if self.wheel_profile != WheelProfile::HighFrequency {
+            return 1;
+        }
+
+        match pending.abs() {
+            0..=2 => 1,
+            3..=5 => 2,
+            6..=10 => 3,
+            _ => 4,
+        }
+    }
+
+    fn high_frequency_entry_step_multiplier(&self, burst_count: u8) -> isize {
+        let _ = burst_count;
+        1
     }
 
     fn handle_horizontal_navigation_key(&mut self, delta: isize) -> bool {

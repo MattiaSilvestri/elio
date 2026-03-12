@@ -29,17 +29,18 @@ pub(crate) use self::support::{
 
 const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(450);
 const WHEEL_SCROLL_INTERVAL_HORIZONTAL: Duration = Duration::from_millis(64);
-const WHEEL_SCROLL_INTERVAL_VERTICAL: Duration = Duration::from_millis(28);
-const WHEEL_SCROLL_INTERVAL_VERTICAL_HIGH_FREQUENCY: Duration = Duration::from_millis(28);
+const WHEEL_SCROLL_INTERVAL_VERTICAL: Duration = Duration::from_millis(24);
+const WHEEL_SCROLL_INTERVAL_VERTICAL_HIGH_FREQUENCY: Duration = Duration::from_millis(12);
 const WHEEL_SCROLL_INTERVAL_PREVIEW: Duration = Duration::from_millis(12);
 const WHEEL_SCROLL_INTERVAL_PREVIEW_HORIZONTAL: Duration = Duration::from_millis(12);
 const WHEEL_SCROLL_INTERVAL_SEARCH: Duration = Duration::from_millis(72);
 const PREVIEW_AUTO_FOCUS_DELAY: Duration = Duration::from_millis(220);
+const HIGH_FREQUENCY_PREVIEW_REFRESH_DELAY: Duration = Duration::from_millis(85);
 const WHEEL_SCROLL_QUEUE_LIMIT: isize = 8;
 const WHEEL_SCROLL_QUEUE_LIMIT_HORIZONTAL: isize = 3;
 const WHEEL_SCROLL_QUEUE_LIMIT_PREVIEW_HORIZONTAL: isize = 10;
 const WHEEL_SCROLL_QUEUE_LIMIT_SEARCH: isize = 2;
-const WHEEL_SCROLL_BURST_WINDOW: Duration = Duration::from_millis(45);
+const WHEEL_SCROLL_BURST_WINDOW: Duration = Duration::from_millis(90);
 const SEARCH_MATCH_LIMIT: usize = 250;
 const SEARCH_CACHE_LIMIT: usize = 32;
 const PREVIEW_CACHE_LIMIT: usize = 24;
@@ -364,10 +365,24 @@ struct DirectoryViewMemory {
     scroll_row: usize,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DirectoryCountViewport {
+    fingerprint: support::DirectoryFingerprint,
+    scroll_row: usize,
+    cols: usize,
+    rows_visible: usize,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PreviewLoadState {
     Placeholder(PathBuf),
     Refreshing(PathBuf),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PreviewRefreshMode {
+    Immediate,
+    Deferred,
 }
 
 struct PreviewState {
@@ -377,6 +392,7 @@ struct PreviewState {
     token: u64,
     metrics: PreviewMetrics,
     load_state: Option<PreviewLoadState>,
+    deferred_refresh_at: Option<Instant>,
     result_cache: HashMap<PathBuf, CachedPreview>,
     result_order: VecDeque<PathBuf>,
 }
@@ -430,12 +446,14 @@ pub struct App {
     scheduler: JobScheduler,
     directory_item_count_cache: HashMap<DirectoryItemCountKey, Option<usize>>,
     directory_item_count_order: VecDeque<DirectoryItemCountKey>,
+    directory_count_viewport: Option<DirectoryCountViewport>,
     directory_view_memory: HashMap<PathBuf, DirectoryViewMemory>,
     directory_runtime: DirectoryRuntime,
     last_click: Option<ClickState>,
     wheel_scroll: ScrollState,
     wheel_profile: WheelProfile,
     last_wheel_target: Option<WheelTarget>,
+    browser_wheel_post_burst_pending: bool,
     last_selection_change_at: Instant,
 }
 
@@ -469,6 +487,7 @@ impl App {
                 token: 0,
                 metrics: PreviewMetrics::default(),
                 load_state: None,
+                deferred_refresh_at: None,
                 result_cache: HashMap::new(),
                 result_order: VecDeque::new(),
             },
@@ -482,6 +501,7 @@ impl App {
             scheduler,
             directory_item_count_cache: HashMap::new(),
             directory_item_count_order: VecDeque::new(),
+            directory_count_viewport: None,
             directory_view_memory: HashMap::new(),
             directory_runtime: DirectoryRuntime {
                 fingerprint: support::DirectoryFingerprint::default(),
@@ -503,6 +523,7 @@ impl App {
             },
             wheel_profile: detect_wheel_profile(),
             last_wheel_target: Some(WheelTarget::Entries),
+            browser_wheel_post_burst_pending: false,
             last_selection_change_at: Instant::now(),
         };
         let snapshot = support::load_directory_snapshot(&app.cwd, app.show_hidden, app.sort_mode)?;
@@ -519,7 +540,9 @@ impl App {
     pub fn set_frame_state(&mut self, frame_state: FrameState) -> bool {
         self.frame_state = frame_state;
         let dirty = self.sync_scroll() | self.sync_search_scroll() | self.sync_preview_scroll();
-        self.queue_visible_directory_item_counts();
+        if !self.browser_wheel_burst_active() {
+            self.queue_visible_directory_item_counts();
+        }
         self.remember_current_directory_view();
         dirty
     }
@@ -534,6 +557,35 @@ impl App {
 
     pub fn has_pending_background_work(&self) -> bool {
         self.scheduler.has_pending_work()
+    }
+
+    pub(crate) fn browser_wheel_burst_active(&self) -> bool {
+        self.wheel_profile == WheelProfile::HighFrequency
+            && self.search.is_none()
+            && self.last_wheel_target == Some(WheelTarget::Entries)
+            && self
+                .wheel_scroll
+                .vertical
+                .last_input_at
+                .is_some_and(|at| at.elapsed() <= WHEEL_SCROLL_BURST_WINDOW)
+    }
+
+    pub(crate) fn pending_browser_wheel_timer(&self) -> Option<Duration> {
+        if !self.browser_wheel_post_burst_pending {
+            return None;
+        }
+        self.wheel_scroll
+            .vertical
+            .last_input_at
+            .map(|at| WHEEL_SCROLL_BURST_WINDOW.saturating_sub(at.elapsed()))
+    }
+
+    pub(crate) fn process_browser_wheel_timers(&mut self) -> bool {
+        if self.browser_wheel_post_burst_pending && !self.browser_wheel_burst_active() {
+            self.browser_wheel_post_burst_pending = false;
+            return true;
+        }
+        false
     }
 
     #[cfg(test)]
