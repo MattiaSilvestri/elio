@@ -7,16 +7,18 @@ pub(super) fn highlight_cmake_line(
     palette: appearance::CodePreviewPalette,
 ) -> Vec<Span<'static>> {
     let (body, comment) = split_cmake_comment(line);
-    let bytes = body.as_bytes();
     let mut spans = Vec::new();
     let mut index = 0usize;
 
-    while index < bytes.len() {
-        let ch = bytes[index] as char;
+    while index < body.len() {
+        let ch = body[index..].chars().next().unwrap_or(' ');
         if ch.is_whitespace() {
             let start = index;
-            while index < bytes.len() && (bytes[index] as char).is_whitespace() {
-                index += 1;
+            while let Some(current) = body[index..].chars().next() {
+                if !current.is_whitespace() {
+                    break;
+                }
+                index += current.len_utf8();
             }
             spans.push(Span::raw(body[start..index].to_string()));
             continue;
@@ -46,11 +48,10 @@ pub(super) fn highlight_cmake_line(
 
         if ch.is_ascii_digit() {
             let start = index;
-            index += 1;
-            while index < bytes.len() {
-                let current = bytes[index] as char;
+            index += ch.len_utf8();
+            while let Some(current) = body[index..].chars().next() {
                 if current.is_ascii_alphanumeric() || matches!(current, '.' | '_') {
-                    index += 1;
+                    index += current.len_utf8();
                 } else {
                     break;
                 }
@@ -65,11 +66,10 @@ pub(super) fn highlight_cmake_line(
 
         if ch.is_ascii_alphabetic() || ch == '_' {
             let start = index;
-            index += 1;
-            while index < bytes.len() {
-                let current = bytes[index] as char;
+            index += ch.len_utf8();
+            while let Some(current) = body[index..].chars().next() {
                 if current.is_ascii_alphanumeric() || current == '_' {
-                    index += 1;
+                    index += current.len_utf8();
                 } else {
                     break;
                 }

@@ -7,17 +7,19 @@ pub(super) fn highlight_js_like_line(
     palette: appearance::CodePreviewPalette,
 ) -> Vec<Span<'static>> {
     let (body, comment) = split_line_comment(line);
-    let bytes = body.as_bytes();
     let mut spans = Vec::new();
     let mut index = 0usize;
     let mut last_word: Option<String> = None;
 
-    while index < bytes.len() {
-        let ch = bytes[index] as char;
+    while index < body.len() {
+        let ch = body[index..].chars().next().unwrap_or(' ');
         if ch.is_whitespace() {
             let start = index;
-            while index < bytes.len() && (bytes[index] as char).is_whitespace() {
-                index += 1;
+            while let Some(current) = body[index..].chars().next() {
+                if !current.is_whitespace() {
+                    break;
+                }
+                index += current.len_utf8();
             }
             spans.push(Span::raw(body[start..index].to_string()));
             continue;
@@ -37,11 +39,10 @@ pub(super) fn highlight_js_like_line(
 
         if ch.is_ascii_alphabetic() || ch == '_' || ch == '$' {
             let start = index;
-            index += 1;
-            while index < bytes.len() {
-                let current = bytes[index] as char;
+            index += ch.len_utf8();
+            while let Some(current) = body[index..].chars().next() {
                 if current.is_ascii_alphanumeric() || current == '_' || current == '$' {
-                    index += 1;
+                    index += current.len_utf8();
                 } else {
                     break;
                 }
@@ -85,11 +86,10 @@ pub(super) fn highlight_js_like_line(
 
         if ch.is_ascii_digit() {
             let start = index;
-            index += 1;
-            while index < bytes.len() {
-                let current = bytes[index] as char;
+            index += ch.len_utf8();
+            while let Some(current) = body[index..].chars().next() {
                 if current.is_ascii_alphanumeric() || matches!(current, '.' | '_') {
-                    index += 1;
+                    index += current.len_utf8();
                 } else {
                     break;
                 }
@@ -134,46 +134,41 @@ pub(super) fn highlight_js_like_line(
 }
 
 fn split_line_comment(input: &str) -> (&str, Option<&str>) {
-    let bytes = input.as_bytes();
     let mut index = 0usize;
     let mut quote = '\0';
     let mut escape = false;
 
-    while index < bytes.len() {
-        let ch = bytes[index] as char;
+    while index < input.len() {
+        let ch = input[index..].chars().next().unwrap_or(' ');
         if quote != '\0' {
             if escape {
                 escape = false;
-                index += 1;
+                index += ch.len_utf8();
                 continue;
             }
             if ch == '\\' {
                 escape = true;
-                index += 1;
+                index += ch.len_utf8();
                 continue;
             }
             if ch == quote {
                 quote = '\0';
             }
-            index += 1;
+            index += ch.len_utf8();
             continue;
         }
 
         if matches!(ch, '"' | '\'' | '`') {
             quote = ch;
-            index += 1;
+            index += ch.len_utf8();
             continue;
         }
 
-        if ch == '/'
-            && bytes
-                .get(index + 1)
-                .is_some_and(|next| *next as char == '/')
-        {
+        if input[index..].starts_with("//") {
             return (&input[..index], Some(&input[index..]));
         }
 
-        index += 1;
+        index += ch.len_utf8();
     }
 
     (input, None)

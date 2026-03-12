@@ -95,16 +95,18 @@ pub(super) fn highlight_json_line(
     line: &str,
     palette: appearance::CodePreviewPalette,
 ) -> Vec<Span<'static>> {
-    let bytes = line.as_bytes();
     let mut spans = Vec::new();
     let mut index = 0usize;
 
-    while index < bytes.len() {
-        let ch = bytes[index] as char;
+    while index < line.len() {
+        let ch = line[index..].chars().next().unwrap_or(' ');
         if ch.is_whitespace() {
             let start = index;
-            while index < bytes.len() && (bytes[index] as char).is_whitespace() {
-                index += 1;
+            while let Some(current) = line[index..].chars().next() {
+                if !current.is_whitespace() {
+                    break;
+                }
+                index += current.len_utf8();
             }
             spans.push(Span::raw(line[start..index].to_string()));
             continue;
@@ -126,21 +128,20 @@ pub(super) fn highlight_json_line(
 
         if "{}[]:,".contains(ch) {
             spans.push(styled_text(
-                &line[index..index + 1],
+                &line[index..index + ch.len_utf8()],
                 palette.operator,
                 Modifier::empty(),
             ));
-            index += 1;
+            index += ch.len_utf8();
             continue;
         }
 
         let start = index;
-        while index < bytes.len() {
-            let current = bytes[index] as char;
+        while let Some(current) = line[index..].chars().next() {
             if current.is_whitespace() || "{}[]:,".contains(current) {
                 break;
             }
-            index += 1;
+            index += current.len_utf8();
         }
         spans.extend(highlight_scalar_token(&line[start..index], palette));
     }

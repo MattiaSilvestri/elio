@@ -258,26 +258,24 @@ pub(super) fn scan_quoted_segment(input: &str, start: usize) -> usize {
 }
 
 pub(super) fn scan_string(input: &str, start: usize, quote: char) -> usize {
-    let bytes = input.as_bytes();
-    let mut index = start + 1;
+    let mut index = start + quote.len_utf8();
     let mut escape = false;
 
-    while index < bytes.len() {
-        let ch = bytes[index] as char;
+    while let Some(ch) = input[index..].chars().next() {
         if escape {
             escape = false;
-            index += 1;
+            index += ch.len_utf8();
             continue;
         }
         if ch == '\\' {
             escape = true;
-            index += 1;
+            index += ch.len_utf8();
             continue;
         }
         if ch == quote {
-            return index + 1;
+            return index + ch.len_utf8();
         }
-        index += 1;
+        index += ch.len_utf8();
     }
 
     input.len()

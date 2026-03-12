@@ -209,6 +209,28 @@ fn c_like_fallback_renderer_highlights_directives_comments_and_calls() {
 }
 
 #[test]
+fn c_like_fallback_renderer_handles_unicode_without_panicking() {
+    let lines = render_fallback_code_preview(
+        "int main(void) {\n  printf(\"hola 👋\"); // áéíóú\n}\n",
+        FallbackSyntax::CLike,
+        true,
+    );
+
+    assert!(
+        lines[1]
+            .spans
+            .iter()
+            .any(|span| span.content.contains("👋"))
+    );
+    assert!(
+        lines[1]
+            .spans
+            .iter()
+            .any(|span| span.content.contains("// áéíóú"))
+    );
+}
+
+#[test]
 fn make_fallback_renderer_highlights_rules_variables_and_recipes() {
     let lines = render_fallback_code_preview(
         "CC := clang\n.PHONY: build\nbuild: main.o util.o\n\t$(CC) -o app main.o util.o\n",
@@ -271,6 +293,28 @@ fn nix_fallback_renderer_highlights_keywords_strings_and_comments() {
 }
 
 #[test]
+fn nix_fallback_renderer_handles_unicode_without_panicking() {
+    let lines = render_fallback_code_preview(
+        "let\n  name = \"hóla 👋\"; # áéíóú\nin name\n",
+        FallbackSyntax::Nix,
+        true,
+    );
+
+    assert!(
+        lines[1]
+            .spans
+            .iter()
+            .any(|span| span.content.contains("👋"))
+    );
+    assert!(
+        lines[1]
+            .spans
+            .iter()
+            .any(|span| span.content.contains("# áéíóú"))
+    );
+}
+
+#[test]
 fn cmake_fallback_renderer_highlights_commands_variables_and_comments() {
     let lines = render_fallback_code_preview(
         "project(elio)\nset(NAME elio)\nmessage(STATUS \"hi ${NAME}\") # note\n",
@@ -301,6 +345,28 @@ fn cmake_fallback_renderer_highlights_commands_variables_and_comments() {
             .spans
             .iter()
             .any(|span| span.content.contains("# note"))
+    );
+}
+
+#[test]
+fn cmake_fallback_renderer_handles_unicode_without_panicking() {
+    let lines = render_fallback_code_preview(
+        "project(elio)\nmessage(STATUS \"hóla 👋\") # áéíóú\n",
+        FallbackSyntax::CMake,
+        true,
+    );
+
+    assert!(
+        lines[1]
+            .spans
+            .iter()
+            .any(|span| span.content.contains("👋"))
+    );
+    assert!(
+        lines[1]
+            .spans
+            .iter()
+            .any(|span| span.content.contains("# áéíóú"))
     );
 }
 
@@ -363,6 +429,50 @@ fn python_fallback_renderer_handles_unicode_identifiers_without_panicking() {
             .spans
             .iter()
             .any(|span| span.content.contains("# áéíóú"))
+    );
+}
+
+#[test]
+fn js_like_fallback_renderer_handles_unicode_without_panicking() {
+    let lines = render_fallback_code_preview(
+        "const saludo = \"hóla 👋\";\nconsole.log(saludo); // áéíóú\n",
+        FallbackSyntax::JsLike,
+        true,
+    );
+
+    assert!(
+        lines[0]
+            .spans
+            .iter()
+            .any(|span| span.content.contains("👋"))
+    );
+    assert!(
+        lines[1]
+            .spans
+            .iter()
+            .any(|span| span.content.contains("// áéíóú"))
+    );
+}
+
+#[test]
+fn json_fallback_renderer_handles_unicode_without_panicking() {
+    let lines = render_fallback_code_preview(
+        "{ \"message\": \"hóla 👋\", \"note\": \"áéíóú\" }\n",
+        FallbackSyntax::Json,
+        true,
+    );
+
+    assert!(
+        lines[0]
+            .spans
+            .iter()
+            .any(|span| span.content.contains("👋"))
+    );
+    assert!(
+        lines[0]
+            .spans
+            .iter()
+            .any(|span| span.content.contains("áéíóú"))
     );
 }
 

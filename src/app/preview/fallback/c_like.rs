@@ -69,17 +69,19 @@ fn highlight_c_like_tokens(
     palette: appearance::CodePreviewPalette,
     directive: Option<&str>,
 ) -> Vec<Span<'static>> {
-    let bytes = input.as_bytes();
     let mut spans = Vec::new();
     let mut index = 0usize;
     let mut last_word: Option<String> = None;
 
-    while index < bytes.len() {
-        let ch = bytes[index] as char;
+    while index < input.len() {
+        let ch = input[index..].chars().next().unwrap_or(' ');
         if ch.is_whitespace() {
             let start = index;
-            while index < bytes.len() && (bytes[index] as char).is_whitespace() {
-                index += 1;
+            while let Some(current) = input[index..].chars().next() {
+                if !current.is_whitespace() {
+                    break;
+                }
+                index += current.len_utf8();
             }
             spans.push(Span::raw(input[start..index].to_string()));
             continue;
@@ -114,11 +116,10 @@ fn highlight_c_like_tokens(
 
         if ch.is_ascii_alphabetic() || ch == '_' {
             let start = index;
-            index += 1;
-            while index < bytes.len() {
-                let current = bytes[index] as char;
+            index += ch.len_utf8();
+            while let Some(current) = input[index..].chars().next() {
                 if current.is_ascii_alphanumeric() || current == '_' {
-                    index += 1;
+                    index += current.len_utf8();
                 } else {
                     break;
                 }
@@ -155,11 +156,10 @@ fn highlight_c_like_tokens(
 
         if ch.is_ascii_digit() {
             let start = index;
-            index += 1;
-            while index < bytes.len() {
-                let current = bytes[index] as char;
+            index += ch.len_utf8();
+            while let Some(current) = input[index..].chars().next() {
                 if current.is_ascii_alphanumeric() || matches!(current, '.' | '_' | 'x' | 'X') {
-                    index += 1;
+                    index += current.len_utf8();
                 } else {
                     break;
                 }
