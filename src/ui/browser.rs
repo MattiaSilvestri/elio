@@ -549,7 +549,7 @@ fn render_preview(
 
     let sections = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(inner.height.min(5)), Constraint::Min(0)])
+        .constraints([Constraint::Length(inner.height.min(3)), Constraint::Min(0)])
         .split(inner);
 
     render_preview_details(frame, sections[0], app, entry, palette);
@@ -588,15 +588,6 @@ fn render_preview_details(
                 .modified
                 .map(format_time_ago)
                 .unwrap_or_else(|| "unknown".to_string()),
-            palette,
-        ),
-        preview_stat_line(
-            "Access",
-            if entry.readonly {
-                "readonly".to_string()
-            } else {
-                "read/write".to_string()
-            },
             palette,
         ),
     ];
@@ -863,6 +854,34 @@ mod tests {
         assert!(
             rendered.contains("bad^Mname.c"),
             "expected control characters to be sanitized in the UI, got: {rendered:?}"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn preview_details_do_not_render_access_metadata() {
+        let root = temp_path("preview-details");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("report.txt"), "hello\n").expect("failed to write temp file");
+
+        let mut app = App::new_at(root.clone()).expect("app should load temp directory");
+        let mut terminal = Terminal::new(TestBackend::new(90, 24)).expect("terminal should init");
+
+        draw_ui(&mut terminal, &mut app);
+        let rendered = buffer_text(terminal.backend().buffer());
+
+        assert!(
+            !rendered.contains("Access"),
+            "preview details should no longer include access metadata, got: {rendered:?}"
+        );
+        assert!(
+            !rendered.contains("read/write"),
+            "preview details should no longer include access metadata, got: {rendered:?}"
+        );
+        assert!(
+            !rendered.contains("readonly"),
+            "preview details should no longer include access metadata, got: {rendered:?}"
         );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");

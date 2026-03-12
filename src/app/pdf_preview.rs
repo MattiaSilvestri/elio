@@ -15,6 +15,7 @@ use std::{
 const PDF_RENDER_CACHE_LIMIT: usize = 12;
 const PDF_RENDER_MIN_DIMENSION_PX: u32 = 96;
 const PDF_PAGE_MIN: usize = 1;
+const PDF_PAGE_STATUS_PREFIX: &str = "PDF page ";
 
 #[derive(Clone, Debug, Default)]
 pub(super) struct PdfPreviewState {
@@ -182,29 +183,24 @@ impl App {
 
         let max_page = session.total_pages.unwrap_or(next_page.max(PDF_PAGE_MIN));
         session.current_page = next_page.clamp(PDF_PAGE_MIN, max_page.max(PDF_PAGE_MIN));
-        if session.current_page == previous_page {
-            return false;
-        }
-
-        self.status = match session.total_pages {
-            Some(total_pages) => format!("PDF page {}/{}", session.current_page, total_pages),
-            None => format!("PDF page {}", session.current_page),
-        };
-        true
+        session.current_page != previous_page
     }
 
     pub(super) fn sync_pdf_preview_selection(&mut self) {
         if !self.pdf_preview.enabled {
             self.pdf_preview.session = None;
+            self.clear_pdf_page_status();
             return;
         }
 
         let Some(entry) = self.selected_entry() else {
             self.pdf_preview.session = None;
+            self.clear_pdf_page_status();
             return;
         };
         if !is_pdf_entry(entry) {
             self.pdf_preview.session = None;
+            self.clear_pdf_page_status();
             return;
         }
 
@@ -224,6 +220,7 @@ impl App {
             current_page: PDF_PAGE_MIN,
             total_pages: query_pdf_page_count(&entry.path),
         });
+        self.clear_pdf_page_status();
     }
 
     fn active_pdf_overlay_request(&self) -> Option<PdfOverlayRequest> {
@@ -302,6 +299,12 @@ impl App {
         let dimensions = query_pdf_page_dimensions(&request.path, request.page)?;
         self.pdf_preview.page_dimensions.insert(key, dimensions);
         Some(dimensions)
+    }
+
+    fn clear_pdf_page_status(&mut self) {
+        if self.status.starts_with(PDF_PAGE_STATUS_PREFIX) {
+            self.status.clear();
+        }
     }
 }
 
@@ -653,5 +656,17 @@ mod tests {
                 .map(|session| session.current_page),
             Some(1)
         );
+        assert!(app.status.is_empty());
+    }
+
+    #[test]
+    fn sync_pdf_preview_selection_clears_stale_pdf_page_status() {
+        let mut app = App::new_at(std::env::temp_dir()).expect("app should initialize");
+        app.status = "PDF page 3/10".to_string();
+        app.pdf_preview.enabled = true;
+
+        app.sync_pdf_preview_selection();
+
+        assert!(app.status.is_empty());
     }
 }
