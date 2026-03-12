@@ -1,3 +1,4 @@
+use super::pdf_preview::PdfProbeResult;
 use super::*;
 use crate::search::SearchCandidate;
 use std::{
@@ -12,8 +13,60 @@ use std::{
 const PREVIEW_WORKER_COUNT: usize = 2;
 const SEARCH_WORKER_COUNT: usize = 1;
 const DIRECTORY_ITEM_COUNT_WORKER_COUNT: usize = 1;
+const PDF_PROBE_WORKER_COUNT: usize = 1;
+const PDF_RENDER_WORKER_COUNT: usize = 2;
 const PREVIEW_QUEUE_LIMIT: usize = 8;
 const DIRECTORY_ITEM_COUNT_QUEUE_LIMIT: usize = 48;
+const PDF_PROBE_QUEUE_LIMIT: usize = 16;
+const PDF_RENDER_QUEUE_LIMIT: usize = 8;
+
+#[derive(Clone, Copy, Debug)]
+struct SchedulerConfig {
+    search_worker_count: usize,
+    preview_worker_count: usize,
+    preview_queue_limit: usize,
+    directory_item_count_worker_count: usize,
+    directory_item_count_queue_limit: usize,
+    pdf_probe_worker_count: usize,
+    pdf_probe_queue_limit: usize,
+    pdf_render_worker_count: usize,
+    pdf_render_queue_limit: usize,
+}
+
+impl SchedulerConfig {
+    fn production() -> Self {
+        Self {
+            search_worker_count: SEARCH_WORKER_COUNT,
+            preview_worker_count: PREVIEW_WORKER_COUNT,
+            preview_queue_limit: PREVIEW_QUEUE_LIMIT,
+            directory_item_count_worker_count: DIRECTORY_ITEM_COUNT_WORKER_COUNT,
+            directory_item_count_queue_limit: DIRECTORY_ITEM_COUNT_QUEUE_LIMIT,
+            pdf_probe_worker_count: PDF_PROBE_WORKER_COUNT,
+            pdf_probe_queue_limit: PDF_PROBE_QUEUE_LIMIT,
+            pdf_render_worker_count: PDF_RENDER_WORKER_COUNT,
+            pdf_render_queue_limit: PDF_RENDER_QUEUE_LIMIT,
+        }
+    }
+
+    #[cfg(test)]
+    fn for_tests(
+        search_worker_count: usize,
+        preview_worker_count: usize,
+        preview_queue_limit: usize,
+    ) -> Self {
+        Self {
+            search_worker_count,
+            preview_worker_count,
+            preview_queue_limit,
+            directory_item_count_worker_count: DIRECTORY_ITEM_COUNT_WORKER_COUNT,
+            directory_item_count_queue_limit: DIRECTORY_ITEM_COUNT_QUEUE_LIMIT,
+            pdf_probe_worker_count: PDF_PROBE_WORKER_COUNT,
+            pdf_probe_queue_limit: PDF_PROBE_QUEUE_LIMIT,
+            pdf_render_worker_count: PDF_RENDER_WORKER_COUNT,
+            pdf_render_queue_limit: PDF_RENDER_QUEUE_LIMIT,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PreviewPriority {
@@ -67,6 +120,44 @@ pub(super) struct DirectoryItemCountRequest {
 }
 
 #[derive(Debug)]
+pub(super) struct PdfProbeBuild {
+    pub path: PathBuf,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+    pub page: usize,
+    pub result: Result<PdfProbeResult, String>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct PdfProbeRequest {
+    pub path: PathBuf,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+    pub page: usize,
+}
+
+#[derive(Debug)]
+pub(super) struct PdfRenderBuild {
+    pub path: PathBuf,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+    pub page: usize,
+    pub width_px: u32,
+    pub height_px: u32,
+    pub result: Result<Option<PathBuf>, String>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct PdfRenderRequest {
+    pub path: PathBuf,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+    pub page: usize,
+    pub width_px: u32,
+    pub height_px: u32,
+}
+
+#[derive(Debug)]
 pub(super) struct PreviewBuild {
     pub token: u64,
     pub entry: Entry,
@@ -84,6 +175,8 @@ pub(super) struct PreviewRequest {
 pub(super) enum JobResult {
     Directory(DirectoryBuild),
     DirectoryItemCount(DirectoryItemCountBuild),
+    PdfProbe(PdfProbeBuild),
+    PdfRender(PdfRenderBuild),
     Search(SearchBuild),
     Preview(Box<PreviewBuild>),
 }
@@ -110,6 +203,8 @@ pub struct SchedulerMetricsSnapshot {
 pub(super) struct JobScheduler {
     directory: DirectoryPool,
     directory_item_count: DirectoryItemCountPool,
+    pdf_probe: PdfProbePool,
+    pdf_render: PdfRenderPool,
     search: SearchPool,
     preview: PreviewPool,
     result_rx: mpsc::Receiver<JobResult>,
@@ -119,35 +214,37 @@ pub(super) struct JobScheduler {
 
 impl JobScheduler {
     pub(super) fn new() -> Self {
-        Self::with_config(
-            SEARCH_WORKER_COUNT,
-            PREVIEW_WORKER_COUNT,
-            PREVIEW_QUEUE_LIMIT,
-            DIRECTORY_ITEM_COUNT_WORKER_COUNT,
-            DIRECTORY_ITEM_COUNT_QUEUE_LIMIT,
-        )
+        Self::with_config(SchedulerConfig::production())
     }
 
-    fn with_config(
-        search_worker_count: usize,
-        preview_worker_count: usize,
-        preview_queue_limit: usize,
-        directory_item_count_worker_count: usize,
-        directory_item_count_queue_limit: usize,
-    ) -> Self {
+    fn with_config(config: SchedulerConfig) -> Self {
         let (result_tx, result_rx) = mpsc::channel();
         let metrics = Arc::new(Mutex::new(SchedulerMetrics::default()));
         Self {
             directory: DirectoryPool::new(1, result_tx.clone(), Arc::clone(&metrics)),
             directory_item_count: DirectoryItemCountPool::new(
-                directory_item_count_worker_count,
-                directory_item_count_queue_limit,
+                config.directory_item_count_worker_count,
+                config.directory_item_count_queue_limit,
                 result_tx.clone(),
             ),
-            search: SearchPool::new(search_worker_count, result_tx.clone(), Arc::clone(&metrics)),
+            pdf_probe: PdfProbePool::new(
+                config.pdf_probe_worker_count,
+                config.pdf_probe_queue_limit,
+                result_tx.clone(),
+            ),
+            pdf_render: PdfRenderPool::new(
+                config.pdf_render_worker_count,
+                config.pdf_render_queue_limit,
+                result_tx.clone(),
+            ),
+            search: SearchPool::new(
+                config.search_worker_count,
+                result_tx.clone(),
+                Arc::clone(&metrics),
+            ),
             preview: PreviewPool::new(
-                preview_worker_count,
-                preview_queue_limit,
+                config.preview_worker_count,
+                config.preview_queue_limit,
                 result_tx,
                 Arc::clone(&metrics),
             ),
@@ -165,6 +262,14 @@ impl JobScheduler {
         self.directory_item_count.submit(request)
     }
 
+    pub(super) fn submit_pdf_probe(&self, request: PdfProbeRequest) -> bool {
+        self.pdf_probe.submit(request)
+    }
+
+    pub(super) fn submit_pdf_render(&self, request: PdfRenderRequest) -> bool {
+        self.pdf_render.submit(request)
+    }
+
     pub(super) fn submit_search(&self, request: SearchRequest) -> bool {
         self.search.submit(request)
     }
@@ -180,6 +285,8 @@ impl JobScheduler {
     pub(super) fn has_pending_work(&self) -> bool {
         self.directory.has_pending_work()
             || self.directory_item_count.has_pending_work()
+            || self.pdf_probe.has_pending_work()
+            || self.pdf_render.has_pending_work()
             || self.search.has_pending_work()
             || self.preview.has_pending_work()
     }
@@ -199,13 +306,11 @@ impl JobScheduler {
         preview_worker_count: usize,
         preview_queue_limit: usize,
     ) -> Self {
-        Self::with_config(
+        Self::with_config(SchedulerConfig::for_tests(
             search_worker_count,
             preview_worker_count,
             preview_queue_limit,
-            DIRECTORY_ITEM_COUNT_WORKER_COUNT,
-            DIRECTORY_ITEM_COUNT_QUEUE_LIMIT,
-        )
+        ))
     }
 
     #[cfg(test)]
@@ -568,6 +673,307 @@ impl DirectoryItemCountJobKey {
             path: request.path.clone(),
             modified: request.modified,
             show_hidden: request.show_hidden,
+        }
+    }
+}
+
+struct PdfProbePool {
+    shared: Arc<PdfProbeShared>,
+    workers: Vec<thread::JoinHandle<()>>,
+}
+
+struct PdfProbeShared {
+    state: Mutex<PdfProbeState>,
+    available: Condvar,
+}
+
+struct PdfProbeState {
+    pending: VecDeque<PdfProbeRequest>,
+    queued_keys: HashSet<PdfProbeJobKey>,
+    active_keys: HashSet<PdfProbeJobKey>,
+    closed: bool,
+    capacity: usize,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct PdfProbeJobKey {
+    path: PathBuf,
+    size: u64,
+    modified: Option<SystemTime>,
+    page: usize,
+}
+
+impl PdfProbePool {
+    fn new(worker_count: usize, capacity: usize, result_tx: mpsc::Sender<JobResult>) -> Self {
+        let shared = Arc::new(PdfProbeShared {
+            state: Mutex::new(PdfProbeState {
+                pending: VecDeque::new(),
+                queued_keys: HashSet::new(),
+                active_keys: HashSet::new(),
+                closed: false,
+                capacity,
+            }),
+            available: Condvar::new(),
+        });
+        let mut workers = Vec::with_capacity(worker_count);
+        for _ in 0..worker_count {
+            let shared = Arc::clone(&shared);
+            let result_tx = result_tx.clone();
+            workers.push(thread::spawn(move || {
+                while let Some(request) = PdfProbeShared::pop(&shared) {
+                    let key = PdfProbeJobKey::from_request(&request);
+                    let result = pdf_preview::probe_pdf_page(&request.path, request.page)
+                        .map_err(|error| error.to_string());
+                    PdfProbeShared::finish(&shared, &key);
+                    if result_tx
+                        .send(JobResult::PdfProbe(PdfProbeBuild {
+                            path: request.path,
+                            size: request.size,
+                            modified: request.modified,
+                            page: request.page,
+                            result,
+                        }))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }));
+        }
+        Self { shared, workers }
+    }
+
+    fn submit(&self, request: PdfProbeRequest) -> bool {
+        let key = PdfProbeJobKey::from_request(&request);
+        let mut state = lock_unpoison(&self.shared.state);
+        if state.closed {
+            return false;
+        }
+        if state.queued_keys.contains(&key) || state.active_keys.contains(&key) {
+            return true;
+        }
+        while state.pending.len() >= state.capacity {
+            let Some(stale) = state.pending.pop_front() else {
+                break;
+            };
+            state
+                .queued_keys
+                .remove(&PdfProbeJobKey::from_request(&stale));
+        }
+        state.queued_keys.insert(key);
+        state.pending.push_back(request);
+        self.shared.available.notify_one();
+        true
+    }
+
+    fn has_pending_work(&self) -> bool {
+        let state = lock_unpoison(&self.shared.state);
+        !state.pending.is_empty() || !state.active_keys.is_empty()
+    }
+}
+
+impl Drop for PdfProbePool {
+    fn drop(&mut self) {
+        {
+            let mut state = lock_unpoison(&self.shared.state);
+            state.closed = true;
+            state.pending.clear();
+            state.queued_keys.clear();
+        }
+        self.shared.available.notify_all();
+        for worker in self.workers.drain(..) {
+            let _ = worker.join();
+        }
+    }
+}
+
+impl PdfProbeShared {
+    fn pop(shared: &Arc<Self>) -> Option<PdfProbeRequest> {
+        let mut state = lock_unpoison(&shared.state);
+        loop {
+            if state.closed {
+                return None;
+            }
+            if let Some(request) = state.pending.pop_front() {
+                let key = PdfProbeJobKey::from_request(&request);
+                state.queued_keys.remove(&key);
+                state.active_keys.insert(key);
+                return Some(request);
+            }
+            state = wait_unpoison(&shared.available, state);
+        }
+    }
+
+    fn finish(shared: &Arc<Self>, key: &PdfProbeJobKey) {
+        let mut state = lock_unpoison(&shared.state);
+        state.active_keys.remove(key);
+    }
+}
+
+impl PdfProbeJobKey {
+    fn from_request(request: &PdfProbeRequest) -> Self {
+        Self {
+            path: request.path.clone(),
+            size: request.size,
+            modified: request.modified,
+            page: request.page,
+        }
+    }
+}
+
+struct PdfRenderPool {
+    shared: Arc<PdfRenderShared>,
+    workers: Vec<thread::JoinHandle<()>>,
+}
+
+struct PdfRenderShared {
+    state: Mutex<PdfRenderState>,
+    available: Condvar,
+}
+
+struct PdfRenderState {
+    pending: VecDeque<PdfRenderRequest>,
+    queued_keys: HashSet<PdfRenderJobKey>,
+    active_keys: HashSet<PdfRenderJobKey>,
+    closed: bool,
+    capacity: usize,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct PdfRenderJobKey {
+    path: PathBuf,
+    size: u64,
+    modified: Option<SystemTime>,
+    page: usize,
+    width_px: u32,
+    height_px: u32,
+}
+
+impl PdfRenderPool {
+    fn new(worker_count: usize, capacity: usize, result_tx: mpsc::Sender<JobResult>) -> Self {
+        let shared = Arc::new(PdfRenderShared {
+            state: Mutex::new(PdfRenderState {
+                pending: VecDeque::new(),
+                queued_keys: HashSet::new(),
+                active_keys: HashSet::new(),
+                closed: false,
+                capacity,
+            }),
+            available: Condvar::new(),
+        });
+        let mut workers = Vec::with_capacity(worker_count);
+        for _ in 0..worker_count {
+            let shared = Arc::clone(&shared);
+            let result_tx = result_tx.clone();
+            workers.push(thread::spawn(move || {
+                while let Some(request) = PdfRenderShared::pop(&shared) {
+                    let key = PdfRenderJobKey::from_request(&request);
+                    let result = pdf_preview::render_pdf_page_to_cache(
+                        &request.path,
+                        request.size,
+                        request.modified,
+                        request.page,
+                        request.width_px,
+                        request.height_px,
+                    )
+                    .map_err(|error| error.to_string());
+                    PdfRenderShared::finish(&shared, &key);
+                    if result_tx
+                        .send(JobResult::PdfRender(PdfRenderBuild {
+                            path: request.path,
+                            size: request.size,
+                            modified: request.modified,
+                            page: request.page,
+                            width_px: request.width_px,
+                            height_px: request.height_px,
+                            result,
+                        }))
+                        .is_err()
+                    {
+                        break;
+                    }
+                }
+            }));
+        }
+        Self { shared, workers }
+    }
+
+    fn submit(&self, request: PdfRenderRequest) -> bool {
+        let key = PdfRenderJobKey::from_request(&request);
+        let mut state = lock_unpoison(&self.shared.state);
+        if state.closed {
+            return false;
+        }
+        if state.queued_keys.contains(&key) || state.active_keys.contains(&key) {
+            return true;
+        }
+        while state.pending.len() >= state.capacity {
+            let Some(stale) = state.pending.pop_front() else {
+                break;
+            };
+            state
+                .queued_keys
+                .remove(&PdfRenderJobKey::from_request(&stale));
+        }
+        state.queued_keys.insert(key);
+        state.pending.push_back(request);
+        self.shared.available.notify_one();
+        true
+    }
+
+    fn has_pending_work(&self) -> bool {
+        let state = lock_unpoison(&self.shared.state);
+        !state.pending.is_empty() || !state.active_keys.is_empty()
+    }
+}
+
+impl Drop for PdfRenderPool {
+    fn drop(&mut self) {
+        {
+            let mut state = lock_unpoison(&self.shared.state);
+            state.closed = true;
+            state.pending.clear();
+            state.queued_keys.clear();
+        }
+        self.shared.available.notify_all();
+        for worker in self.workers.drain(..) {
+            let _ = worker.join();
+        }
+    }
+}
+
+impl PdfRenderShared {
+    fn pop(shared: &Arc<Self>) -> Option<PdfRenderRequest> {
+        let mut state = lock_unpoison(&shared.state);
+        loop {
+            if state.closed {
+                return None;
+            }
+            if let Some(request) = state.pending.pop_front() {
+                let key = PdfRenderJobKey::from_request(&request);
+                state.queued_keys.remove(&key);
+                state.active_keys.insert(key);
+                return Some(request);
+            }
+            state = wait_unpoison(&shared.available, state);
+        }
+    }
+
+    fn finish(shared: &Arc<Self>, key: &PdfRenderJobKey) {
+        let mut state = lock_unpoison(&shared.state);
+        state.active_keys.remove(key);
+    }
+}
+
+impl PdfRenderJobKey {
+    fn from_request(request: &PdfRenderRequest) -> Self {
+        Self {
+            path: request.path.clone(),
+            size: request.size,
+            modified: request.modified,
+            page: request.page,
+            width_px: request.width_px,
+            height_px: request.height_px,
         }
     }
 }

@@ -588,6 +588,21 @@ fn render_preview_body(
         sections[0],
     );
 
+    if app.preview_prefers_pdf_surface() {
+        if let Some(message) = app.pdf_preview_placeholder_message() {
+            frame.render_widget(
+                Paragraph::new(Line::from(Span::styled(
+                    message,
+                    Style::default().fg(palette.muted),
+                )))
+                .style(Style::default().bg(palette.panel).fg(palette.text))
+                .alignment(Alignment::Center),
+                text_area,
+            );
+        }
+        return;
+    }
+
     if app.preview_uses_image_overlay() {
         return;
     }

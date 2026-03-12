@@ -39,6 +39,7 @@ fn init_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
     terminal.clear()?;
+    terminal.hide_cursor()?;
     Ok(terminal)
 }
 
@@ -94,6 +95,11 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
 
         let wants_search_cursor = app.search_is_open();
         if wants_search_cursor != search_cursor_active {
+            if wants_search_cursor {
+                terminal.show_cursor()?;
+            } else {
+                terminal.hide_cursor()?;
+            }
             execute!(
                 terminal.backend_mut(),
                 if wants_search_cursor {
@@ -121,6 +127,7 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         if event::poll(poll_interval)? {
             let event = event::read()?;
             if matches!(event, Event::Resize(_, _)) {
+                app.handle_pdf_terminal_resize();
                 dirty = true;
                 continue;
             }

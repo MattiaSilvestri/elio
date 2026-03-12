@@ -42,6 +42,12 @@ impl App {
                         build.show_hidden,
                     );
                 }
+                JobResult::PdfProbe(build) => {
+                    dirty |= self.apply_pdf_probe_build(build);
+                }
+                JobResult::PdfRender(build) => {
+                    dirty |= self.apply_pdf_render_build(build);
+                }
                 JobResult::Search(build) => {
                     if build.token != self.search_token || build.cwd != self.cwd {
                         continue;
