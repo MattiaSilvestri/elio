@@ -11,9 +11,9 @@ use crossterm::{
     cursor::SetCursorStyle,
     event::{self, Event},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
+use ratatui::{backend::CrosstermBackend, Terminal};
 use std::{
     io,
     time::{Duration, Instant},
@@ -56,6 +56,7 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Re
 
 fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
     let mut app = App::new()?;
+    app.enable_terminal_pdf_previews();
     let mut dirty = true;
     let mut search_cursor_active = false;
     let mut last_relative_time_refresh_at = Instant::now();
@@ -88,6 +89,7 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
             let mut frame_state = app::FrameState::default();
             terminal.draw(|frame| ui::render(frame, &app, &mut frame_state))?;
             dirty = app.set_frame_state(frame_state);
+            app.present_pdf_overlay()?;
         }
 
         let wants_search_cursor = app.search_is_open();
@@ -132,5 +134,6 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         }
     }
 
+    app.clear_pdf_overlay()?;
     Ok(())
 }

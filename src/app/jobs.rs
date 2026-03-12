@@ -4,7 +4,7 @@ use std::{
     collections::{HashSet, VecDeque},
     hash::Hash,
     path::PathBuf,
-    sync::{Arc, Condvar, Mutex, MutexGuard, mpsc},
+    sync::{mpsc, Arc, Condvar, Mutex, MutexGuard},
     thread,
     time::{Duration, Instant, SystemTime},
 };

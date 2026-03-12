@@ -1,5 +1,5 @@
 use super::*;
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use std::path::{Path, PathBuf};
 
 impl App {
@@ -84,11 +84,20 @@ impl App {
     }
 
     pub fn preview_header_detail(&self, visible_rows: usize) -> Option<String> {
-        self.preview_cache
-            .header_detail(self.preview_scroll, visible_rows)
+        let detail = self
+            .preview_cache
+            .header_detail(self.preview_scroll, visible_rows);
+        if let Some(pdf_detail) = self.pdf_preview_header_detail() {
+            return Some(match detail {
+                Some(detail) if !detail.is_empty() => format!("{detail}  •  {pdf_detail}"),
+                _ => pdf_detail,
+            });
+        }
+        detail
     }
 
     pub(super) fn refresh_preview(&mut self) {
+        self.sync_pdf_preview_selection();
         self.preview_token = self.preview_token.wrapping_add(1);
         self.preview_cache = match self.selected_entry().cloned() {
             Some(entry) if preview::should_build_preview_in_background(&entry) => {

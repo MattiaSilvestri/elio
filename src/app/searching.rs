@@ -561,13 +561,12 @@ mod tests {
                     .position(|candidate| candidate.relative == "fastfetch")
             })
             .expect("fastfetch candidate should exist");
-        assert!(
-            !app.search
-                .as_ref()
-                .expect("search should be open")
-                .matches
-                .contains(&fastfetch_index)
-        );
+        assert!(!app
+            .search
+            .as_ref()
+            .expect("search should be open")
+            .matches
+            .contains(&fastfetch_index));
 
         if let Some(search) = &mut app.search {
             search.query = "fastfetch".to_string();

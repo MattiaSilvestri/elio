@@ -108,6 +108,25 @@ impl App {
             }
         }
 
+        if !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+        {
+            match key.code {
+                KeyCode::Char('[') => {
+                    if self.step_pdf_page(-1) {
+                        return Ok(());
+                    }
+                }
+                KeyCode::Char(']') => {
+                    if self.step_pdf_page(1) {
+                        return Ok(());
+                    }
+                }
+                _ => {}
+            }
+        }
+
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
             KeyCode::Char('?') => {
@@ -262,6 +281,9 @@ impl App {
                     .preview_panel
                     .is_some_and(|rect| rect_contains(rect, mouse.column, mouse.row))
                 {
+                    if self.step_pdf_page(1) {
+                        return Ok(());
+                    }
                     self.focus_preview_scroll();
                     if mouse.modifiers.contains(KeyModifiers::SHIFT)
                         && self.preview_allows_horizontal_scroll()
@@ -314,6 +336,9 @@ impl App {
                     .preview_panel
                     .is_some_and(|rect| rect_contains(rect, mouse.column, mouse.row))
                 {
+                    if self.step_pdf_page(-1) {
+                        return Ok(());
+                    }
                     self.focus_preview_scroll();
                     if mouse.modifiers.contains(KeyModifiers::SHIFT)
                         && self.preview_allows_horizontal_scroll()

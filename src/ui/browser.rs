@@ -1,15 +1,15 @@
 use super::theme::Palette;
 use super::{helpers, theme};
 use crate::app::{
-    App, Entry, EntryHit, FrameState, PathHit, ViewMetrics, format_size, format_time_ago,
+    format_size, format_time_ago, App, Entry, EntryHit, FrameState, PathHit, ViewMetrics,
 };
 use crate::appearance;
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Paragraph, Wrap},
+    Frame,
 };
 
 pub(super) fn render_body(
@@ -642,6 +642,7 @@ fn render_preview_body(
     };
     let text_area = body[0];
     let scrollbar_area = body.get(1).copied();
+    state.preview_content_area = Some(text_area);
     helpers::fill_area(frame, text_area, palette.panel, palette.text);
     if let Some(scrollbar_area) = scrollbar_area {
         helpers::fill_area(frame, scrollbar_area, palette.panel, palette.border);
@@ -667,6 +668,10 @@ fn render_preview_body(
         .style(Style::default().bg(palette.panel).fg(palette.text)),
         sections[0],
     );
+
+    if app.preview_uses_image_overlay() {
+        return;
+    }
 
     let mut paragraph = Paragraph::new(app.preview_lines())
         .style(Style::default().bg(palette.panel).fg(palette.text))
@@ -762,7 +767,7 @@ mod tests {
     use super::*;
     use crate::ui;
     use crossterm::event::{Event, KeyCode, KeyEvent};
-    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
+    use ratatui::{backend::TestBackend, buffer::Buffer, Terminal};
     use std::{
         fs,
         path::PathBuf,

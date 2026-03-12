@@ -1,11 +1,11 @@
 use super::theme::Palette;
 use crate::app::sanitize_terminal_text;
 use ratatui::{
-    Frame,
     layout::{Alignment, Margin, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    Frame,
 };
 use std::{env, path::Path};
 

@@ -306,30 +306,22 @@ mod tests {
         let hidden_off =
             collect_candidates_with_limits(&root, false, SearchCandidateScope::Folders, 100, 1_000)
                 .expect("failed to collect visible candidates");
-        assert!(
-            hidden_off
-                .iter()
-                .any(|candidate| candidate.relative == "projects")
-        );
-        assert!(
-            hidden_off
-                .iter()
-                .any(|candidate| candidate.relative == "projects/needle")
-        );
-        assert!(
-            !hidden_off
-                .iter()
-                .any(|candidate| candidate.relative == ".hidden-root/needle")
-        );
+        assert!(hidden_off
+            .iter()
+            .any(|candidate| candidate.relative == "projects"));
+        assert!(hidden_off
+            .iter()
+            .any(|candidate| candidate.relative == "projects/needle"));
+        assert!(!hidden_off
+            .iter()
+            .any(|candidate| candidate.relative == ".hidden-root/needle"));
 
         let hidden_on =
             collect_candidates_with_limits(&root, true, SearchCandidateScope::Folders, 100, 1_000)
                 .expect("failed to collect hidden candidates");
-        assert!(
-            hidden_on
-                .iter()
-                .any(|candidate| candidate.relative == ".hidden-root/needle")
-        );
+        assert!(hidden_on
+            .iter()
+            .any(|candidate| candidate.relative == ".hidden-root/needle"));
 
         fs::remove_dir_all(root).expect("failed to remove temp tree");
     }
@@ -350,11 +342,9 @@ mod tests {
         assert_eq!(candidates[1].relative, "alpha");
         assert_eq!(candidates[2].relative, "beta");
         assert_eq!(candidates[3].relative, "gamma");
-        assert!(
-            candidates
-                .iter()
-                .any(|candidate| candidate.relative == ".hidden-root/needle")
-        );
+        assert!(candidates
+            .iter()
+            .any(|candidate| candidate.relative == ".hidden-root/needle"));
 
         fs::remove_dir_all(root).expect("failed to remove temp tree");
     }

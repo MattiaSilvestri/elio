@@ -115,7 +115,7 @@ mod tests {
         thread,
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
-    use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
+    use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
     fn temp_path(label: &str) -> PathBuf {
         let unique = SystemTime::now()
@@ -203,11 +203,10 @@ mod tests {
             app.preview_header_detail(10).as_deref(),
             Some("ZIP archive")
         );
-        assert!(
-            app.preview_lines()
-                .iter()
-                .any(|line| line.to_string().contains("Loading preview"))
-        );
+        assert!(app
+            .preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("Loading preview")));
 
         wait_for_background_preview(&mut app);
 
@@ -216,11 +215,10 @@ mod tests {
             app.preview_header_detail(10).as_deref(),
             Some("ZIP archive")
         );
-        assert!(
-            app.preview_lines()
-                .iter()
-                .any(|line| line.to_string().contains("docs/"))
-        );
+        assert!(app
+            .preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("docs/")));
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -251,11 +249,10 @@ mod tests {
             app.preview_header_detail(10).as_deref(),
             Some("DOCX document")
         );
-        assert!(
-            app.preview_lines()
-                .iter()
-                .any(|line| line.to_string().contains("Quarterly Report"))
-        );
+        assert!(app
+            .preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("Quarterly Report")));
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -284,16 +281,14 @@ mod tests {
 
         app.set_selected(1);
         assert_eq!(app.preview_section_label(), "Archive");
-        assert!(
-            app.preview_lines()
-                .iter()
-                .all(|line| !line.to_string().contains("Loading preview"))
-        );
-        assert!(
-            app.preview_lines()
-                .iter()
-                .any(|line| line.to_string().contains("second.txt"))
-        );
+        assert!(app
+            .preview_lines()
+            .iter()
+            .all(|line| !line.to_string().contains("Loading preview")));
+        assert!(app
+            .preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("second.txt")));
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -324,11 +319,10 @@ mod tests {
 
         assert_eq!(app.preview_section_label(), "Text");
         assert!(!dirty);
-        assert!(
-            app.preview_lines()
-                .iter()
-                .any(|line| line.to_string().contains("plain text"))
-        );
+        assert!(app
+            .preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("plain text")));
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -354,16 +348,14 @@ mod tests {
             app.preview_header_detail(10).as_deref(),
             Some("ZIP archive")
         );
-        assert!(
-            app.preview_lines()
-                .iter()
-                .any(|line| line.to_string().contains("docs/"))
-        );
-        assert!(
-            app.preview_lines()
-                .iter()
-                .all(|line| !line.to_string().contains("Loading preview"))
-        );
+        assert!(app
+            .preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("docs/")));
+        assert!(app
+            .preview_lines()
+            .iter()
+            .all(|line| !line.to_string().contains("Loading preview")));
         let metrics = app.preview_metrics();
         assert_eq!(metrics.cache_hits, 1);
         assert_eq!(metrics.cache_misses, 1);
@@ -415,31 +407,27 @@ mod tests {
         app.set_selected(0);
         assert_eq!(app.preview_section_label(), "Archive");
         assert_eq!(app.preview_scroll, 0);
-        assert!(
-            app.preview_header_detail(10)
-                .as_deref()
-                .is_some_and(|detail| detail.contains("Refreshing in background"))
-        );
-        assert!(
-            app.preview_lines()
-                .iter()
-                .all(|line| !line.to_string().contains("Loading preview"))
-        );
+        assert!(app
+            .preview_header_detail(10)
+            .as_deref()
+            .is_some_and(|detail| detail.contains("Refreshing in background")));
+        assert!(app
+            .preview_lines()
+            .iter()
+            .all(|line| !line.to_string().contains("Loading preview")));
 
         wait_for_background_preview(&mut app);
 
         assert_eq!(app.preview_section_label(), "Archive");
         assert_eq!(app.preview_scroll, 0);
-        assert!(
-            app.preview_header_detail(10)
-                .as_deref()
-                .is_some_and(|detail| !detail.contains("Refreshing in background"))
-        );
-        assert!(
-            app.preview_lines()
-                .iter()
-                .any(|line| line.to_string().contains("docs/"))
-        );
+        assert!(app
+            .preview_header_detail(10)
+            .as_deref()
+            .is_some_and(|detail| !detail.contains("Refreshing in background")));
+        assert!(app
+            .preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("docs/")));
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }

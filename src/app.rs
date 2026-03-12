@@ -1,6 +1,7 @@
 mod actions;
 mod events;
 mod jobs;
+mod pdf_preview;
 mod preview;
 mod previewing;
 mod searching;
@@ -140,6 +141,7 @@ pub struct FrameState {
     pub search_hits: Vec<SearchHit>,
     pub search_panel: Option<Rect>,
     pub preview_panel: Option<Rect>,
+    pub preview_content_area: Option<Rect>,
     pub back_button: Option<Rect>,
     pub forward_button: Option<Rect>,
     pub parent_button: Option<Rect>,
@@ -365,6 +367,7 @@ pub struct App {
     back_history: Vec<HistoryEntry>,
     forward_history: Vec<HistoryEntry>,
     preview_cache: preview::PreviewContent,
+    pdf_preview: pdf_preview::PdfPreviewState,
     frame_state: FrameState,
     search: Option<SearchOverlay>,
     search_cache: Option<SearchCache>,
@@ -418,6 +421,7 @@ impl App {
             back_history: Vec::new(),
             forward_history: Vec::new(),
             preview_cache: preview::PreviewContent::placeholder("No selection"),
+            pdf_preview: pdf_preview::PdfPreviewState::default(),
             frame_state: FrameState::default(),
             search: None,
             search_cache: None,

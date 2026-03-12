@@ -9,8 +9,8 @@ use crate::{
     config,
 };
 use ratatui::{
-    Frame,
     widgets::{Block, Clear},
+    Frame,
 };
 
 pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {

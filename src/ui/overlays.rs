@@ -2,11 +2,11 @@ use super::helpers;
 use super::theme::{self, Palette};
 use crate::app::{App, FrameState, SearchHit, SearchScope};
 use ratatui::{
-    Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Clear, Paragraph, Wrap},
+    Frame,
 };
 
 pub(super) fn render_search_overlay(
