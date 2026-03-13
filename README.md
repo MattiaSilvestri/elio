@@ -20,6 +20,10 @@
 cargo run
 ```
 
+## License
+
+Licensed under the [MIT license](LICENSE-MIT).
+
 ## Config
 
 General app settings live in:
