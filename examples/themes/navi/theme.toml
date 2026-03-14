@@ -21,42 +21,4 @@ button_bg = "#0e1726"
 button_disabled_bg = "#08101b"
 path_bg = "#0c1320"
 
-[classes.directory]
-icon = "󰉋"
-color = "#4ea1ff"
 
-[classes.config]
-icon = "󰒓"
-color = "#90c6ff"
-
-[classes.document]
-icon = "󰈙"
-color = "#88c27a"
-
-[extensions.lock]
-class = "data"
-icon = "󰌾"
-color = "#d9b36c"
-
-[extensions.toml]
-class = "config"
-icon = ""
-
-[files."Cargo.lock"]
-class = "data"
-icon = "󰌾"
-color = "#d9b36c"
-
-[files."package.json"]
-class = "config"
-icon = ""
-color = "#e2b450"
-
-[files."Dockerfile"]
-class = "config"
-icon = "󰡨"
-color = "#5ea2e3"
-
-[directories.".git"]
-icon = "󰊢"
-color = "#e89958"
