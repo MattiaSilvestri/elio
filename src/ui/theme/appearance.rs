@@ -400,7 +400,30 @@ impl Theme {
                     color: Some(rgb(214, 222, 240)),
                 },
             ),
-            ("json".to_string(), rule_class(FileClass::Config)),
+            (
+                "json".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(125, 176, 255)),
+                },
+            ),
+            (
+                "jsonc".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(125, 176, 255)),
+                },
+            ),
+            (
+                "json5".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(125, 176, 255)),
+                },
+            ),
             (
                 "toml".to_string(),
                 RuleOverride {
@@ -498,7 +521,23 @@ impl Theme {
                 },
             ),
             ("rst".to_string(), rule_class(FileClass::Document)),
+            (
+                "lock".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Data),
+                    icon: Some("󰈡".to_string()),
+                    color: Some(rgb(89, 222, 148)),
+                },
+            ),
             ("pdf".to_string(), rule_class(FileClass::Document)),
+            (
+                "epub".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("󱗖".to_string()),
+                    color: Some(rgb(211, 170, 124)),
+                },
+            ),
             ("doc".to_string(), rule_document_file()),
             ("docx".to_string(), rule_document_file()),
             ("docm".to_string(), rule_document_file()),
@@ -579,7 +618,7 @@ impl Theme {
                 normalize_key("Cargo.lock"),
                 RuleOverride {
                     class: Some(FileClass::Data),
-                    icon: Some("󰌾".to_string()),
+                    icon: Some("󰈡".to_string()),
                     color: None,
                 },
             ),
@@ -595,8 +634,64 @@ impl Theme {
                 normalize_key("package-lock.json"),
                 RuleOverride {
                     class: Some(FileClass::Data),
-                    icon: Some("".to_string()),
+                    icon: Some("󰈡".to_string()),
                     color: Some(rgb(210, 146, 89)),
+                },
+            ),
+            (
+                normalize_key("pnpm-lock.yaml"),
+                RuleOverride {
+                    class: Some(FileClass::Data),
+                    icon: Some("󰈡".to_string()),
+                    color: Some(rgb(255, 184, 107)),
+                },
+            ),
+            (
+                normalize_key("yarn.lock"),
+                RuleOverride {
+                    class: Some(FileClass::Data),
+                    icon: Some("󰈡".to_string()),
+                    color: Some(rgb(36, 217, 184)),
+                },
+            ),
+            (
+                normalize_key("bun.lock"),
+                RuleOverride {
+                    class: Some(FileClass::Data),
+                    icon: Some("󰈡".to_string()),
+                    color: Some(rgb(247, 200, 94)),
+                },
+            ),
+            (
+                normalize_key("bun.lockb"),
+                RuleOverride {
+                    class: Some(FileClass::Data),
+                    icon: Some("󰈡".to_string()),
+                    color: Some(rgb(247, 200, 94)),
+                },
+            ),
+            (
+                normalize_key("poetry.lock"),
+                RuleOverride {
+                    class: Some(FileClass::Data),
+                    icon: Some("󰈡".to_string()),
+                    color: Some(rgb(141, 223, 109)),
+                },
+            ),
+            (
+                normalize_key("Pipfile.lock"),
+                RuleOverride {
+                    class: Some(FileClass::Data),
+                    icon: Some("󰈡".to_string()),
+                    color: Some(rgb(89, 222, 148)),
+                },
+            ),
+            (
+                normalize_key("uv.lock"),
+                RuleOverride {
+                    class: Some(FileClass::Data),
+                    icon: Some("󰈡".to_string()),
+                    color: Some(rgb(89, 222, 148)),
                 },
             ),
             (
@@ -1116,7 +1211,7 @@ mod tests {
         let theme = Theme::default_theme();
         let resolved = theme.resolve(Path::new("Cargo.lock"), EntryKind::File);
         assert_eq!(resolved.class, FileClass::Data);
-        assert_eq!(resolved.icon, "󰌾");
+        assert_eq!(resolved.icon, "󰈡");
     }
 
     #[test]
@@ -1158,6 +1253,24 @@ icon = "L"
     }
 
     #[test]
+    fn generic_lock_files_use_file_lock_icon() {
+        let theme = Theme::default_theme();
+        let resolved = theme.resolve(Path::new("custom.lock"), EntryKind::File);
+        assert_eq!(resolved.class, FileClass::Data);
+        assert_eq!(resolved.icon, "󰈡");
+        assert_eq!(resolved.color, rgb(89, 222, 148));
+
+        let cargo = theme.resolve(Path::new("Cargo.lock"), EntryKind::File);
+        assert_eq!(cargo.icon, "󰈡");
+
+        let package_lock = theme.resolve(Path::new("package-lock.json"), EntryKind::File);
+        assert_eq!(package_lock.icon, "󰈡");
+
+        let poetry = theme.resolve(Path::new("poetry.lock"), EntryKind::File);
+        assert_eq!(poetry.icon, "󰈡");
+    }
+
+    #[test]
     fn code_preview_colors_can_be_overridden_from_config() {
         let theme = Theme::from_config_str(
             r##"
@@ -1180,6 +1293,11 @@ macro = "#fedcba"
 
         let ts = theme.resolve(Path::new("main.ts"), EntryKind::File);
         assert_eq!(ts.icon, "");
+
+        let json = theme.resolve(Path::new("data.json"), EntryKind::File);
+        assert_eq!(json.class, FileClass::Config);
+        assert_eq!(json.icon, "");
+        assert_eq!(json.color, rgb(125, 176, 255));
 
         let package = theme.resolve(Path::new("package.json"), EntryKind::File);
         assert_eq!(package.icon, "󰏗");
@@ -1339,6 +1457,11 @@ macro = "#fedcba"
         assert_eq!(text.class, FileClass::Document);
         assert_eq!(text.icon, "");
         assert_eq!(text.color, rgb(174, 184, 199));
+
+        let epub = theme.resolve(Path::new("novel.epub"), EntryKind::File);
+        assert_eq!(epub.class, FileClass::Document);
+        assert_eq!(epub.icon, "󱗖");
+        assert_eq!(epub.color, rgb(211, 170, 124));
 
         let documents_dir = theme.resolve(Path::new("Documents"), EntryKind::Directory);
         assert_eq!(documents_dir.class, FileClass::Directory);

@@ -101,6 +101,17 @@ class = "config"
 
 [extensions.json]
 class = "config"
+icon = ""
+color = "#7db0ff"
+
+[extensions.jsonc]
+class = "config"
+icon = ""
+color = "#7db0ff"
+
+[extensions.json5]
+class = "config"
+icon = ""
 color = "#7db0ff"
 
 [extensions.desktop]
@@ -117,6 +128,11 @@ color = "#ff9f7a"
 class = "document"
 icon = "󰈙"
 color = "#ff6b6b"
+
+[extensions.epub]
+class = "document"
+icon = "󱗖"
+color = "#d3aa7c"
 
 [extensions.ico]
 class = "image"
@@ -280,7 +296,7 @@ color = "#5aa8ff"
 
 [extensions.lock]
 class = "data"
-icon = "󰌾"
+icon = "󰈡"
 color = "#59de94"
 
 [extensions.rs]
@@ -495,7 +511,7 @@ color = "#f7c85e"
 
 [files."Cargo.lock"]
 class = "data"
-icon = "󰌾"
+icon = "󰈡"
 color = "#59de94"
 
 [files."package.json"]
@@ -505,7 +521,7 @@ color = "#7db0ff"
 
 [files."package-lock.json"]
 class = "data"
-icon = "󰌾"
+icon = "󰈡"
 color = "#59de94"
 
 [files."tsconfig.json"]
@@ -565,22 +581,22 @@ color = "#24d9b8"
 
 [files."pnpm-lock.yaml"]
 class = "data"
-icon = ""
+icon = "󰈡"
 color = "#ffb86b"
 
 [files."yarn.lock"]
 class = "data"
-icon = ""
+icon = "󰈡"
 color = "#24d9b8"
 
 [files."bun.lock"]
 class = "data"
-icon = ""
+icon = "󰈡"
 color = "#f7c85e"
 
 [files."bun.lockb"]
 class = "data"
-icon = ""
+icon = "󰈡"
 color = "#f7c85e"
 
 [files."pnpm-workspace.yaml"]
@@ -610,7 +626,7 @@ color = "#66e39a"
 
 [files."poetry.lock"]
 class = "data"
-icon = ""
+icon = "󰈡"
 color = "#8ddf6d"
 
 [files."requirements.txt"]
@@ -815,12 +831,12 @@ color = "#ffd866"
 
 [files."Pipfile.lock"]
 class = "data"
-icon = "󰌾"
+icon = "󰈡"
 color = "#59de94"
 
 [files."uv.lock"]
 class = "data"
-icon = "󰌾"
+icon = "󰈡"
 color = "#59de94"
 
 [files."go.work"]
@@ -900,16 +916,16 @@ icon = "󰏗"
 color = "#8ddf6d"
 
 [directories."tests"]
-icon = "󰙨"
-color = "#f7c85e"
+icon = "󰉋"
+color = "#5ba8ff"
 
 [directories."test"]
-icon = "󰙨"
-color = "#f7c85e"
+icon = "󰉋"
+color = "#5ba8ff"
 
 [directories."__tests__"]
-icon = "󰙨"
-color = "#f7c85e"
+icon = "󰉋"
+color = "#5ba8ff"
 
 [directories."scripts"]
 icon = "󰉋"
@@ -917,7 +933,7 @@ color = "#38d5ff"
 
 [directories."build"]
 icon = "󰉋"
-color = "#ff9b61"
+color = "#5ba8ff"
 
 [directories."dist"]
 icon = "󰉋"
@@ -1108,8 +1124,8 @@ icon = "󰉋"
 color = "#5ba8ff"
 
 [directories."vendor"]
-icon = "󰏖"
-color = "#f7c85e"
+icon = "󰉋"
+color = "#5ba8ff"
 
 [directories."src"]
 icon = "󰉋"
