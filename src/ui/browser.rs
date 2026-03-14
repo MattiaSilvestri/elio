@@ -146,8 +146,6 @@ fn render_entries(
             ),
             Span::raw(" "),
         ]),
-        palette.panel_alt,
-        palette.text,
     );
     let inner = block.inner(area);
     helpers::fill_area(frame, inner, palette.panel_alt, palette.text);
@@ -465,7 +463,7 @@ fn render_preview(
         .style(Style::default().bg(palette.panel).fg(palette.text))
         .border_style(Style::default().fg(palette.border));
     frame.render_widget(block, area);
-    helpers::render_panel_title(frame, area, title_line, palette.panel, palette.text);
+    helpers::render_panel_title(frame, area, title_line);
     let inner = helpers::inner_with_padding(area);
     helpers::fill_area(frame, inner, palette.panel, palette.text);
 
@@ -940,6 +938,38 @@ mod tests {
         assert!(
             !rendered.contains("Modified "),
             "preview panel should not repeat generic modified metadata, got: {rendered:?}"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn entries_and_preview_panels_keep_top_border_segments() {
+        let root = temp_path("panel-top-borders");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("report.txt"), "hello\nworld\n").expect("failed to write temp file");
+
+        let mut app = App::new_at(root.clone()).expect("app should load temp directory");
+        let mut terminal = Terminal::new(TestBackend::new(90, 24)).expect("terminal should init");
+
+        let state = draw_ui(&mut terminal, &mut app);
+        let entries_panel = state
+            .entries_panel
+            .expect("entries panel should be rendered");
+        let preview_panel = state
+            .preview_panel
+            .expect("preview panel should be rendered");
+
+        let entries_top = row_text(terminal.backend().buffer(), entries_panel.y);
+        let preview_top = row_text(terminal.backend().buffer(), preview_panel.y);
+
+        assert!(
+            entries_top.contains("─"),
+            "expected entries panel to keep top border segments, got: {entries_top:?}"
+        );
+        assert!(
+            preview_top.contains("─"),
+            "expected preview panel to keep top border segments, got: {preview_top:?}"
         );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");

@@ -24,13 +24,7 @@ pub(super) fn fill_area(frame: &mut Frame<'_>, area: Rect, bg: Color, fg: Color)
     frame.render_widget(Block::default().style(Style::default().bg(bg).fg(fg)), area);
 }
 
-pub(super) fn render_panel_title(
-    frame: &mut Frame<'_>,
-    area: Rect,
-    line: Line<'static>,
-    bg: Color,
-    fg: Color,
-) {
+pub(super) fn render_panel_title(frame: &mut Frame<'_>, area: Rect, line: Line<'static>) {
     if area.width <= 2 || area.height == 0 {
         return;
     }
@@ -41,11 +35,9 @@ pub(super) fn render_panel_title(
         width: area.width.saturating_sub(2),
         height: 1,
     };
-    fill_area(frame, title_area, bg, fg);
-    frame.render_widget(
-        Paragraph::new(line).style(Style::default().bg(bg).fg(fg)),
-        title_area,
-    );
+    frame
+        .buffer_mut()
+        .set_line(title_area.x, title_area.y, &line, title_area.width);
 }
 
 pub(super) fn render_button(
