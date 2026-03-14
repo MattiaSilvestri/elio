@@ -944,6 +944,42 @@ mod tests {
     }
 
     #[test]
+    fn help_overlay_keeps_controls_readable_and_drops_auto_reload_row() {
+        let root = temp_path("help-overlay-format");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+
+        let mut app = App::new_at(root.clone()).expect("app should load temp directory");
+        app.help_open = true;
+        let mut terminal = Terminal::new(TestBackend::new(90, 24)).expect("terminal should init");
+
+        draw_ui(&mut terminal, &mut app);
+        let rendered = buffer_text(terminal.backend().buffer());
+
+        assert!(
+            rendered.contains("Double-click"),
+            "expected help overlay to keep the double-click label readable, got: {rendered:?}"
+        );
+        assert!(
+            rendered.contains("open item"),
+            "expected help overlay to keep the action text readable, got: {rendered:?}"
+        );
+        assert!(
+            rendered.contains("Ctrl+F"),
+            "expected help overlay to keep the file search shortcut visible, got: {rendered:?}"
+        );
+        assert!(
+            !rendered.contains("Double clickopen"),
+            "help overlay fused the key and action labels together: {rendered:?}"
+        );
+        assert!(
+            !rendered.contains("current folder reloads itself"),
+            "help overlay should not list auto-reload as a control: {rendered:?}"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
     fn entries_and_preview_panels_keep_top_border_segments() {
         let root = temp_path("panel-top-borders");
         fs::create_dir_all(&root).expect("failed to create temp root");

@@ -108,18 +108,6 @@ pub(super) fn chip_span<'a>(label: &'a str, bg: Color, fg: Color, bold: bool) ->
     Span::styled(format!(" {label} "), style)
 }
 
-pub(super) fn help_row(key: &str, action: &str, palette: Palette) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(
-            format!("{key:<12}"),
-            Style::default()
-                .fg(palette.accent_text)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(action.to_string(), Style::default().fg(palette.muted)),
-    ])
-}
-
 #[derive(Clone, Copy)]
 pub(super) struct GridZoomSpec {
     pub tile_width_hint: u16,
