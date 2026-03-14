@@ -7,6 +7,16 @@ fn line_text(line: &Line<'_>) -> String {
         .collect::<String>()
 }
 
+fn assert_span_color(line: &Line<'_>, token: &str, expected: ratatui::style::Color) {
+    assert!(
+        line.spans
+            .iter()
+            .any(|span| span.content.contains(token) && span.style.fg == Some(expected)),
+        "expected token {token:?} with color {expected:?} in line {:?}",
+        line_text(line)
+    );
+}
+
 #[test]
 fn highlighting_detail_label_is_plain() {
     assert_eq!(HighlightLanguage::Json.detail_label(), "JSON");
@@ -15,6 +25,31 @@ fn highlighting_detail_label_is_plain() {
 #[test]
 fn markup_detail_label_is_plain() {
     assert_eq!(HighlightLanguage::Markup.detail_label(), "Markup");
+}
+
+#[test]
+fn directive_conf_detail_label_is_plain() {
+    assert_eq!(
+        HighlightLanguage::DirectiveConf.detail_label(),
+        "Directive config"
+    );
+    assert_eq!(
+        HighlightLanguage::from_language_token(" kitty "),
+        Some(HighlightLanguage::DirectiveConf)
+    );
+    assert_eq!(
+        HighlightLanguage::from_language_token(" conf "),
+        Some(HighlightLanguage::DirectiveConf)
+    );
+}
+
+#[test]
+fn lua_detail_label_is_plain() {
+    assert_eq!(HighlightLanguage::Lua.detail_label(), "Lua");
+    assert_eq!(
+        HighlightLanguage::from_language_token(" lua "),
+        Some(HighlightLanguage::Lua)
+    );
 }
 
 #[test]
@@ -449,6 +484,89 @@ fn js_like_highlighting_renderer_handles_unicode_without_panicking() {
             .iter()
             .any(|span| span.content.contains("// áéíóú"))
     );
+}
+
+#[test]
+fn directive_conf_highlighting_renderer_handles_directives_and_hex_colors() {
+    let palette = crate::ui::theme::code_preview_palette();
+    let lines = render_highlighted_code_preview_for_tests(
+        "font_size 11.5\nforeground #c0c6e2\nmap ctrl+c copy_to_clipboard\n",
+        HighlightLanguage::DirectiveConf,
+        true,
+    );
+
+    assert_span_color(&lines[0], "font_size", palette.function);
+    assert_span_color(&lines[0], "11.5", palette.constant);
+    assert_span_color(&lines[1], "foreground", palette.function);
+    assert_span_color(&lines[1], "#c0c6e2", palette.constant);
+    assert_span_color(&lines[2], "map", palette.function);
+}
+
+#[test]
+fn directive_conf_highlighting_renderer_handles_equals_comments_and_paths() {
+    let palette = crate::ui::theme::code_preview_palette();
+    let lines = render_highlighted_code_preview_for_tests(
+        "loop-playlist=yes # autoplay\ninclude ~/.config/kitty/theme.conf\n",
+        HighlightLanguage::DirectiveConf,
+        true,
+    );
+
+    assert_span_color(&lines[0], "loop-playlist", palette.function);
+    assert_span_color(&lines[0], "yes", palette.keyword);
+    assert_span_color(&lines[0], "# autoplay", palette.comment);
+    assert_span_color(&lines[1], "include", palette.function);
+    assert_span_color(&lines[1], "~/.config/kitty/theme.conf", palette.string);
+}
+
+#[test]
+fn lua_highlighting_renderer_highlights_keywords_functions_comments_and_strings() {
+    let palette = crate::ui::theme::code_preview_palette();
+    let lines = render_highlighted_code_preview_for_tests(
+        "local function greet(name)\n  return \"hi\" .. name -- greeting\nend\n",
+        HighlightLanguage::Lua,
+        true,
+    );
+
+    assert_span_color(&lines[0], "local", palette.keyword);
+    assert_span_color(&lines[0], "function", palette.keyword);
+    assert_span_color(&lines[0], "greet", palette.function);
+    assert_span_color(&lines[1], "return", palette.keyword);
+    assert_span_color(&lines[1], "\"hi\"", palette.string);
+    assert_span_color(&lines[1], "-- greeting", palette.comment);
+    assert_span_color(&lines[2], "end", palette.keyword);
+}
+
+#[test]
+fn lua_highlighting_renderer_handles_long_comments_and_strings() {
+    let palette = crate::ui::theme::code_preview_palette();
+    let lines = render_highlighted_code_preview_for_tests(
+        "--[=[ first line\nsecond line ]=]\nlocal chunk = [==[hello\nworld]==]\nreturn chunk\n",
+        HighlightLanguage::Lua,
+        true,
+    );
+
+    assert_span_color(&lines[0], "--[=[ first line", palette.comment);
+    assert_span_color(&lines[1], "second line ]=]", palette.comment);
+    assert_span_color(&lines[2], "local", palette.keyword);
+    assert_span_color(&lines[2], "[==[hello", palette.string);
+    assert_span_color(&lines[3], "world]==]", palette.string);
+    assert_span_color(&lines[4], "return", palette.keyword);
+}
+
+#[test]
+fn lua_highlighting_renderer_keeps_qualified_receivers_plain() {
+    let palette = crate::ui::theme::code_preview_palette();
+    let lines = render_highlighted_code_preview_for_tests(
+        "function Module:run_once(arg)\n  return self.helper(arg)\nend\n",
+        HighlightLanguage::Lua,
+        true,
+    );
+
+    assert_span_color(&lines[0], "function", palette.keyword);
+    assert_span_color(&lines[0], "Module", palette.fg);
+    assert_span_color(&lines[0], "run_once", palette.function);
+    assert_span_color(&lines[1], "self", palette.parameter);
+    assert_span_color(&lines[1], "helper", palette.function);
 }
 
 #[test]

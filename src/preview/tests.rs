@@ -1294,6 +1294,105 @@ fn desktop_preview_uses_code_renderer() {
 }
 
 #[test]
+fn directive_conf_preview_is_used_for_ambiguous_conf() {
+    let root = temp_path("directive-conf-preview");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("custom.conf");
+    fs::write(
+        &path,
+        "font_size 11.5\nforeground #c0c6e2\nmap ctrl+c copy_to_clipboard\n",
+    )
+    .expect("failed to write directive conf");
+
+    let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
+
+    assert_eq!(preview.kind, PreviewKind::Code);
+    assert_eq!(preview.detail.as_deref(), Some("Directive config"));
+    assert_eq!(
+        span_color(&preview.lines[0], "font_size"),
+        Some(code_palette.function)
+    );
+    assert_eq!(
+        span_color(&preview.lines[1], "#c0c6e2"),
+        Some(code_palette.constant)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn ini_style_conf_preview_uses_ini_highlighting() {
+    let root = temp_path("ini-conf-preview");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("settings.conf");
+    fs::write(&path, "[Settings]\ncolor=blue\nenabled=true\n").expect("failed to write ini conf");
+
+    let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
+
+    assert_eq!(preview.kind, PreviewKind::Code);
+    assert_eq!(preview.detail.as_deref(), Some("INI"));
+    assert_eq!(
+        span_color(&preview.lines[0], "[Settings]"),
+        Some(code_palette.r#type)
+    );
+    assert_eq!(
+        span_color(&preview.lines[1], "color"),
+        Some(code_palette.parameter)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn shell_style_conf_preview_uses_shell_highlighting() {
+    let root = temp_path("shell-conf-preview");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("module.conf");
+    fs::write(
+        &path,
+        "MAKE=\"make -C src/ KERNELDIR=/lib/modules/${kernelver}/build\"\nAUTOINSTALL=yes\n",
+    )
+    .expect("failed to write shell conf");
+
+    let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
+
+    assert_eq!(preview.kind, PreviewKind::Code);
+    assert_eq!(preview.detail.as_deref(), Some("Shell"));
+    assert_eq!(
+        span_color(&preview.lines[0], "MAKE"),
+        Some(code_palette.parameter)
+    );
+    assert!(line_text(&preview.lines[0]).contains("${kernelver}"));
+    assert!(line_has_color(&preview.lines[0], code_palette.string));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn config_modeline_can_force_directive_preview() {
+    let root = temp_path("kitty-conf-preview");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("settings.conf");
+    fs::write(&path, "# vim:ft=kitty\n[Settings]\nforeground #c0c6e2\n")
+        .expect("failed to write modeline conf");
+
+    let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
+
+    assert_eq!(preview.kind, PreviewKind::Code);
+    assert_eq!(preview.detail.as_deref(), Some("Kitty"));
+    assert_eq!(
+        span_color(&preview.lines[2], "foreground"),
+        Some(code_palette.function)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn pkgbuild_preview_uses_shell_renderer() {
     let root = temp_path("pkgbuild");
     fs::create_dir_all(&root).expect("failed to create temp root");

@@ -2,8 +2,10 @@ mod brace_like;
 mod cmake;
 mod common;
 mod data;
+mod directive;
 mod js_like;
 mod logs;
+mod lua;
 mod make;
 mod markup;
 mod nix;
@@ -63,6 +65,7 @@ fn render_highlighted_code_preview(
     let mut markup_block_comment = false;
     let mut css_block_comment = false;
     let mut brace_like_block_comment = false;
+    let mut lua_state = lua::LuaState::default();
     let mut python_state = python::PythonState::default();
     let mut shell_state = shell::ShellState::default();
 
@@ -84,6 +87,10 @@ fn render_highlighted_code_preview(
                 code_palette,
                 &mut brace_like_block_comment,
             ),
+            HighlightLanguage::DirectiveConf => {
+                directive::highlight_directive_conf_line(line, code_palette)
+            }
+            HighlightLanguage::Lua => lua::highlight_lua_line(line, code_palette, &mut lua_state),
             HighlightLanguage::Python => {
                 python::highlight_python_line(line, code_palette, &mut python_state)
             }

@@ -1,6 +1,6 @@
 use super::types::{
-    c_like_file_facts, cmake_file_facts, disk_image_file_facts, js_like_file_facts, nix_file_facts,
-    plain, python_file_facts, shell_file_facts, source_only,
+    c_like_file_facts, cmake_file_facts, directive_conf_file_facts, disk_image_file_facts,
+    js_like_file_facts, nix_file_facts, plain, python_file_facts, shell_file_facts, source_only,
 };
 use super::{
     DiskImageKind, DocumentFormat, FileFacts, HighlightLanguage, PreviewSpec, StructuredFormat,
@@ -109,7 +109,7 @@ pub(super) fn inspect_extension(ext: &str) -> FileFacts {
             specific_type_label: Some("Lockfile"),
             preview: PreviewSpec::source(None, Some(HighlightLanguage::Ini), None),
         },
-        "ini" | "conf" | "cfg" | "keys" => FileFacts {
+        "ini" | "keys" => FileFacts {
             builtin_class: FileClass::Config,
             specific_type_label: match ext {
                 "keys" => Some("Keys file"),
@@ -117,6 +117,7 @@ pub(super) fn inspect_extension(ext: &str) -> FileFacts {
             },
             preview: PreviewSpec::source(None, Some(HighlightLanguage::Ini), None),
         },
+        "conf" | "cfg" => directive_conf_file_facts(FileClass::Config, None),
         "env" => FileFacts {
             builtin_class: FileClass::Config,
             specific_type_label: Some("Environment file"),
@@ -228,7 +229,7 @@ pub(super) fn inspect_extension(ext: &str) -> FileFacts {
         "lua" => FileFacts {
             builtin_class: FileClass::Code,
             specific_type_label: Some("Lua script"),
-            preview: PreviewSpec::source(None, None, None),
+            preview: PreviewSpec::highlighted_source(Some("lua"), HighlightLanguage::Lua),
         },
         "ron" => source_only(FileClass::Config, None, None),
         "csv" | "tsv" | "sql" | "sqlite" | "db" | "parquet" => {

@@ -14,6 +14,14 @@ fn temp_path(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("elio-file-info-{label}-{unique}"))
 }
 
+fn write_temp_file(label: &str, file_name: &str, contents: &str) -> (PathBuf, PathBuf) {
+    let root = temp_path(label);
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join(file_name);
+    fs::write(&path, contents).expect("failed to write temp file");
+    (root, path)
+}
+
 #[test]
 fn package_lock_uses_one_shared_definition() {
     let facts = inspect_path(Path::new("package-lock.json"), EntryKind::File);
@@ -243,6 +251,135 @@ fn python_family_files_use_syntax_highlighting() {
         pyi.preview.highlight_language,
         Some(HighlightLanguage::Python)
     );
+}
+
+#[test]
+fn lua_files_use_syntax_highlighting() {
+    let lua = inspect_path(Path::new("init.lua"), EntryKind::File);
+
+    assert_eq!(lua.builtin_class, FileClass::Code);
+    assert_eq!(lua.specific_type_label, Some("Lua script"));
+    assert_eq!(lua.preview.language_hint, Some("lua"));
+    assert_eq!(lua.preview.highlight_language, Some(HighlightLanguage::Lua));
+}
+
+#[test]
+fn ini_style_conf_is_detected_from_contents() {
+    let (root, path) = write_temp_file(
+        "ini-conf",
+        "settings.conf",
+        "[Settings]\ncolor=blue\nenabled=true\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Config);
+    assert_eq!(facts.preview.language_hint, Some("ini"));
+    assert_eq!(
+        facts.preview.highlight_language,
+        Some(HighlightLanguage::Ini)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn shell_style_conf_is_detected_from_contents() {
+    let (root, path) = write_temp_file(
+        "shell-conf",
+        "module.conf",
+        "MAKE=\"make -C src/ KERNELDIR=/lib/modules/${kernelver}/build\"\nAUTOINSTALL=yes\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Config);
+    assert_eq!(facts.preview.language_hint, Some("shell"));
+    assert_eq!(
+        facts.preview.highlight_language,
+        Some(HighlightLanguage::Shell)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn ambiguous_conf_defaults_to_directive_config() {
+    let (root, path) = write_temp_file(
+        "directive-conf",
+        "custom.conf",
+        "font_size 11.5\nforeground #c0c6e2\nmap ctrl+c copy_to_clipboard\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Config);
+    assert_eq!(facts.preview.language_hint, None);
+    assert_eq!(
+        facts.preview.highlight_language,
+        Some(HighlightLanguage::DirectiveConf)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn cfg_files_use_the_same_content_based_detection() {
+    let (root, path) = write_temp_file(
+        "directive-cfg",
+        "custom.cfg",
+        "font_size 11.5\nforeground #c0c6e2\nmap ctrl+c copy_to_clipboard\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Config);
+    assert_eq!(
+        facts.preview.highlight_language,
+        Some(HighlightLanguage::DirectiveConf)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn config_modelines_can_force_directive_conf_without_name_overrides() {
+    let (root, path) = write_temp_file(
+        "kitty-modeline",
+        "settings.conf",
+        "# vim:ft=kitty\n[Settings]\ncolor=blue\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Config);
+    assert_eq!(facts.preview.language_hint, Some("kitty"));
+    assert_eq!(
+        facts.preview.highlight_language,
+        Some(HighlightLanguage::DirectiveConf)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn unsupported_modelines_are_ignored_for_conf_detection() {
+    let (root, path) = write_temp_file(
+        "unknown-modeline",
+        "settings.conf",
+        "# vim:ft=totallyunknown\n[Settings]\ncolor=blue\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Config);
+    assert_eq!(facts.preview.language_hint, Some("ini"));
+    assert_eq!(
+        facts.preview.highlight_language,
+        Some(HighlightLanguage::Ini)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
 }
 
 #[test]

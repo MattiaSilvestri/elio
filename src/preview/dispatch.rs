@@ -203,7 +203,9 @@ fn display_language_hint(language_hint: &str) -> String {
         "javascript" => "JavaScript".to_string(),
         "json" => "JSON".to_string(),
         "jsonc" => "JSONC".to_string(),
+        "kitty" => "Kitty".to_string(),
         "kotlin" => "Kotlin".to_string(),
+        "mpv" => "MPV".to_string(),
         "nix" => "Nix".to_string(),
         "php" => "PHP".to_string(),
         "python" => "Python".to_string(),
@@ -214,6 +216,8 @@ fn display_language_hint(language_hint: &str) -> String {
         "typescript" => "TypeScript".to_string(),
         "xml" => "XML".to_string(),
         "yaml" => "YAML".to_string(),
+        "config" => "Config".to_string(),
+        "desktop" => "Desktop Entry".to_string(),
         other => {
             let mut chars = other.chars();
             match chars.next() {

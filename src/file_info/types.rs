@@ -50,6 +50,8 @@ impl DocumentFormat {
 pub(crate) enum HighlightLanguage {
     JsLike,
     CLike,
+    DirectiveConf,
+    Lua,
     Python,
     Make,
     Shell,
@@ -71,6 +73,8 @@ impl HighlightLanguage {
         match self {
             Self::JsLike => "JavaScript / TypeScript",
             Self::CLike => "C-style code",
+            Self::DirectiveConf => "Directive config",
+            Self::Lua => "Lua",
             Self::Python => "Python",
             Self::Make => "Makefile",
             Self::Shell => "Shell",
@@ -97,11 +101,14 @@ impl HighlightLanguage {
             "js" | "jsx" | "javascript" | "ts" | "tsx" | "typescript" => Some(Self::JsLike),
             "c" | "h" | "cpp" | "c++" | "cc" | "cxx" | "hpp" | "hh" | "hxx" | "rust" | "rs"
             | "go" | "golang" | "java" | "kotlin" | "kt" | "swift" | "php" => Some(Self::CLike),
+            "conf" | "cfg" | "config" => Some(Self::DirectiveConf),
+            "lua" => Some(Self::Lua),
             "python" | "py" | "ruby" | "rb" => Some(Self::Python),
             "make" | "makefile" => Some(Self::Make),
             "sh" | "shell" | "bash" | "zsh" | "ksh" | "fish" => Some(Self::Shell),
             "nix" => Some(Self::Nix),
             "cmake" => Some(Self::CMake),
+            "kitty" | "mpv" | "btop" => Some(Self::DirectiveConf),
             "html" | "xml" | "xhtml" | "svg" | "markup" => Some(Self::Markup),
             "css" | "scss" | "sass" | "less" => Some(Self::Css),
             "toml" => Some(Self::Toml),
@@ -109,7 +116,7 @@ impl HighlightLanguage {
             "jsonc" | "json5" => Some(Self::Jsonc),
             "yaml" | "yml" => Some(Self::Yaml),
             "log" => Some(Self::Log),
-            "ini" | "conf" | "cfg" => Some(Self::Ini),
+            "ini" | "dosini" => Some(Self::Ini),
             "desktop" => Some(Self::DesktopEntry),
             _ => None,
         }
@@ -407,6 +414,14 @@ pub(super) const fn cmake_file_facts(
 ) -> FileFacts {
     source_only(class, Some(specific_type_label), Some("cmake"))
         .with_highlight_language(HighlightLanguage::CMake)
+}
+
+pub(super) const fn directive_conf_file_facts(
+    class: FileClass,
+    language_hint: Option<&'static str>,
+) -> FileFacts {
+    source_only(class, None, language_hint)
+        .with_highlight_language(HighlightLanguage::DirectiveConf)
 }
 
 pub(super) const fn disk_image_file_facts(kind: DiskImageKind) -> FileFacts {
