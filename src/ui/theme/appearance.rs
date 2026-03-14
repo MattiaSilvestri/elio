@@ -727,6 +727,46 @@ impl Theme {
                 },
             ),
             (
+                normalize_key("AUTHORS"),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("󰭘".to_string()),
+                    color: Some(rgb(155, 143, 199)),
+                },
+            ),
+            (
+                normalize_key("AUTHORS.md"),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("󰭘".to_string()),
+                    color: Some(rgb(155, 143, 199)),
+                },
+            ),
+            (
+                normalize_key("AUTHORS.txt"),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("󰭘".to_string()),
+                    color: Some(rgb(155, 143, 199)),
+                },
+            ),
+            (
+                normalize_key("CONTRIBUTORS"),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("󰭘".to_string()),
+                    color: Some(rgb(155, 143, 199)),
+                },
+            ),
+            (
+                normalize_key("CONTRIBUTORS.md"),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("󰭘".to_string()),
+                    color: Some(rgb(155, 143, 199)),
+                },
+            ),
+            (
                 normalize_key(".gitignore"),
                 RuleOverride {
                     class: Some(FileClass::Config),
@@ -1130,13 +1170,8 @@ fn builtin_classify_entry(entry: &Entry) -> FileClass {
         return class;
     }
 
-    let class = file_info::inspect_path_cached(
-        &entry.path,
-        entry.kind,
-        entry.size,
-        entry.modified,
-    )
-    .builtin_class;
+    let class = file_info::inspect_path_cached(&entry.path, entry.kind, entry.size, entry.modified)
+        .builtin_class;
     entry_class_cache()
         .lock()
         .expect("entry class cache lock")
@@ -1458,6 +1493,31 @@ macro = "#fedcba"
         assert_eq!(markdown.class, FileClass::Document);
         assert_eq!(markdown.icon, "");
         assert_eq!(markdown.color, rgb(211, 170, 124));
+
+        let authors = theme.resolve(Path::new("AUTHORS"), EntryKind::File);
+        assert_eq!(authors.class, FileClass::Document);
+        assert_eq!(authors.icon, "󰭘");
+        assert_eq!(authors.color, rgb(155, 143, 199));
+
+        let authors_markdown = theme.resolve(Path::new("AUTHORS.md"), EntryKind::File);
+        assert_eq!(authors_markdown.class, FileClass::Document);
+        assert_eq!(authors_markdown.icon, "󰭘");
+        assert_eq!(authors_markdown.color, rgb(155, 143, 199));
+
+        let authors_text = theme.resolve(Path::new("AUTHORS.txt"), EntryKind::File);
+        assert_eq!(authors_text.class, FileClass::Document);
+        assert_eq!(authors_text.icon, "󰭘");
+        assert_eq!(authors_text.color, rgb(155, 143, 199));
+
+        let contributors = theme.resolve(Path::new("CONTRIBUTORS"), EntryKind::File);
+        assert_eq!(contributors.class, FileClass::Document);
+        assert_eq!(contributors.icon, "󰭘");
+        assert_eq!(contributors.color, rgb(155, 143, 199));
+
+        let contributors_markdown = theme.resolve(Path::new("CONTRIBUTORS.md"), EntryKind::File);
+        assert_eq!(contributors_markdown.class, FileClass::Document);
+        assert_eq!(contributors_markdown.icon, "󰭘");
+        assert_eq!(contributors_markdown.color, rgb(155, 143, 199));
 
         let text = theme.resolve(Path::new("notes.txt"), EntryKind::File);
         assert_eq!(text.class, FileClass::Document);

@@ -559,6 +559,31 @@ class = "document"
 icon = ""
 color = "#d3aa7c"
 
+[files."AUTHORS"]
+class = "document"
+icon = "󰭘"
+color = "#9b8fc7"
+
+[files."AUTHORS.md"]
+class = "document"
+icon = "󰭘"
+color = "#9b8fc7"
+
+[files."AUTHORS.txt"]
+class = "document"
+icon = "󰭘"
+color = "#9b8fc7"
+
+[files."CONTRIBUTORS"]
+class = "document"
+icon = "󰭘"
+color = "#9b8fc7"
+
+[files."CONTRIBUTORS.md"]
+class = "document"
+icon = "󰭘"
+color = "#9b8fc7"
+
 [files.".gitignore"]
 class = "config"
 icon = "󰊢"
