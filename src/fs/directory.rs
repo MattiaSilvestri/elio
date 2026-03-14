@@ -2,7 +2,7 @@ use crate::app::{Entry, EntryKind, SidebarItem, SortMode};
 use anyhow::{Context, Result};
 use std::{
     cmp::Ordering,
-    collections::hash_map::DefaultHasher,
+    collections::{HashMap, hash_map::DefaultHasher},
     env, fs,
     hash::{Hash, Hasher},
     io,
@@ -52,15 +52,20 @@ pub(crate) fn build_sidebar_items() -> Vec<SidebarItem> {
         path: home.clone(),
     });
 
-    for (title, folder, icon) in [
-        ("Desktop", "Desktop", "󰍹"),
-        ("Documents", "Documents", "󰲃"),
-        ("Downloads", "Downloads", "󰉍"),
-        ("Pictures", "Pictures", "󰉏"),
-        ("Music", "Music", "󱍙"),
-        ("Videos", "Videos", "󰕧"),
+    let xdg_dirs = read_xdg_user_dirs(&home);
+
+    for (title, xdg_key, fallback, icon) in [
+        ("Desktop", "XDG_DESKTOP_DIR", "Desktop", "󰍹"),
+        ("Documents", "XDG_DOCUMENTS_DIR", "Documents", "󰲃"),
+        ("Downloads", "XDG_DOWNLOAD_DIR", "Downloads", "󰉍"),
+        ("Pictures", "XDG_PICTURES_DIR", "Pictures", "󰉏"),
+        ("Music", "XDG_MUSIC_DIR", "Music", "󱍙"),
+        ("Videos", "XDG_VIDEOS_DIR", "Videos", "󰕧"),
     ] {
-        let path = home.join(folder);
+        let path = xdg_dirs
+            .get(xdg_key)
+            .cloned()
+            .unwrap_or_else(|| home.join(fallback));
         if path.exists() {
             items.push(SidebarItem {
                 title: title.to_string(),
@@ -77,6 +82,44 @@ pub(crate) fn build_sidebar_items() -> Vec<SidebarItem> {
     });
 
     items
+}
+
+/// Reads `$XDG_CONFIG_HOME/user-dirs.dirs` (default: `~/.config/user-dirs.dirs`) and returns a
+/// map of XDG variable names (e.g. `"XDG_DOWNLOAD_DIR"`) to their resolved paths. On systems
+/// without this file (e.g. macOS) or when the file cannot be read, returns an empty map and the
+/// caller falls back to English directory names.
+fn read_xdg_user_dirs(home: &Path) -> HashMap<String, PathBuf> {
+    let config_home = env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".config"));
+
+    let content = match fs::read_to_string(config_home.join("user-dirs.dirs")) {
+        Ok(content) => content,
+        Err(_) => return HashMap::new(),
+    };
+
+    let mut dirs = HashMap::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('#') || line.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = value.trim().trim_matches('"');
+        let path = if value == "$HOME" {
+            home.to_path_buf()
+        } else if let Some(relative) = value.strip_prefix("$HOME/") {
+            home.join(relative)
+        } else if value.starts_with('/') {
+            PathBuf::from(value)
+        } else {
+            continue;
+        };
+        dirs.insert(key.trim().to_string(), path);
+    }
+    dirs
 }
 
 fn read_entries(dir: &Path, show_hidden: bool) -> Result<Vec<Entry>> {
