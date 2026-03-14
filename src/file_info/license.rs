@@ -86,7 +86,13 @@ pub(super) fn sniff_license_file_type(
     base_facts: FileFacts,
 ) -> Option<FileFacts> {
     let canonical_candidate = is_canonical_license_candidate_name(name);
-    if !canonical_candidate && !can_sniff_license_markers(ext, base_facts) {
+    let can_sniff_content = can_sniff_license_content(base_facts);
+    let can_sniff_markers = can_sniff_license_markers(ext, base_facts);
+
+    if !canonical_candidate && !can_sniff_markers {
+        return None;
+    }
+    if canonical_candidate && !can_sniff_content {
         return None;
     }
 
@@ -109,6 +115,16 @@ pub(super) fn sniff_license_file_type(
     })
 }
 
+fn can_sniff_license_content(base_facts: FileFacts) -> bool {
+    matches!(
+        base_facts.preview.kind,
+        PreviewKind::PlainText | PreviewKind::Markdown
+    ) && matches!(
+        base_facts.builtin_class,
+        FileClass::Document | FileClass::File
+    )
+}
+
 fn is_canonical_license_candidate_name(name: &str) -> bool {
     const EXACT_CANDIDATES: &[&str] = &["license", "licence", "copying", "copyright", "unlicense"];
     const PREFIX_CANDIDATES: &[&str] = &["license", "licence", "copying", "copyright", "unlicense"];
@@ -128,13 +144,7 @@ fn can_sniff_license_markers(ext: &str, base_facts: FileFacts) -> bool {
     matches!(
         ext,
         "" | "txt" | "md" | "markdown" | "mdown" | "mkd" | "mdx" | "rst"
-    ) && matches!(
-        base_facts.preview.kind,
-        PreviewKind::PlainText | PreviewKind::Markdown
-    ) && matches!(
-        base_facts.builtin_class,
-        FileClass::Document | FileClass::File
-    )
+    ) && can_sniff_license_content(base_facts)
 }
 
 fn read_license_text(path: &Path) -> Option<String> {
@@ -619,4 +629,48 @@ fn normalize_high_signal_text(text: &str) -> String {
     }
 
     normalized.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::{EntryKind, FileClass};
+    use std::{
+        fs,
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn temp_path(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("elio-license-{label}-{unique}"))
+    }
+
+    fn write_temp_file(label: &str, file_name: &str, contents: &str) -> (PathBuf, PathBuf) {
+        let root = temp_path(label);
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let path = root.join(file_name);
+        fs::write(&path, contents).expect("failed to write temp file");
+        (root, path)
+    }
+
+    #[test]
+    fn canonical_license_names_do_not_override_source_classification() {
+        let (root, path) = write_temp_file(
+            "license-rust-source",
+            "license.rs",
+            "// SPDX-License-Identifier: MPL-2.0\npub fn license() {}\n",
+        );
+
+        let facts = super::super::classify::inspect_path(&path, EntryKind::File);
+
+        assert_eq!(facts.builtin_class, FileClass::Code);
+        assert_eq!(facts.specific_type_label, Some("Rust source file"));
+        assert_eq!(facts.preview.kind, PreviewKind::Source);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
 }
