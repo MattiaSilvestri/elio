@@ -198,8 +198,7 @@ fn parse_trash_deletion_date(s: &str) -> Option<SystemTime> {
     let a = (14i64 - month as i64) / 12;
     let y = year as i64 + 4800 - a;
     let m = month as i64 + 12 * a - 3;
-    let jdn =
-        day as i64 + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32_045;
+    let jdn = day as i64 + (153 * m + 2) / 5 + 365 * y + y / 4 - y / 100 + y / 400 - 32_045;
 
     // JDN of 1970-01-01 is 2 440 588.
     let days = jdn - 2_440_588;
@@ -207,8 +206,7 @@ fn parse_trash_deletion_date(s: &str) -> Option<SystemTime> {
         return None;
     }
 
-    let secs =
-        days as u64 * 86_400 + hour as u64 * 3_600 + minute as u64 * 60 + second as u64;
+    let secs = days as u64 * 86_400 + hour as u64 * 3_600 + minute as u64 * 60 + second as u64;
     Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs))
 }
 
@@ -326,17 +324,21 @@ fn sort_entries(entries: &mut [Entry], mode: SortMode) {
         (true, false) => Ordering::Less,
         (false, true) => Ordering::Greater,
         _ => match mode {
-            SortMode::Name => left.name_key.cmp(&right.name_key),
+            SortMode::Name => compare_entry_names(left, right),
             SortMode::Modified => right
                 .modified
                 .cmp(&left.modified)
-                .then_with(|| left.name_key.cmp(&right.name_key)),
+                .then_with(|| compare_entry_names(left, right)),
             SortMode::Size => right
                 .size
                 .cmp(&left.size)
-                .then_with(|| left.name_key.cmp(&right.name_key)),
+                .then_with(|| compare_entry_names(left, right)),
         },
     });
+}
+
+fn compare_entry_names(left: &Entry, right: &Entry) -> Ordering {
+    super::natural_cmp(&left.name_key, &right.name_key).then_with(|| left.name.cmp(&right.name))
 }
 
 pub(crate) fn detached_open(program: &str, args: &[&str], target: &Path) -> io::Result<()> {
@@ -441,6 +443,87 @@ mod tests {
         sort_entries(&mut entries, SortMode::Name);
         assert!(entries[0].is_dir());
         assert!(!entries[1].is_dir());
+    }
+
+    #[test]
+    fn sort_uses_natural_numeric_order_for_names() {
+        let mut entries = vec![
+            Entry {
+                path: PathBuf::from("episode 10.mkv"),
+                name: "episode 10.mkv".to_string(),
+                name_key: "episode 10.mkv".to_string(),
+                kind: EntryKind::File,
+                size: 10,
+                modified: None,
+                readonly: false,
+            },
+            Entry {
+                path: PathBuf::from("episode 2.mkv"),
+                name: "episode 2.mkv".to_string(),
+                name_key: "episode 2.mkv".to_string(),
+                kind: EntryKind::File,
+                size: 10,
+                modified: None,
+                readonly: false,
+            },
+            Entry {
+                path: PathBuf::from("episode 1.mkv"),
+                name: "episode 1.mkv".to_string(),
+                name_key: "episode 1.mkv".to_string(),
+                kind: EntryKind::File,
+                size: 10,
+                modified: None,
+                readonly: false,
+            },
+        ];
+
+        sort_entries(&mut entries, SortMode::Name);
+        let names = entries.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>();
+        assert_eq!(names, vec!["episode 1.mkv", "episode 2.mkv", "episode 10.mkv"]);
+    }
+
+    #[test]
+    fn sort_uses_natural_numeric_order_with_non_latin_names() {
+        let mut entries = vec![
+            Entry {
+                path: PathBuf::from("北斗の拳 究極版 10巻.epub"),
+                name: "北斗の拳 究極版 10巻.epub".to_string(),
+                name_key: "北斗の拳 究極版 10巻.epub".to_string(),
+                kind: EntryKind::File,
+                size: 10,
+                modified: None,
+                readonly: false,
+            },
+            Entry {
+                path: PathBuf::from("北斗の拳 究極版 2巻.epub"),
+                name: "北斗の拳 究極版 2巻.epub".to_string(),
+                name_key: "北斗の拳 究極版 2巻.epub".to_string(),
+                kind: EntryKind::File,
+                size: 10,
+                modified: None,
+                readonly: false,
+            },
+            Entry {
+                path: PathBuf::from("北斗の拳 究極版 1巻.epub"),
+                name: "北斗の拳 究極版 1巻.epub".to_string(),
+                name_key: "北斗の拳 究極版 1巻.epub".to_string(),
+                kind: EntryKind::File,
+                size: 10,
+                modified: None,
+                readonly: false,
+            },
+        ];
+
+        sort_entries(&mut entries, SortMode::Name);
+        let names = entries.iter().map(|entry| entry.name.as_str()).collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            vec![
+                "北斗の拳 究極版 1巻.epub",
+                "北斗の拳 究極版 2巻.epub",
+                "北斗の拳 究極版 10巻.epub",
+            ]
+        );
     }
 
     #[test]

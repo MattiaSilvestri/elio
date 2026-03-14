@@ -104,9 +104,9 @@ fn collect_candidates_with_limits(
         }
 
         nodes.sort_by(|left, right| {
-            left.name_key
-                .cmp(&right.name_key)
-                .then_with(|| left.relative_key.cmp(&right.relative_key))
+            super::natural_cmp(&left.name_key, &right.name_key)
+                .then_with(|| super::natural_cmp(&left.relative_key, &right.relative_key))
+                .then_with(|| left.relative.cmp(&right.relative))
         });
 
         for node in nodes {
@@ -194,9 +194,11 @@ fn compare_scored(
         .cmp(&left.1)
         .then_with(|| left.2.cmp(&right.2))
         .then_with(|| {
-            candidates[left.0]
-                .relative_key
-                .cmp(&candidates[right.0].relative_key)
+            super::natural_cmp(
+                &candidates[left.0].relative_key,
+                &candidates[right.0].relative_key,
+            )
+            .then_with(|| candidates[left.0].relative.cmp(&candidates[right.0].relative))
         })
 }
 
@@ -352,5 +354,29 @@ mod tests {
         );
 
         fs::remove_dir_all(root).expect("failed to remove temp tree");
+    }
+
+    #[test]
+    fn collect_candidates_uses_natural_name_order() {
+        let root = temp_path("natural-order");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("chapter 10.txt"), "ten").expect("failed to write file");
+        fs::write(root.join("chapter 2.txt"), "two").expect("failed to write file");
+        fs::write(root.join("chapter 1.txt"), "one").expect("failed to write file");
+
+        let candidates =
+            collect_candidates_with_limits(&root, true, SearchCandidateScope::Files, 10, 1_000)
+                .expect("failed to collect candidates");
+        let names = candidates
+            .iter()
+            .map(|candidate| candidate.name.as_str())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            names,
+            vec!["chapter 1.txt", "chapter 2.txt", "chapter 10.txt"]
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
     }
 }
