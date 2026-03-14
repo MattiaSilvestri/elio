@@ -192,11 +192,6 @@ pub(crate) fn code_preview_palette() -> CodePreviewPalette {
     active_theme().preview.code
 }
 
-#[cfg(test)]
-pub(crate) fn classify_path(path: &Path, kind: EntryKind) -> FileClass {
-    resolve_path(path, kind).class
-}
-
 pub(crate) fn resolve_path(path: &Path, kind: EntryKind) -> ResolvedAppearance<'static> {
     active_theme().resolve(path, kind)
 }
@@ -534,6 +529,14 @@ impl Theme {
                 "epub".to_string(),
                 RuleOverride {
                     class: Some(FileClass::Document),
+                    icon: Some("󱗖".to_string()),
+                    color: Some(rgb(211, 170, 124)),
+                },
+            ),
+            (
+                "cbz".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Archive),
                     icon: Some("󱗖".to_string()),
                     color: Some(rgb(211, 170, 124)),
                 },
@@ -1528,6 +1531,11 @@ macro = "#fedcba"
         assert_eq!(epub.class, FileClass::Document);
         assert_eq!(epub.icon, "󱗖");
         assert_eq!(epub.color, rgb(211, 170, 124));
+
+        let comic = theme.resolve(Path::new("issue.cbz"), EntryKind::File);
+        assert_eq!(comic.class, FileClass::Archive);
+        assert_eq!(comic.icon, "󱗖");
+        assert_eq!(comic.color, rgb(211, 170, 124));
 
         let documents_dir = theme.resolve(Path::new("Documents"), EntryKind::Directory);
         assert_eq!(documents_dir.class, FileClass::Directory);

@@ -4,6 +4,7 @@ pub(crate) mod search;
 pub(crate) mod watch;
 
 mod directory;
+mod sort;
 
 pub(self) fn is_hidden(file_name: &std::ffi::OsStr) -> bool {
     file_name.to_string_lossy().starts_with('.')
@@ -18,6 +19,7 @@ pub(crate) use format::{
     sanitize_terminal_text,
 };
 pub(crate) use item_count::count_directory_items;
+pub(crate) use sort::natural_cmp;
 pub(crate) use watch::{
     DirectoryWatchEvent, DirectoryWatcher, directory_watch_debounce, event_affects_visible_entries,
     start_directory_watcher,

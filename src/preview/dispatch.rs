@@ -13,7 +13,10 @@ pub(crate) fn should_build_preview_in_background(entry: &Entry) -> bool {
     facts.builtin_class == FileClass::Archive || facts.preview.document_format.is_some()
 }
 
-pub(crate) fn loading_preview_for(entry: &Entry) -> PreviewContent {
+pub(crate) fn loading_preview_for(
+    entry: &Entry,
+    options: &PreviewRequestOptions,
+) -> PreviewContent {
     let facts = file_info::inspect_path_cached(&entry.path, entry.kind, entry.size, entry.modified);
     let detail = facts
         .specific_type_label
@@ -25,10 +28,26 @@ pub(crate) fn loading_preview_for(entry: &Entry) -> PreviewContent {
         })
         .unwrap_or("Preview")
         .to_string();
-    let lines = if facts.builtin_class == FileClass::Archive {
+    let lines = if matches!(
+        (facts.specific_type_label, options.comic_page_index()),
+        (Some("Comic ZIP archive"), Some(_))
+    ) {
+        vec![
+            Line::from("Loading preview"),
+            Line::from("Extracting comic page in background"),
+        ]
+    } else if facts.builtin_class == FileClass::Archive {
         vec![
             Line::from("Loading preview"),
             Line::from("Inspecting archive contents in background"),
+        ]
+    } else if matches!(
+        (facts.preview.document_format, options.epub_section_index()),
+        (Some(file_info::DocumentFormat::Epub), Some(_))
+    ) {
+        vec![
+            Line::from("Loading preview"),
+            Line::from("Extracting ebook section in background"),
         ]
     } else if facts.preview.document_format.is_some() {
         vec![
@@ -44,7 +63,15 @@ pub(crate) fn loading_preview_for(entry: &Entry) -> PreviewContent {
     PreviewContent::new(PreviewKind::Unavailable, lines).with_detail(detail)
 }
 
+#[cfg(test)]
 pub(crate) fn build_preview(entry: &Entry) -> PreviewContent {
+    build_preview_with_options(entry, &PreviewRequestOptions::Default)
+}
+
+pub(crate) fn build_preview_with_options(
+    entry: &Entry,
+    options: &PreviewRequestOptions,
+) -> PreviewContent {
     if entry.is_dir() {
         return directory::build_directory_preview(entry);
     }
@@ -63,12 +90,20 @@ pub(crate) fn build_preview(entry: &Entry) -> PreviewContent {
         return preview;
     }
     if facts.builtin_class == FileClass::Archive
-        && let Some(preview) = container::build_archive_preview(&entry.path, type_detail)
+        && let Some(preview) = container::build_archive_preview(
+            &entry.path,
+            type_detail,
+            options.comic_page_index(),
+        )
     {
         return preview;
     }
     if let Some(document_format) = preview_spec.document_format
-        && let Some(preview) = document::build_document_preview(&entry.path, document_format)
+        && let Some(preview) = document::build_document_preview(
+            &entry.path,
+            document_format,
+            options.epub_section_index(),
+        )
     {
         return apply_type_detail(preview, type_detail);
     }

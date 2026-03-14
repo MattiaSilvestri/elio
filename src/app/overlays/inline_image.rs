@@ -87,6 +87,11 @@ impl App {
         }
 
         match self.present_pdf_overlay(backend)? {
+            OverlayPresentState::Displayed | OverlayPresentState::Waiting => return Ok(()),
+            OverlayPresentState::NotRequested => {}
+        }
+
+        match self.present_preview_visual_overlay(backend)? {
             OverlayPresentState::Displayed | OverlayPresentState::Waiting => Ok(()),
             OverlayPresentState::NotRequested => self.clear_preview_overlay(),
         }
@@ -106,7 +111,7 @@ impl App {
     }
 
     pub(crate) fn preview_uses_image_overlay(&self) -> bool {
-        self.displayed_static_image_matches_active() || self.displayed_pdf_overlay_matches_active()
+        self.displayed_static_image_replaces_preview() || self.displayed_pdf_overlay_matches_active()
     }
 
     pub(crate) fn preview_prefers_image_surface(&self) -> bool {

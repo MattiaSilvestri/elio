@@ -163,6 +163,21 @@ fn write_zip_entries(path: &Path, entries: &[(&str, &str)]) {
     zip.finish().expect("failed to finish zip");
 }
 
+fn write_zip_binary_entries(path: &Path, entries: &[(&str, &[u8])]) {
+    let file = File::create(path).expect("failed to create zip");
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+
+    for (name, contents) in entries {
+        zip.start_file(name, options)
+            .expect("failed to start zip entry");
+        zip.write_all(contents)
+            .expect("failed to write zip entry");
+    }
+
+    zip.finish().expect("failed to finish zip");
+}
+
 fn write_test_raster_image(path: &Path, format: ImageFormat, width_px: u32, height_px: u32) {
     let mut image = RgbaImage::new(width_px, height_px);
     for pixel in image.pixels_mut() {
@@ -322,7 +337,7 @@ fn markdown_preview_formats_headings_and_lists() {
     let path = root.join("README.md");
     fs::write(&path, "# Heading\n- item\n`inline`\n").expect("failed to write markdown");
 
-    let preview = build_preview(&file_entry(path));
+    let preview = build_preview(&file_entry(path.clone()));
 
     assert_eq!(preview.kind, PreviewKind::Markdown);
     assert_eq!(preview.lines[0].spans[0].content, "Heading");
@@ -343,7 +358,7 @@ fn markdown_preview_formats_inline_emphasis_mid_line() {
     let path = root.join("README.md");
     fs::write(&path, "hello **bold** world\n").expect("failed to write markdown");
 
-    let preview = build_preview(&file_entry(path));
+    let preview = build_preview(&file_entry(path.clone()));
     let line = &preview.lines[0];
 
     assert_eq!(preview.kind, PreviewKind::Markdown);
@@ -361,7 +376,7 @@ fn markdown_preview_renders_fenced_code_blocks() {
     let path = root.join("README.md");
     fs::write(&path, "```rust\nfn main() {}\n```\n").expect("failed to write markdown");
 
-    let preview = build_preview(&file_entry(path));
+    let preview = build_preview(&file_entry(path.clone()));
 
     assert_eq!(preview.kind, PreviewKind::Markdown);
     assert_eq!(preview.lines[0].spans[1].content, "rust");
@@ -749,7 +764,7 @@ fn makefile_preview_uses_code_renderer() {
     )
     .expect("failed to write makefile");
 
-    let preview = build_preview(&file_entry(path));
+    let preview = build_preview(&file_entry(path.clone()));
     let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
 
     assert_eq!(preview.kind, PreviewKind::Code);
@@ -1170,7 +1185,8 @@ fn epub_preview_shows_package_metadata() {
     let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
 
     assert_eq!(preview.kind, PreviewKind::Document);
-    assert_eq!(preview.detail.as_deref(), Some("EPUB ebook"));
+    assert_eq!(preview.detail.as_deref(), Some("Elio Handbook"));
+    assert_eq!(preview.status_note.as_deref(), Some("EPUB ebook  •  Regueiro"));
     assert!(
         line_texts
             .iter()
@@ -1193,6 +1209,370 @@ fn epub_preview_shows_package_metadata() {
             .iter()
             .any(|text| text.contains("Identifier") && text.contains("urn:uuid:elio-handbook"))
     );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn epub_preview_shows_contents_and_excerpt() {
+    let root = temp_path("epub-excerpt");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("story.epub");
+    write_zip_entries(
+        &path,
+        &[
+            (
+                "META-INF/container.xml",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+                    <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                      <rootfiles>
+                        <rootfile full-path="OPS/package.opf" media-type="application/oebps-package+xml"/>
+                      </rootfiles>
+                    </container>"#,
+            ),
+            (
+                "OPS/package.opf",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+                    <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+                      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                        <dc:title>Elio Story</dc:title>
+                        <dc:creator>Regueiro</dc:creator>
+                      </metadata>
+                      <manifest>
+                        <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                        <item id="chapter-1" href="text/chapter-1.xhtml" media-type="application/xhtml+xml"/>
+                        <item id="chapter-2" href="text/chapter-2.xhtml" media-type="application/xhtml+xml"/>
+                      </manifest>
+                      <spine>
+                        <itemref idref="chapter-1"/>
+                        <itemref idref="chapter-2"/>
+                      </spine>
+                    </package>"#,
+            ),
+            (
+                "OPS/nav.xhtml",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+                    <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+                      <body>
+                        <nav epub:type="toc">
+                          <ol>
+                            <li><a href="text/chapter-1.xhtml">Opening</a></li>
+                            <li><a href="text/chapter-2.xhtml">Second Step</a></li>
+                          </ol>
+                        </nav>
+                      </body>
+                    </html>"#,
+            ),
+            (
+                "OPS/text/chapter-1.xhtml",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                      <body>
+                        <h1>Opening</h1>
+                        <p>Elio begins with a small terminal window and a very opinionated file browser.</p>
+                      </body>
+                    </html>"#,
+            ),
+            (
+                "OPS/text/chapter-2.xhtml",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                      <body>
+                        <h2>Second Step</h2>
+                        <p>The preview pane grows into an actual reading surface instead of stopping at metadata.</p>
+                      </body>
+                    </html>"#,
+            ),
+        ],
+    );
+
+    let preview = build_preview(&file_entry(path.clone()));
+    let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
+
+    assert_eq!(preview.kind, PreviewKind::Document);
+    assert_eq!(preview.detail.as_deref(), Some("Elio Story"));
+    assert_eq!(preview.status_note.as_deref(), Some("EPUB ebook  •  Regueiro"));
+    assert_eq!(preview.ebook_section_index, Some(0));
+    assert_eq!(preview.ebook_section_count, Some(2));
+    assert_eq!(preview.ebook_section_title.as_deref(), Some("Opening"));
+    assert!(line_texts.iter().any(|text| {
+        text.contains(
+            "Elio begins with a small terminal window and a very opinionated file browser.",
+        )
+    }));
+
+    let second_preview = build_preview_with_options(
+        &file_entry(path.clone()),
+        &PreviewRequestOptions::EpubSection(1),
+    );
+    let second_line_texts: Vec<_> = second_preview.lines.iter().map(line_text).collect();
+    assert_eq!(second_preview.ebook_section_index, Some(1));
+    assert_eq!(second_preview.ebook_section_count, Some(2));
+    assert_eq!(second_preview.ebook_section_title.as_deref(), Some("Second Step"));
+    assert!(second_line_texts.iter().any(|text| {
+        text.contains(
+            "The preview pane grows into an actual reading surface instead of stopping at metadata."
+        )
+    }));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn epub_preview_extracts_cover_image() {
+    let root = temp_path("epub-cover");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("cover.epub");
+    let source_cover = root.join("source-cover.png");
+    write_test_raster_image(&source_cover, ImageFormat::Png, 160, 240);
+    let cover_bytes = fs::read(&source_cover).expect("failed to read cover image");
+
+    let file = File::create(&path).expect("failed to create epub");
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+    for (name, contents) in [
+        (
+            "META-INF/container.xml",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                  <rootfiles>
+                    <rootfile full-path="OPS/package.opf" media-type="application/oebps-package+xml"/>
+                  </rootfiles>
+                </container>"#,
+        ),
+        (
+            "OPS/package.opf",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+                  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                    <dc:title>Covered Story</dc:title>
+                    <meta name="cover" content="cover-image"/>
+                  </metadata>
+                  <manifest>
+                    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                    <item id="cover-image" href="images/cover.png" media-type="image/png"/>
+                    <item id="chapter-1" href="text/chapter-1.xhtml" media-type="application/xhtml+xml"/>
+                  </manifest>
+                  <spine>
+                    <itemref idref="chapter-1"/>
+                  </spine>
+                </package>"#,
+        ),
+        (
+            "OPS/nav.xhtml",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+                  <body>
+                    <nav epub:type="toc">
+                      <ol>
+                        <li><a href="text/chapter-1.xhtml">Opening</a></li>
+                      </ol>
+                    </nav>
+                  </body>
+                </html>"#,
+        ),
+        (
+            "OPS/text/chapter-1.xhtml",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <html xmlns="http://www.w3.org/1999/xhtml">
+                  <body>
+                    <p>The cover should be extracted for inline preview.</p>
+                  </body>
+                </html>"#,
+        ),
+    ] {
+        zip.start_file(name, options)
+            .expect("failed to start epub text entry");
+        zip.write_all(contents.as_bytes())
+            .expect("failed to write epub text entry");
+    }
+    zip.start_file("OPS/images/cover.png", options)
+        .expect("failed to start cover entry");
+    zip.write_all(&cover_bytes)
+        .expect("failed to write cover entry");
+    zip.finish().expect("failed to finish epub");
+
+    let preview = build_preview(&file_entry(path));
+    let visual = preview
+        .preview_visual
+        .clone()
+        .expect("cover visual should be extracted");
+
+    assert_eq!(visual.kind, PreviewVisualKind::Cover);
+    assert_eq!(visual.layout, PreviewVisualLayout::Inline);
+    assert!(visual.path.exists());
+    assert!(visual.size > 0);
+    assert_eq!(preview.ebook_section_index, Some(0));
+    assert_eq!(preview.ebook_section_count, Some(1));
+
+    let _ = fs::remove_file(visual.path);
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn epub_preview_uses_section_image_for_fixed_layout_pages() {
+    let root = temp_path("epub-fixed-layout");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("fixed-layout.epub");
+    let source_cover = root.join("fixed-layout-cover.jpg");
+    write_test_raster_image(&source_cover, ImageFormat::Jpeg, 160, 240);
+    let cover_bytes = fs::read(&source_cover).expect("failed to read cover image");
+
+    let file = File::create(&path).expect("failed to create epub");
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+    for (name, contents) in [
+        (
+            "META-INF/container.xml",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                  <rootfiles>
+                    <rootfile full-path="OPS/package.opf" media-type="application/oebps-package+xml"/>
+                  </rootfiles>
+                </container>"#,
+        ),
+        (
+            "OPS/package.opf",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+                  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                    <dc:title>Fixed Layout Story</dc:title>
+                  </metadata>
+                  <manifest>
+                    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                    <item id="cover" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>
+                    <item id="page-1" href="xhtml/page-1.xhtml" media-type="application/xhtml+xml" properties="svg"/>
+                  </manifest>
+                  <spine>
+                    <itemref idref="page-1"/>
+                  </spine>
+                </package>"#,
+        ),
+        (
+            "OPS/nav.xhtml",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+                  <body>
+                    <nav epub:type="toc">
+                      <ol>
+                        <li><a href="xhtml/page-1.xhtml">Page 1</a></li>
+                      </ol>
+                    </nav>
+                  </body>
+                </html>"#,
+        ),
+        (
+            "OPS/xhtml/page-1.xhtml",
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <html xmlns="http://www.w3.org/1999/xhtml">
+                  <body>
+                    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+                      <image width="160" height="240" xlink:href="../images/cover.jpg"/>
+                    </svg>
+                  </body>
+                </html>"#,
+        ),
+    ] {
+        zip.start_file(name, options)
+            .expect("failed to start epub text entry");
+        zip.write_all(contents.as_bytes())
+            .expect("failed to write epub text entry");
+    }
+    zip.start_file("OPS/images/cover.jpg", options)
+        .expect("failed to start image entry");
+    zip.write_all(&cover_bytes)
+        .expect("failed to write image entry");
+    zip.finish().expect("failed to finish epub");
+
+    let preview = build_preview(&file_entry(path));
+    let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
+    let visual = preview
+        .preview_visual
+        .clone()
+        .expect("fixed-layout page image should be extracted");
+
+    assert_eq!(preview.detail.as_deref(), Some("Fixed Layout Story"));
+    assert_eq!(preview.ebook_section_index, Some(0));
+    assert_eq!(preview.ebook_section_count, Some(1));
+    assert_eq!(preview.ebook_section_title.as_deref(), Some("Page 1"));
+    assert_eq!(visual.kind, PreviewVisualKind::PageImage);
+    assert_eq!(visual.layout, PreviewVisualLayout::FullHeight);
+    assert!(line_texts
+        .iter()
+        .any(|text| text.contains("Fixed-layout page preview")));
+    assert!(visual.path.exists());
+
+    let _ = fs::remove_file(visual.path);
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn epub_package_cache_reuses_parse_across_section_switches() {
+    super::document::clear_epub_package_cache();
+
+    let root = temp_path("epub-package-cache");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("story.epub");
+    super::document::reset_epub_package_parse_count(&path);
+    write_zip_entries(
+        &path,
+        &[
+            (
+                "META-INF/container.xml",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+                    <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                      <rootfiles>
+                        <rootfile full-path="OPS/package.opf" media-type="application/oebps-package+xml"/>
+                      </rootfiles>
+                    </container>"#,
+            ),
+            (
+                "OPS/package.opf",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+                    <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+                      <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                        <dc:title>Cached Story</dc:title>
+                      </metadata>
+                      <manifest>
+                        <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                        <item id="chapter-1" href="text/chapter-1.xhtml" media-type="application/xhtml+xml"/>
+                        <item id="chapter-2" href="text/chapter-2.xhtml" media-type="application/xhtml+xml"/>
+                      </manifest>
+                      <spine>
+                        <itemref idref="chapter-1"/>
+                        <itemref idref="chapter-2"/>
+                      </spine>
+                    </package>"#,
+            ),
+            (
+                "OPS/nav.xhtml",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+                    <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+                      <body>
+                        <nav epub:type="toc">
+                          <ol>
+                            <li><a href="text/chapter-1.xhtml">Opening</a></li>
+                            <li><a href="text/chapter-2.xhtml">Second Step</a></li>
+                          </ol>
+                        </nav>
+                      </body>
+                    </html>"#,
+            ),
+            (
+                "OPS/text/chapter-1.xhtml",
+                r#"<html xmlns="http://www.w3.org/1999/xhtml"><body><p>One.</p></body></html>"#,
+            ),
+            (
+                "OPS/text/chapter-2.xhtml",
+                r#"<html xmlns="http://www.w3.org/1999/xhtml"><body><p>Two.</p></body></html>"#,
+            ),
+        ],
+    );
+
+    let _ = build_preview(&file_entry(path.clone()));
+    let _ = build_preview_with_options(&file_entry(path.clone()), &PreviewRequestOptions::EpubSection(1));
+
+    assert_eq!(super::document::epub_package_parse_count(&path), 1);
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -2026,6 +2406,116 @@ fn zip_preview_renders_archive_summary_and_tree() {
     assert!(line_texts.iter().any(|text| text.contains("readme.txt")));
     assert!(line_texts.iter().any(|text| text.contains("main.rs")));
 
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn comic_zip_preview_renders_summary_and_first_page() {
+    let root = temp_path("comic-zip-preview");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("issue.cbz");
+    let source_cover = root.join("cover.jpg");
+    write_test_raster_image(&source_cover, ImageFormat::Jpeg, 160, 240);
+    let cover_bytes = fs::read(&source_cover).expect("failed to read cover image");
+
+    let file = File::create(&path).expect("failed to create comic zip");
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+    zip.start_file("001-cover.jpg", options)
+        .expect("failed to start cover entry");
+    zip.write_all(&cover_bytes)
+        .expect("failed to write cover entry");
+    zip.start_file("002-page.jpg", options)
+        .expect("failed to start page entry");
+    zip.write_all(&cover_bytes)
+        .expect("failed to write page entry");
+    zip.start_file("notes/readme.txt", options)
+        .expect("failed to start text entry");
+    zip.write_all(b"hello")
+        .expect("failed to write text entry");
+    zip.finish().expect("failed to finish comic zip");
+
+    let preview = build_preview(&file_entry(path));
+    let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
+    let visual = preview
+        .preview_visual
+        .clone()
+        .expect("comic zip should expose a page visual");
+
+    assert_eq!(preview.kind, PreviewKind::Comic);
+    assert_eq!(preview.detail.as_deref(), Some("Comic ZIP archive"));
+    assert_eq!(visual.kind, PreviewVisualKind::PageImage);
+    assert_eq!(visual.layout, PreviewVisualLayout::Inline);
+    let position = preview
+        .navigation_position
+        .as_ref()
+        .expect("comic zip should expose page navigation");
+    assert_eq!(position.label, "Page");
+    assert_eq!(position.index, 0);
+    assert_eq!(position.count, 2);
+    assert!(visual.path.exists());
+    assert!(line_texts.iter().any(|text| text.trim() == "Summary"));
+    assert!(line_texts.iter().any(|text| text.contains("Pages") && text.contains("2")));
+    assert!(line_texts.iter().any(|text| text.contains("Size")));
+    assert!(!line_texts.iter().any(|text| text.contains("Format") && text.contains("ZIP")));
+    assert!(!line_texts.iter().any(|text| text.contains("Packed")));
+    assert!(!line_texts.iter().any(|text| text.contains("Archive Size")));
+    assert!(!line_texts.iter().any(|text| text.trim() == "Contents"));
+    assert!(!line_texts.iter().any(|text| text.contains("001-cover.jpg")));
+    assert!(!line_texts.iter().any(|text| text.contains("002-page.jpg")));
+    assert!(!line_texts.iter().any(|text| text.contains("notes/")));
+
+    let _ = fs::remove_file(visual.path);
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn comic_zip_preview_uses_natural_page_order_and_page_selection() {
+    let root = temp_path("comic-zip-pages");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("issue.cbz");
+    write_zip_binary_entries(
+        &path,
+        &[
+            ("10.jpg", b"page-ten"),
+            ("2.jpg", b"page-two"),
+            ("1.jpg", b"page-one"),
+        ],
+    );
+
+    let first_preview = build_preview(&file_entry(path.clone()));
+    let first_visual = first_preview
+        .preview_visual
+        .as_ref()
+        .expect("first page should be extracted");
+    let second_preview =
+        build_preview_with_options(&file_entry(path.clone()), &PreviewRequestOptions::ComicPage(1));
+    let second_visual = second_preview
+        .preview_visual
+        .as_ref()
+        .expect("second page should be extracted");
+    let third_preview =
+        build_preview_with_options(&file_entry(path.clone()), &PreviewRequestOptions::ComicPage(2));
+    let third_visual = third_preview
+        .preview_visual
+        .as_ref()
+        .expect("third page should be extracted");
+
+    assert_eq!(fs::read(&first_visual.path).expect("failed to read first page"), b"page-one");
+    assert_eq!(fs::read(&second_visual.path).expect("failed to read second page"), b"page-two");
+    assert_eq!(fs::read(&third_visual.path).expect("failed to read third page"), b"page-ten");
+    assert_eq!(
+        second_preview.navigation_position.as_ref().map(|position| position.index),
+        Some(1)
+    );
+    assert_eq!(
+        third_preview.navigation_position.as_ref().map(|position| position.count),
+        Some(3)
+    );
+
+    let _ = fs::remove_file(first_visual.path.clone());
+    let _ = fs::remove_file(second_visual.path.clone());
+    let _ = fs::remove_file(third_visual.path.clone());
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
 

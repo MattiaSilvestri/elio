@@ -103,6 +103,7 @@ pub struct FrameState {
     pub search_panel: Option<Rect>,
     pub entries_panel: Option<Rect>,
     pub preview_panel: Option<Rect>,
+    pub preview_media_area: Option<Rect>,
     pub preview_content_area: Option<Rect>,
     pub back_button: Option<Rect>,
     pub forward_button: Option<Rect>,

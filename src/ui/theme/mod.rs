@@ -4,8 +4,6 @@ use crate::app::Entry;
 use ratatui::style::Color;
 use std::path::Path;
 
-#[cfg(test)]
-pub(crate) use self::appearance::classify_path;
 pub(crate) use self::appearance::{
     CodePreviewPalette, Palette, code_preview_palette, initialize, palette, resolve_entry,
     resolve_path,

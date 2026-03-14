@@ -465,7 +465,9 @@ fn help_column_lines(
     if key_width + gap_width + min_action_width > content_width {
         key_width = content_width.saturating_sub(gap_width + min_action_width);
     }
-    key_width = key_width.max(4).min(content_width.saturating_sub(gap_width + 1));
+    key_width = key_width
+        .max(4)
+        .min(content_width.saturating_sub(gap_width + 1));
     let action_width = content_width.saturating_sub(key_width + gap_width).max(1);
 
     let mut lines = Vec::new();
@@ -511,10 +513,7 @@ fn help_entry_lines(
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw("  "),
-        Span::styled(
-            wrapped_action.remove(0),
-            Style::default().fg(palette.muted),
-        ),
+        Span::styled(wrapped_action.remove(0), Style::default().fg(palette.muted)),
     ]));
 
     for line in wrapped_action {

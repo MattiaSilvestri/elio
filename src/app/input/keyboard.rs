@@ -100,12 +100,18 @@ impl App {
         {
             match key.code {
                 KeyCode::Char('[') => {
-                    if self.step_pdf_page(-1) {
+                    if self.step_epub_section(-1)
+                        || self.step_comic_page(-1)
+                        || self.step_pdf_page(-1)
+                    {
                         return Ok(());
                     }
                 }
                 KeyCode::Char(']') => {
-                    if self.step_pdf_page(1) {
+                    if self.step_epub_section(1)
+                        || self.step_comic_page(1)
+                        || self.step_pdf_page(1)
+                    {
                         return Ok(());
                     }
                 }
@@ -213,7 +219,10 @@ impl App {
 }
 
 fn is_help_shortcut(key: KeyEvent) -> bool {
-    if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) {
+    if key
+        .modifiers
+        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+    {
         return false;
     }
 

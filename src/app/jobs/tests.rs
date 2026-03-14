@@ -1,4 +1,5 @@
 use super::*;
+use crate::preview::PreviewRequestOptions;
 
 fn image_prepare_request(name: &str) -> ImagePrepareRequest {
     ImagePrepareRequest {
@@ -28,11 +29,13 @@ fn preview_pool_deduplicates_identical_active_or_queued_requests() {
     assert!(scheduler.submit_preview(PreviewRequest {
         token: 1,
         entry: entry.clone(),
+        variant: PreviewRequestOptions::Default,
         priority: PreviewPriority::Low,
     }));
     assert!(scheduler.submit_preview(PreviewRequest {
         token: 2,
         entry,
+        variant: PreviewRequestOptions::Default,
         priority: PreviewPriority::Low,
     }));
     let snapshot = scheduler.snapshot();
@@ -43,6 +46,7 @@ fn preview_pool_deduplicates_identical_active_or_queued_requests() {
             path: PathBuf::from("archive.zip"),
             size: 42,
             modified: None,
+            variant: PreviewRequestOptions::Default,
         }]
     );
     assert!(snapshot.preview_active.is_empty());
@@ -90,6 +94,7 @@ fn preview_pool_discards_oldest_queued_request_when_full() {
                 modified: None,
                 readonly: false,
             },
+            variant: PreviewRequestOptions::Default,
             priority: PreviewPriority::Low,
         }));
     }
@@ -102,11 +107,13 @@ fn preview_pool_discards_oldest_queued_request_when_full() {
                 path: PathBuf::from("b.zip"),
                 size: 1,
                 modified: None,
+                variant: PreviewRequestOptions::Default,
             },
             PreviewJobKey {
                 path: PathBuf::from("c.zip"),
                 size: 1,
                 modified: None,
+                variant: PreviewRequestOptions::Default,
             },
         ]
     );
@@ -128,11 +135,13 @@ fn high_priority_preview_promotes_over_low_priority_duplicate() {
     assert!(scheduler.submit_preview(PreviewRequest {
         token: 1,
         entry: entry.clone(),
+        variant: PreviewRequestOptions::Default,
         priority: PreviewPriority::Low,
     }));
     assert!(scheduler.submit_preview(PreviewRequest {
         token: 2,
         entry,
+        variant: PreviewRequestOptions::Default,
         priority: PreviewPriority::High,
     }));
 
@@ -144,6 +153,7 @@ fn high_priority_preview_promotes_over_low_priority_duplicate() {
             path: PathBuf::from("archive.zip"),
             size: 42,
             modified: None,
+            variant: PreviewRequestOptions::Default,
         }]
     );
     assert_eq!(scheduler.metrics_snapshot().preview_promotions, 1);
@@ -164,6 +174,7 @@ fn low_priority_preview_does_not_displace_full_high_priority_queue() {
             modified: None,
             readonly: false,
         },
+        variant: PreviewRequestOptions::Default,
         priority: PreviewPriority::High,
     }));
     assert!(scheduler.submit_preview(PreviewRequest {
@@ -177,6 +188,7 @@ fn low_priority_preview_does_not_displace_full_high_priority_queue() {
             modified: None,
             readonly: false,
         },
+        variant: PreviewRequestOptions::Default,
         priority: PreviewPriority::Low,
     }));
 
@@ -187,6 +199,7 @@ fn low_priority_preview_does_not_displace_full_high_priority_queue() {
             path: PathBuf::from("a.zip"),
             size: 1,
             modified: None,
+            variant: PreviewRequestOptions::Default,
         }]
     );
     assert!(snapshot.preview_pending_low.is_empty());
@@ -212,6 +225,7 @@ fn low_priority_preview_eviction_updates_metrics() {
                 modified: None,
                 readonly: false,
             },
+            variant: PreviewRequestOptions::Default,
             priority: PreviewPriority::Low,
         }));
     }

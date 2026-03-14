@@ -505,9 +505,23 @@ fn render_preview_body(
             .constraints([Constraint::Min(0)])
             .split(sections[1])
     };
-    let text_area = body[0];
+    let body_area = body[0];
     let scrollbar_area = body.get(1).copied();
+    let (media_area, text_area) = if let Some(media_rows) = app.preview_visual_rows(body_area)
+    {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(media_rows), Constraint::Min(0)])
+            .split(body_area);
+        (Some(split[0]), split[1])
+    } else {
+        (None, body_area)
+    };
+    state.preview_media_area = media_area;
     state.preview_content_area = Some(text_area);
+    if let Some(media_area) = media_area {
+        helpers::fill_area(frame, media_area, palette.panel, palette.text);
+    }
     helpers::fill_area(frame, text_area, palette.panel, palette.text);
     if let Some(scrollbar_area) = scrollbar_area {
         helpers::fill_area(frame, scrollbar_area, palette.panel, palette.border);
@@ -575,6 +589,20 @@ fn render_preview_body(
 
     if app.preview_uses_image_overlay() {
         return;
+    }
+
+    if let Some(media_area) = media_area
+        && let Some(message) = app.preview_visual_placeholder_message()
+    {
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(
+                message,
+                Style::default().fg(palette.muted),
+            )))
+            .style(Style::default().bg(palette.panel).fg(palette.text))
+            .alignment(Alignment::Center),
+            media_area,
+        );
     }
 
     if app.preview_wraps() {

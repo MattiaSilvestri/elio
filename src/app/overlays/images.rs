@@ -45,6 +45,12 @@ pub(in crate::app) struct StaticImageKey {
     target_height_px: u32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(in crate::app) enum StaticImageOverlayMode {
+    FullPane,
+    Inline,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::app) struct StaticImageOverlayRequest {
     pub(super) path: PathBuf,
@@ -53,6 +59,7 @@ pub(in crate::app) struct StaticImageOverlayRequest {
     pub(super) area: Rect,
     pub(super) target_width_px: u32,
     pub(super) target_height_px: u32,
+    pub(super) mode: StaticImageOverlayMode,
 }
 
 pub(in crate::app) struct PreparedStaticImage {
@@ -66,6 +73,7 @@ struct DisplayedStaticImagePreview {
     size: u64,
     modified: Option<SystemTime>,
     area: Rect,
+    mode: StaticImageOverlayMode,
 }
 
 #[derive(Debug)]
@@ -90,6 +98,7 @@ impl App {
         }
         self.image_preview.activation_ready_at = None;
         self.active_static_image_overlay_request().is_some()
+            || self.active_preview_visual_overlay_request().is_some()
     }
 
     pub(crate) fn pending_image_preview_timer(&self) -> Option<Duration> {
@@ -205,6 +214,47 @@ impl App {
         Ok(OverlayPresentState::Displayed)
     }
 
+    pub(in crate::app) fn present_preview_visual_overlay(
+        &mut self,
+        backend: TerminalImageBackend,
+    ) -> Result<OverlayPresentState> {
+        let Some(request) = self.active_preview_visual_overlay_request() else {
+            return Ok(OverlayPresentState::NotRequested);
+        };
+        if !self.image_selection_activation_ready() {
+            return Ok(OverlayPresentState::Waiting);
+        }
+
+        let prepared = match self.prepared_static_image_for_overlay(&request) {
+            StaticImageOverlayPreparation::Ready(prepared) => prepared,
+            StaticImageOverlayPreparation::Pending => return Ok(OverlayPresentState::Waiting),
+            StaticImageOverlayPreparation::Failed => {
+                self.mark_static_image_failed(&request);
+                return Ok(OverlayPresentState::NotRequested);
+            }
+        };
+        let Some(window_size) = self.cached_terminal_window() else {
+            self.mark_static_image_failed(&request);
+            return Ok(OverlayPresentState::NotRequested);
+        };
+        let placement = fit_image_area(
+            request.area,
+            window_size,
+            prepared.dimensions.width_px as f32 / prepared.dimensions.height_px as f32,
+        );
+        let displayed = DisplayedStaticImagePreview::from_request(&request, placement);
+        if self.image_preview.displayed.as_ref() == Some(&displayed) {
+            return Ok(OverlayPresentState::Displayed);
+        }
+        if place_terminal_image(backend, &prepared.display_path, placement).is_err() {
+            self.mark_static_image_failed(&request);
+            return Ok(OverlayPresentState::NotRequested);
+        }
+
+        self.image_preview.displayed = Some(displayed);
+        Ok(OverlayPresentState::Displayed)
+    }
+
     pub(in crate::app) fn prepared_static_image_for_overlay(
         &mut self,
         request: &StaticImageOverlayRequest,
@@ -238,7 +288,9 @@ impl App {
 
     pub(in crate::app) fn sync_image_preview_selection_activation(&mut self) {
         self.image_preview.activation_ready_at =
-            self.active_static_image_overlay_request().and_then(|_| {
+            self.active_static_image_overlay_request()
+                .or_else(|| self.active_preview_visual_overlay_request())
+                .and_then(|_| {
                 let ready_at = self.last_selection_change_at + IMAGE_SELECTION_ACTIVATION_DELAY;
                 (Instant::now() < ready_at).then_some(ready_at)
             });
@@ -320,9 +372,23 @@ impl App {
             .is_some_and(|(active, displayed)| active == displayed)
     }
 
+    pub(in crate::app) fn displayed_static_image_replaces_preview(&self) -> bool {
+        self.image_preview
+            .displayed
+            .as_ref()
+            .is_some_and(|displayed| displayed.mode == StaticImageOverlayMode::FullPane)
+            && self.displayed_static_image_matches_active()
+    }
+
     pub(in crate::app) fn refresh_static_image_preloads(&mut self) {
-        let current = self.active_static_image_overlay_request();
-        let nearby = self.nearby_static_image_overlay_requests(current.as_ref());
+        let current = self
+            .active_static_image_overlay_request()
+            .or_else(|| self.active_preview_visual_overlay_request());
+        let nearby = self
+            .active_static_image_overlay_request()
+            .as_ref()
+            .map(|request| self.nearby_static_image_overlay_requests(Some(request)))
+            .unwrap_or_default();
         let desired = current
             .iter()
             .map(StaticImageKey::from_request)
@@ -449,6 +515,7 @@ impl App {
             area,
             target_width_px: image_target_width_px(area, self.cached_terminal_window()),
             target_height_px: image_target_height_px(area, self.cached_terminal_window()),
+            mode: StaticImageOverlayMode::FullPane,
         })
     }
 
@@ -517,7 +584,9 @@ impl App {
     }
 
     fn active_static_image_display_target(&self) -> Option<DisplayedStaticImagePreview> {
-        let request = self.active_static_image_overlay_request()?;
+        let request = self
+            .active_static_image_overlay_request()
+            .or_else(|| self.active_preview_visual_overlay_request())?;
         let window_size = self.cached_terminal_window()?;
         let image_dimensions = self
             .image_preview
@@ -570,6 +639,7 @@ impl DisplayedStaticImagePreview {
             size: request.size,
             modified: request.modified,
             area,
+            mode: request.mode,
         }
     }
 }
@@ -966,14 +1036,20 @@ fn shrink_image_to_fit(
     }
 }
 
-fn image_target_width_px(area: Rect, window_size: Option<TerminalWindowSize>) -> u32 {
+pub(in crate::app) fn image_target_width_px(
+    area: Rect,
+    window_size: Option<TerminalWindowSize>,
+) -> u32 {
     let (cell_width_px, _) = image_cell_pixels(window_size);
     (f32::from(area.width.max(1)) * cell_width_px)
         .round()
         .max(1.0) as u32
 }
 
-fn image_target_height_px(area: Rect, window_size: Option<TerminalWindowSize>) -> u32 {
+pub(in crate::app) fn image_target_height_px(
+    area: Rect,
+    window_size: Option<TerminalWindowSize>,
+) -> u32 {
     let (_, cell_height_px) = image_cell_pixels(window_size);
     (f32::from(area.height.max(1)) * cell_height_px)
         .round()

@@ -32,6 +32,21 @@ fn write_zip_entries(path: &Path, entries: &[(&str, &str)]) {
     zip.finish().expect("failed to finish zip");
 }
 
+fn write_binary_zip_entries(path: &Path, entries: &[(&str, &[u8])]) {
+    let file = File::create(path).expect("failed to create zip");
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+
+    for (name, contents) in entries {
+        zip.start_file(name, options)
+            .expect("failed to start zip entry");
+        zip.write_all(contents)
+            .expect("failed to write zip entry");
+    }
+
+    zip.finish().expect("failed to finish zip");
+}
+
 fn wait_for_background_preview(app: &mut App) {
     for _ in 0..200 {
         if app.process_background_jobs() {
@@ -112,6 +127,52 @@ fn archive_preview_loads_in_background() {
         app.preview_lines()
             .iter()
             .any(|line| line.to_string().contains("docs/"))
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn comic_preview_loads_in_background_and_steps_pages() {
+    let root = temp_path("comic-background");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let archive = root.join("issue.cbz");
+    write_binary_zip_entries(
+        &archive,
+        &[("1.jpg", b"page-one"), ("2.jpg", b"page-two")],
+    );
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+
+    assert_eq!(app.preview_section_label(), "Preview");
+    assert_eq!(
+        app.preview_header_detail(10).as_deref(),
+        Some("Comic ZIP archive")
+    );
+    assert!(app.preview_lines().iter().any(|line| {
+        line.to_string()
+            .contains("Extracting comic page in background")
+    }));
+
+    wait_for_background_preview(&mut app);
+
+    assert_eq!(app.preview_section_label(), "Comic");
+    assert_eq!(
+        app.preview_header_detail(10).as_deref(),
+        Some("Comic ZIP archive  •  Page 1/2")
+    );
+    assert!(
+        app.preview_lines()
+            .iter()
+            .all(|line| !line.to_string().contains("Contents"))
+    );
+
+    assert!(app.step_comic_page(1));
+    wait_for_background_preview(&mut app);
+
+    assert_eq!(
+        app.preview_header_detail(10).as_deref(),
+        Some("Comic ZIP archive  •  Page 2/2")
     );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");

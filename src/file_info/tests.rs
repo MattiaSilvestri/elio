@@ -522,6 +522,7 @@ fn archive_suffixes_keep_specific_labels_for_common_multi_part_formats() {
     let txz = inspect_path(Path::new("release.tar.xz"), EntryKind::File);
     let tbz2 = inspect_path(Path::new("release.tar.bz2"), EntryKind::File);
     let zip = inspect_path(Path::new("release.zip"), EntryKind::File);
+    let cbz = inspect_path(Path::new("issue.cbz"), EntryKind::File);
     let seven_zip = inspect_path(Path::new("release.7z"), EntryKind::File);
 
     assert_eq!(tgz.builtin_class, FileClass::Archive);
@@ -529,6 +530,7 @@ fn archive_suffixes_keep_specific_labels_for_common_multi_part_formats() {
     assert_eq!(txz.specific_type_label, Some("TAR.XZ archive"));
     assert_eq!(tbz2.specific_type_label, Some("TAR.BZ2 archive"));
     assert_eq!(zip.specific_type_label, Some("ZIP archive"));
+    assert_eq!(cbz.specific_type_label, Some("Comic ZIP archive"));
     assert_eq!(seven_zip.specific_type_label, Some("7z archive"));
 }
 

@@ -295,6 +295,7 @@ pub(super) fn inspect_extension(ext: &str) -> FileFacts {
             specific_type_label: Some("EPUB ebook"),
             preview: PreviewSpec::document(DocumentFormat::Epub),
         },
+        "cbz" => plain(FileClass::Archive, Some("Comic ZIP archive")),
         "pdf" => FileFacts {
             builtin_class: FileClass::Document,
             specific_type_label: Some("PDF document"),

@@ -19,6 +19,7 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
     state.search_hits.clear();
     state.search_panel = None;
     state.preview_panel = None;
+    state.preview_media_area = None;
     state.back_button = None;
     state.forward_button = None;
     state.parent_button = None;

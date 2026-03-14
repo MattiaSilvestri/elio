@@ -1,4 +1,5 @@
 use super::*;
+use crate::preview::PreviewRequestOptions;
 use std::{
     collections::{HashSet, VecDeque},
     path::PathBuf,
@@ -33,6 +34,7 @@ pub(in crate::app::jobs) struct PreviewJobKey {
     pub(in crate::app::jobs) path: PathBuf,
     pub(in crate::app::jobs) size: u64,
     pub(in crate::app::jobs) modified: Option<SystemTime>,
+    pub(in crate::app::jobs) variant: PreviewRequestOptions,
 }
 
 impl PreviewPool {
@@ -61,15 +63,17 @@ impl PreviewPool {
             let metrics = Arc::clone(&metrics);
             workers.push(thread::spawn(move || {
                 while let Some(request) = PreviewShared::pop(&shared) {
-                    let key = PreviewJobKey::from_entry(&request.entry);
+                    let key = PreviewJobKey::from_entry(&request.entry, &request.variant);
                     let started_at = Instant::now();
-                    let result = crate::preview::build_preview(&request.entry);
+                    let result =
+                        crate::preview::build_preview_with_options(&request.entry, &request.variant);
                     PreviewShared::finish(&shared, &key);
                     lock_unpoison(&metrics).record_preview_completed(started_at.elapsed());
                     if result_tx
                         .send(JobResult::Preview(Box::new(PreviewBuild {
                             token: request.token,
                             entry: request.entry,
+                            variant: request.variant,
                             result,
                         })))
                         .is_err()
@@ -87,7 +91,7 @@ impl PreviewPool {
     }
 
     pub(in crate::app::jobs) fn submit(&self, request: PreviewRequest) -> bool {
-        let key = PreviewJobKey::from_entry(&request.entry);
+        let key = PreviewJobKey::from_entry(&request.entry, &request.variant);
         let mut state = lock_unpoison(&self.shared.state);
         if state.closed {
             return false;
@@ -161,7 +165,7 @@ impl PreviewPool {
         };
         queue
             .iter()
-            .map(|request| PreviewJobKey::from_entry(&request.entry))
+            .map(|request| PreviewJobKey::from_entry(&request.entry, &request.variant))
             .collect()
     }
 
@@ -216,13 +220,13 @@ impl PreviewShared {
                 return None;
             }
             if let Some(request) = state.pending_high.pop_front() {
-                let key = PreviewJobKey::from_entry(&request.entry);
+                let key = PreviewJobKey::from_entry(&request.entry, &request.variant);
                 state.queued_high_keys.remove(&key);
                 state.active_keys.insert(key);
                 return Some(request);
             }
             if let Some(request) = state.pending_low.pop_front() {
-                let key = PreviewJobKey::from_entry(&request.entry);
+                let key = PreviewJobKey::from_entry(&request.entry, &request.variant);
                 state.queued_low_keys.remove(&key);
                 state.active_keys.insert(key);
                 return Some(request);
@@ -238,11 +242,12 @@ impl PreviewShared {
 }
 
 impl PreviewJobKey {
-    fn from_entry(entry: &Entry) -> Self {
+    fn from_entry(entry: &Entry, variant: &PreviewRequestOptions) -> Self {
         Self {
             path: entry.path.clone(),
             size: entry.size,
             modified: entry.modified,
+            variant: variant.clone(),
         }
     }
 }
@@ -250,7 +255,7 @@ impl PreviewJobKey {
 fn remove_preview_request(queue: &mut VecDeque<PreviewRequest>, key: &PreviewJobKey) {
     if let Some(index) = queue
         .iter()
-        .position(|request| PreviewJobKey::from_entry(&request.entry) == *key)
+        .position(|request| PreviewJobKey::from_entry(&request.entry, &request.variant) == *key)
     {
         queue.remove(index);
     }
@@ -274,7 +279,7 @@ fn replace_preview_request_with_priority(
     request.priority = priority;
     if let Some(index) = queue
         .iter()
-        .position(|queued| PreviewJobKey::from_entry(&queued.entry) == *key)
+        .position(|queued| PreviewJobKey::from_entry(&queued.entry, &queued.variant) == *key)
     {
         queue[index] = request;
     }
@@ -290,7 +295,7 @@ fn evict_oldest_low_priority_preview(state: &mut PreviewState) -> bool {
     };
     state
         .queued_low_keys
-        .remove(&PreviewJobKey::from_entry(&stale.entry));
+        .remove(&PreviewJobKey::from_entry(&stale.entry, &stale.variant));
     true
 }
 
@@ -307,7 +312,7 @@ fn trim_preview_queue_for_high(state: &mut PreviewState) -> u64 {
         };
         state
             .queued_high_keys
-            .remove(&PreviewJobKey::from_entry(&stale.entry));
+            .remove(&PreviewJobKey::from_entry(&stale.entry, &stale.variant));
     }
     evicted
 }

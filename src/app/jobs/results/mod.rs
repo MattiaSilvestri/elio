@@ -100,7 +100,7 @@ impl App {
                     }
                 }
                 JobResult::Preview(build) => {
-                    self.cache_preview_result(&build.entry, &build.result);
+                    self.cache_preview_result(&build.entry, &build.variant, &build.result);
                     let is_current_entry = self
                         .selected_entry()
                         .map(|entry| {
@@ -109,13 +109,20 @@ impl App {
                                 && entry.size == build.entry.size
                         })
                         .unwrap_or(false);
-                    if build.token != self.preview_state.token || !is_current_entry {
+                    let is_current_variant =
+                        build.variant == self.current_preview_request_options();
+                    if build.token != self.preview_state.token
+                        || !is_current_entry
+                        || !is_current_variant
+                    {
                         self.preview_state.metrics.stale_results_dropped += 1;
                         continue;
                     }
 
                     self.preview_state.content = build.result;
                     self.preview_state.load_state = None;
+                    self.apply_current_comic_preview_metadata();
+                    self.apply_current_epub_preview_metadata();
                     self.preview_state.scroll = 0;
                     self.preview_state.horizontal_scroll = 0;
                     self.sync_preview_scroll();

@@ -7,7 +7,9 @@ use ratatui::{
 };
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
+    path::PathBuf,
     sync::{Arc, Mutex},
+    time::SystemTime,
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -24,9 +26,35 @@ const WRAPPED_LAYOUT_CACHE_LIMIT: usize = 4;
 const NBSP: &str = "\u{00a0}";
 const ZWSP: &str = "\u{200b}";
 
+#[derive(Clone, Debug, Default, Eq, Hash, PartialEq)]
+pub(crate) enum PreviewRequestOptions {
+    #[default]
+    Default,
+    EpubSection(usize),
+    ComicPage(usize),
+}
+
+impl PreviewRequestOptions {
+    pub(crate) fn epub_section_index(&self) -> Option<usize> {
+        match self {
+            Self::Default => None,
+            Self::EpubSection(index) => Some(*index),
+            Self::ComicPage(_) => None,
+        }
+    }
+
+    pub(crate) fn comic_page_index(&self) -> Option<usize> {
+        match self {
+            Self::ComicPage(index) => Some(*index),
+            Self::Default | Self::EpubSection(_) => None,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PreviewKind {
     Archive,
+    Comic,
     Directory,
     Document,
     Image,
@@ -41,6 +69,7 @@ impl PreviewKind {
     pub(crate) fn section_label(self) -> &'static str {
         match self {
             Self::Archive => "Archive",
+            Self::Comic => "Comic",
             Self::Directory => "Contents",
             Self::Document => "Document",
             Self::Image => "Image",
@@ -54,7 +83,8 @@ impl PreviewKind {
     pub(crate) fn wraps_in_preview(self) -> bool {
         matches!(
             self,
-            Self::Document
+            Self::Comic
+                | Self::Document
                 | Self::Image
                 | Self::Markdown
                 | Self::Text
@@ -68,11 +98,45 @@ impl PreviewKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum PreviewVisualKind {
+    Cover,
+    PageImage,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum PreviewVisualLayout {
+    Inline,
+    FullHeight,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PreviewVisual {
+    pub kind: PreviewVisualKind,
+    pub layout: PreviewVisualLayout,
+    pub path: PathBuf,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PreviewNavigationPosition {
+    pub label: &'static str,
+    pub index: usize,
+    pub count: usize,
+    pub title: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct PreviewContent {
     pub kind: PreviewKind,
     pub detail: Option<String>,
     pub status_note: Option<String>,
+    pub preview_visual: Option<PreviewVisual>,
+    pub navigation_position: Option<PreviewNavigationPosition>,
+    pub ebook_section_index: Option<usize>,
+    pub ebook_section_count: Option<usize>,
+    pub ebook_section_title: Option<String>,
     pub truncated: bool,
     pub truncation_note: Option<String>,
     pub source_lines: Option<usize>,
@@ -152,7 +216,7 @@ pub(super) struct ArchiveTreeNode {
     pub(super) children: BTreeMap<String, ArchiveTreeNode>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub(super) struct ArchiveMetadata {
     pub(super) format_label: Option<String>,
     pub(super) physical_size: Option<u64>,
@@ -172,6 +236,7 @@ pub(super) struct ZipManifestMetadata {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ArchiveFormat {
+    ComicZip,
     Zip,
     SevenZip,
     Tar,
@@ -197,6 +262,11 @@ impl PreviewContent {
             kind,
             detail: None,
             status_note: None,
+            preview_visual: None,
+            navigation_position: None,
+            ebook_section_index: None,
+            ebook_section_count: None,
+            ebook_section_title: None,
             truncated: false,
             truncation_note: None,
             source_lines: None,
@@ -223,6 +293,46 @@ impl PreviewContent {
 
     pub(crate) fn with_status_note(mut self, note: impl Into<String>) -> Self {
         self.status_note = Some(note.into());
+        self
+    }
+
+    pub(crate) fn with_preview_visual(mut self, visual: PreviewVisual) -> Self {
+        self.preview_visual = Some(visual);
+        self
+    }
+
+    pub(crate) fn with_navigation_position(
+        mut self,
+        label: &'static str,
+        index: usize,
+        count: usize,
+        title: Option<String>,
+    ) -> Self {
+        self.navigation_position = Some(PreviewNavigationPosition {
+            label,
+            index,
+            count: count.max(1),
+            title: title.filter(|title| !title.is_empty()),
+        });
+        self
+    }
+
+    pub(crate) fn with_ebook_section(
+        mut self,
+        index: usize,
+        count: usize,
+        title: Option<String>,
+    ) -> Self {
+        let title = title.filter(|title| !title.is_empty());
+        self.navigation_position = Some(PreviewNavigationPosition {
+            label: "Section",
+            index,
+            count: count.max(1),
+            title: title.clone(),
+        });
+        self.ebook_section_index = Some(index);
+        self.ebook_section_count = Some(count.max(1));
+        self.ebook_section_title = title;
         self
     }
 
@@ -364,6 +474,23 @@ impl PreviewContent {
         match &self.detail {
             Some(detail) if !detail.is_empty() => Some(format!("{detail}  •  {range}")),
             _ => Some(range),
+        }
+    }
+
+    pub(crate) fn navigation_header_detail(&self) -> Option<String> {
+        let position = self.navigation_position.as_ref()?;
+        let label = format!(
+            "{} {}/{}",
+            position.label,
+            position.index + 1,
+            position.count
+        );
+        match position.title.as_deref() {
+            Some(title) if !title.is_empty() => Some(format!(
+                "{label}  •  {}",
+                browser_support::sanitize_terminal_text(title)
+            )),
+            _ => Some(label),
         }
     }
 

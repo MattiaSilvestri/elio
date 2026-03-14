@@ -1,7 +1,7 @@
 use super::*;
 use crate::preview::{
-    PreviewContent, PreviewKind, build_preview, loading_preview_for,
-    should_build_preview_in_background,
+    PreviewContent, PreviewKind, PreviewRequestOptions, build_preview_with_options,
+    loading_preview_for, should_build_preview_in_background,
 };
 use std::sync::Arc;
 
@@ -62,21 +62,27 @@ impl App {
             } else {
                 None
             };
-        let detail = match (detail, wrapped_note) {
+        let mut detail = match (detail, wrapped_note) {
             (Some(detail), Some(note)) if !note.is_empty() => Some(format!("{detail}  •  {note}")),
             (Some(detail), Some(_)) => Some(detail),
             (Some(detail), None) => Some(detail),
             (None, Some(note)) => Some(note),
             (None, None) => None,
         };
+        if let Some(navigation_detail) = self.preview_state.content.navigation_header_detail() {
+            detail = Some(match detail {
+                Some(detail) if !detail.is_empty() => format!("{detail}  •  {navigation_detail}"),
+                _ => navigation_detail,
+            });
+        }
         if let Some(pdf_detail) = self.pdf_preview_header_detail() {
-            return Some(match detail {
+            detail = Some(match detail {
                 Some(detail) if !detail.is_empty() => format!("{detail}  •  {pdf_detail}"),
                 _ => pdf_detail,
             });
         }
         if let Some(image_detail) = self.static_image_preview_header_detail() {
-            return Some(match detail {
+            detail = Some(match detail {
                 Some(detail) if !detail.is_empty() => format!("{detail}  •  {image_detail}"),
                 _ => image_detail,
             });
@@ -84,11 +90,20 @@ impl App {
         detail
     }
 
+    pub(in crate::app) fn current_preview_request_options(&self) -> PreviewRequestOptions {
+        self.comic_preview_request_options()
+            .or_else(|| self.epub_preview_request_options())
+            .unwrap_or_default()
+    }
+
     pub(in crate::app) fn refresh_preview(&mut self) {
         self.preview_state.deferred_refresh_at = None;
+        self.sync_comic_preview_selection();
+        self.sync_epub_preview_selection();
         self.sync_pdf_preview_selection();
         self.sync_image_preview_selection_activation();
         self.preview_state.token = self.preview_state.token.wrapping_add(1);
+        let preview_options = self.current_preview_request_options();
         self.preview_state.content = match self.selected_entry().cloned() {
             Some(entry) if self.should_defer_static_image_preview(&entry) => {
                 self.preview_state.load_state = None;
@@ -99,24 +114,27 @@ impl App {
             }
             Some(entry) if self.should_defer_pdf_document_preview(&entry) => {
                 self.preview_state.load_state = None;
-                self.cached_preview_for(&entry)
-                    .or_else(|| self.stale_cached_preview_for(&entry))
+                self.cached_preview_for(&entry, &preview_options)
+                    .or_else(|| self.stale_cached_preview_for(&entry, &preview_options))
                     .unwrap_or_else(|| {
                         PreviewContent::new(PreviewKind::Document, Vec::new())
                             .with_detail("PDF document")
                     })
             }
             Some(entry) if should_build_preview_in_background(&entry) => {
-                if let Some(preview) = self.cached_preview_for(&entry) {
+                if let Some(preview) = self.cached_preview_for(&entry, &preview_options) {
                     self.preview_state.metrics.cache_hits += 1;
                     self.preview_state.load_state = None;
                     preview
-                } else if let Some(stale_preview) = self.stale_cached_preview_for(&entry) {
+                } else if let Some(stale_preview) =
+                    self.stale_cached_preview_for(&entry, &preview_options)
+                {
                     self.preview_state.metrics.cache_misses += 1;
                     let loading_path = entry.path.clone();
                     let request = PreviewRequest {
                         token: self.preview_state.token,
                         entry,
+                        variant: preview_options.clone(),
                         priority: PreviewPriority::High,
                     };
                     if !self.scheduler.submit_preview(request) {
@@ -129,11 +147,12 @@ impl App {
                     }
                 } else {
                     self.preview_state.metrics.cache_misses += 1;
-                    let placeholder = loading_preview_for(&entry);
+                    let placeholder = loading_preview_for(&entry, &preview_options);
                     let loading_path = entry.path.clone();
                     let request = PreviewRequest {
                         token: self.preview_state.token,
                         entry,
+                        variant: preview_options.clone(),
                         priority: PreviewPriority::High,
                     };
                     if !self.scheduler.submit_preview(request) {
@@ -148,13 +167,15 @@ impl App {
             }
             Some(entry) => {
                 self.preview_state.load_state = None;
-                build_preview(&entry)
+                build_preview_with_options(&entry, &preview_options)
             }
             None => {
                 self.preview_state.load_state = None;
                 PreviewContent::placeholder("No selection")
             }
         };
+        self.apply_current_comic_preview_metadata();
+        self.apply_current_epub_preview_metadata();
         self.preview_state.scroll = 0;
         self.preview_state.horizontal_scroll = 0;
         self.sync_preview_scroll();
@@ -179,8 +200,15 @@ impl App {
             .map(|deadline| deadline.saturating_duration_since(Instant::now()))
     }
 
-    fn cached_preview_for(&self, entry: &Entry) -> Option<PreviewContent> {
-        let cached = self.preview_state.result_cache.get(&entry.path)?;
+    fn cached_preview_for(
+        &self,
+        entry: &Entry,
+        variant: &PreviewRequestOptions,
+    ) -> Option<PreviewContent> {
+        let cached = self.preview_state.result_cache.get(&PreviewCacheKey {
+            path: entry.path.clone(),
+            variant: variant.clone(),
+        })?;
         if cached.size == entry.size && cached.modified == entry.modified {
             Some(cached.preview.clone())
         } else {
@@ -188,32 +216,44 @@ impl App {
         }
     }
 
-    fn stale_cached_preview_for(&self, entry: &Entry) -> Option<PreviewContent> {
+    fn stale_cached_preview_for(
+        &self,
+        entry: &Entry,
+        variant: &PreviewRequestOptions,
+    ) -> Option<PreviewContent> {
         self.preview_state
             .result_cache
-            .get(&entry.path)
+            .get(&PreviewCacheKey {
+                path: entry.path.clone(),
+                variant: variant.clone(),
+            })
             .map(|cached| cached.preview.clone())
     }
 
-    pub(in crate::app) fn cache_preview_result(&mut self, entry: &Entry, preview: &PreviewContent) {
+    pub(in crate::app) fn cache_preview_result(
+        &mut self,
+        entry: &Entry,
+        variant: &PreviewRequestOptions,
+        preview: &PreviewContent,
+    ) {
+        let key = PreviewCacheKey {
+            path: entry.path.clone(),
+            variant: variant.clone(),
+        };
         self.preview_state.result_cache.insert(
-            entry.path.clone(),
+            key.clone(),
             CachedPreview {
                 size: entry.size,
                 modified: entry.modified,
                 preview: preview.clone(),
             },
         );
-        self.preview_state
-            .result_order
-            .retain(|path| path != &entry.path);
-        self.preview_state
-            .result_order
-            .push_back(entry.path.clone());
+        self.preview_state.result_order.retain(|cached| cached != &key);
+        self.preview_state.result_order.push_back(key);
 
         while self.preview_state.result_order.len() > PREVIEW_CACHE_LIMIT {
-            if let Some(stale_path) = self.preview_state.result_order.pop_front() {
-                self.preview_state.result_cache.remove(&stale_path);
+            if let Some(stale_key) = self.preview_state.result_order.pop_front() {
+                self.preview_state.result_cache.remove(&stale_key);
             }
         }
     }
@@ -232,8 +272,9 @@ impl App {
             let Some(entry) = self.entries.get(target as usize).cloned() else {
                 continue;
             };
+            let variant = self.preview_request_options_for_entry(&entry);
             if !should_build_preview_in_background(&entry)
-                || self.cached_preview_for(&entry).is_some()
+                || self.cached_preview_for(&entry, &variant).is_some()
             {
                 continue;
             }
@@ -241,6 +282,7 @@ impl App {
             let request = PreviewRequest {
                 token: self.preview_state.token,
                 entry,
+                variant,
                 priority: PreviewPriority::Low,
             };
             if self.scheduler.submit_preview(request) {
@@ -249,8 +291,17 @@ impl App {
         }
     }
 
+    fn preview_request_options_for_entry(&self, entry: &Entry) -> PreviewRequestOptions {
+        self.comic_preview_request_options_for_entry(entry)
+            .or_else(|| self.epub_preview_request_options_for_entry(entry))
+            .unwrap_or_default()
+    }
+
     #[cfg(test)]
     pub(in crate::app) fn has_cached_preview_for_path(&self, path: &std::path::Path) -> bool {
-        self.preview_state.result_cache.contains_key(path)
+        self.preview_state
+            .result_cache
+            .keys()
+            .any(|key| key.path == path)
     }
 }

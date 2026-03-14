@@ -219,6 +219,7 @@ pub(super) struct PdfRenderRequest {
 pub(super) struct PreviewBuild {
     pub token: u64,
     pub entry: Entry,
+    pub variant: preview::PreviewRequestOptions,
     pub result: preview::PreviewContent,
 }
 
@@ -226,6 +227,7 @@ pub(super) struct PreviewBuild {
 pub(super) struct PreviewRequest {
     pub token: u64,
     pub entry: Entry,
+    pub variant: preview::PreviewRequestOptions,
     pub priority: PreviewPriority,
 }
 

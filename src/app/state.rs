@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 
 use super::{
     jobs::JobScheduler,
-    overlays::{images, inline_image, pdf},
+    overlays::{comic, epub, images, inline_image, pdf},
     types::*,
 };
 use crate::fs::search::SearchCandidate;
@@ -105,6 +105,12 @@ pub(super) struct CachedPreview {
     pub(super) size: u64,
     pub(super) modified: Option<SystemTime>,
     pub(super) preview: preview::PreviewContent,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(super) struct PreviewCacheKey {
+    pub(super) path: PathBuf,
+    pub(super) variant: preview::PreviewRequestOptions,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -204,8 +210,8 @@ pub(super) struct PreviewState {
     pub(super) metrics: PreviewMetrics,
     pub(super) load_state: Option<PreviewLoadState>,
     pub(super) deferred_refresh_at: Option<Instant>,
-    pub(super) result_cache: HashMap<PathBuf, CachedPreview>,
-    pub(super) result_order: VecDeque<PathBuf>,
+    pub(super) result_cache: HashMap<PreviewCacheKey, CachedPreview>,
+    pub(super) result_order: VecDeque<PreviewCacheKey>,
 }
 
 #[derive(Clone, Debug)]
@@ -247,6 +253,8 @@ pub struct App {
     pub should_quit: bool,
     pub(super) navigation_history: NavigationHistory,
     pub(super) preview_state: PreviewState,
+    pub(super) comic_preview: comic::ComicPreviewState,
+    pub(super) epub_preview: epub::EpubPreviewState,
     pub(super) image_preview: images::ImagePreviewState,
     pub(super) pdf_preview: pdf::PdfPreviewState,
     pub(super) terminal_images: inline_image::TerminalImageState,
@@ -305,6 +313,8 @@ impl App {
                 result_cache: HashMap::new(),
                 result_order: VecDeque::new(),
             },
+            comic_preview: comic::ComicPreviewState::default(),
+            epub_preview: epub::EpubPreviewState::default(),
             image_preview: images::ImagePreviewState::default(),
             pdf_preview: pdf::PdfPreviewState::default(),
             terminal_images: inline_image::TerminalImageState::default(),
