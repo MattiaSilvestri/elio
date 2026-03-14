@@ -49,12 +49,14 @@ impl App {
     }
 
     pub fn preview_header_detail(&self, visible_rows: usize) -> Option<String> {
-        let visible_cols = self.frame_state.preview_cols_visible.max(1);
+        let visible_cols = self.frame_state.preview_cols_visible;
         let detail = self
             .preview_state
             .content
             .header_detail(self.preview_state.scroll, visible_rows);
-        let wrapped_note = if self.preview_state.content.truncation_note.is_none() {
+        let wrapped_note = if self.preview_state.content.truncation_note.is_none()
+            && visible_cols > 0
+        {
             self.preview_state
                 .content
                 .wrapped_truncation_note(visible_cols)

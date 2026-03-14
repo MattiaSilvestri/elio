@@ -320,28 +320,30 @@ impl App {
     }
 
     fn flush_preview_scroll(&mut self) -> bool {
-        let mut dirty = false;
-        for _ in 0..2 {
-            let Some(step) = Self::consume_scroll_step(
-                &mut self.wheel_scroll.preview,
-                WHEEL_SCROLL_INTERVAL_PREVIEW,
-            ) else {
-                break;
-            };
+        let Some(step) = Self::consume_scroll_step(
+            &mut self.wheel_scroll.preview,
+            WHEEL_SCROLL_INTERVAL_PREVIEW,
+        ) else {
+            return false;
+        };
+        let mut dirty = self.scroll_preview_lines(step);
+        if self.wheel_scroll.preview.pending.signum() == step {
+            self.wheel_scroll.preview.pending -= step;
             dirty |= self.scroll_preview_lines(step);
         }
         dirty
     }
 
     fn flush_preview_horizontal_scroll(&mut self) -> bool {
-        let mut dirty = false;
-        for _ in 0..2 {
-            let Some(step) = Self::consume_scroll_step(
-                &mut self.wheel_scroll.preview_horizontal,
-                WHEEL_SCROLL_INTERVAL_PREVIEW_HORIZONTAL,
-            ) else {
-                break;
-            };
+        let Some(step) = Self::consume_scroll_step(
+            &mut self.wheel_scroll.preview_horizontal,
+            WHEEL_SCROLL_INTERVAL_PREVIEW_HORIZONTAL,
+        ) else {
+            return false;
+        };
+        let mut dirty = self.scroll_preview_columns(step);
+        if self.wheel_scroll.preview_horizontal.pending.signum() == step {
+            self.wheel_scroll.preview_horizontal.pending -= step;
             dirty |= self.scroll_preview_columns(step);
         }
         dirty
