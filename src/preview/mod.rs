@@ -14,7 +14,8 @@ pub(crate) use self::dispatch::{
 };
 use self::text::{
     collect_preview_lines, combine_preview_notes, count_source_lines, finalize_text_preview,
-    read_text_preview, render_plain_text_preview, trim_trailing_line_endings, truncation_note,
+    read_text_preview, render_plain_text_preview, render_reflowed_text_preview,
+    trim_trailing_line_endings, truncation_note,
 };
 use self::types::*;
 pub(crate) use self::types::{PreviewContent, PreviewKind};

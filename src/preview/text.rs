@@ -17,6 +17,42 @@ enum Utf16Endian {
     Big,
 }
 
+pub(super) fn render_reflowed_text_preview(text: &str) -> Vec<Line<'static>> {
+    let palette = theme::palette();
+    let mut rendered = Vec::new();
+    let mut pending: Vec<&str> = Vec::new();
+
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            if !pending.is_empty() {
+                let joined = pending.join(" ");
+                pending.clear();
+                rendered.push(Line::from(Span::styled(
+                    super::expand_tabs(&joined),
+                    Style::default().fg(palette.text),
+                )));
+            }
+            rendered.push(Line::default());
+        } else {
+            pending.push(trimmed);
+        }
+    }
+
+    if !pending.is_empty() {
+        let joined = pending.join(" ");
+        rendered.push(Line::from(Span::styled(
+            super::expand_tabs(&joined),
+            Style::default().fg(palette.text),
+        )));
+    }
+
+    if rendered.is_empty() {
+        rendered.push(Line::from("File is empty"));
+    }
+    rendered
+}
+
 pub(super) fn render_plain_text_preview(text: &str) -> Vec<Line<'static>> {
     let palette = theme::palette();
     let mut rendered = Vec::new();

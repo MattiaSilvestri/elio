@@ -2893,3 +2893,63 @@ fn protected_file_preview_reports_permission_denied() {
     fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("failed to unlock file");
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
+
+#[test]
+fn license_file_with_hard_line_breaks_is_reflowed_into_paragraphs() {
+    let root = temp_path("license-reflow");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("LICENSE");
+
+    // Simulate a hard-wrapped license (lines at ~76 chars, traditional terminal format).
+    // Each paragraph is a block of consecutive lines, separated by blank lines.
+    let contents = "\
+MIT License
+
+Copyright (c) 2024 Example Author
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the \"Software\"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+";
+    fs::write(&path, contents).expect("failed to write license");
+
+    let preview = build_preview(&file_entry(path));
+
+    assert_eq!(preview.kind, PreviewKind::Text);
+
+    // After reflowing: the five-line permission-grant block should be ONE long line.
+    let permission_line = preview
+        .lines
+        .iter()
+        .find(|line| line_text(line).contains("Permission is hereby granted"))
+        .expect("permission grant line should exist");
+    let text = line_text(permission_line);
+    // The reflowed line must contain the last part that was originally on a separate line.
+    assert!(
+        text.contains("furnished to do so"),
+        "permission grant should be reflowed into a single line, got: {text:?}"
+    );
+
+    // Blank-line paragraph separators must be preserved.
+    let blank_count = preview.lines.iter().filter(|l| l.spans.is_empty()).count();
+    assert!(
+        blank_count >= 3,
+        "blank paragraph separators should be preserved, got {blank_count}"
+    );
+
+    // The reflowed preview must have far fewer lines than the source (paragraphs, not raw lines).
+    let source_lines = contents.lines().count();
+    assert!(
+        preview.lines.len() < source_lines,
+        "reflowed output ({} lines) should be shorter than source ({source_lines} lines)",
+        preview.lines.len()
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
