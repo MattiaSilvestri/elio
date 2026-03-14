@@ -359,8 +359,8 @@ impl App {
     fn preview_horizontal_scroll_step(&self) -> usize {
         self.frame_state
             .preview_cols_visible
-            .saturating_div(20)
-            .clamp(1, 3)
+            .saturating_div(8)
+            .clamp(2, 6)
     }
 
     pub(in crate::app) fn sync_preview_scroll(&mut self) -> bool {

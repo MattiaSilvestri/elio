@@ -392,7 +392,7 @@ fn preview_horizontal_scroll_works_in_list_view() {
     }))
     .expect("scroll right should be handled");
     assert!(app.process_pending_scroll());
-    assert_eq!(app.preview_state.horizontal_scroll, 1);
+    assert_eq!(app.preview_state.horizontal_scroll, 2);
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
