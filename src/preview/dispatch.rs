@@ -151,6 +151,19 @@ pub(crate) fn build_preview(entry: &Entry) -> PreviewContent {
         );
     }
 
+    if facts.builtin_class == FileClass::License {
+        let preview = PreviewContent::new(
+            PreviewKind::Text,
+            render_reflowed_text_preview(&text_preview.text),
+        );
+        return finalize_text_preview(
+            apply_type_detail(preview, type_detail),
+            source_line_count,
+            text_preview.bytes_truncated,
+            truncation_note(text_preview.bytes_truncated, false),
+        );
+    }
+
     let preview = PreviewContent::new(
         PreviewKind::Text,
         render_plain_text_preview(&text_preview.text),
