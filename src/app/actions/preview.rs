@@ -54,15 +54,14 @@ impl App {
             .preview_state
             .content
             .header_detail(self.preview_state.scroll, visible_rows);
-        let wrapped_note = if self.preview_state.content.truncation_note.is_none()
-            && visible_cols > 0
-        {
-            self.preview_state
-                .content
-                .wrapped_truncation_note(visible_cols)
-        } else {
-            None
-        };
+        let wrapped_note =
+            if self.preview_state.content.truncation_note.is_none() && visible_cols > 0 {
+                self.preview_state
+                    .content
+                    .wrapped_truncation_note(visible_cols)
+            } else {
+                None
+            };
         let detail = match (detail, wrapped_note) {
             (Some(detail), Some(note)) if !note.is_empty() => Some(format!("{detail}  •  {note}")),
             (Some(detail), Some(_)) => Some(detail),
