@@ -1,6 +1,7 @@
 mod archives;
 mod classify;
 mod extensions;
+mod license;
 mod names;
 mod types;
 

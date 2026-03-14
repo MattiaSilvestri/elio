@@ -1,6 +1,6 @@
 use super::{
     FileFacts, HighlightLanguage, PreviewSpec, archives::inspect_archive_name,
-    extensions::inspect_extension, names::inspect_exact_name,
+    extensions::inspect_extension, license::sniff_license_file_type, names::inspect_exact_name,
 };
 use crate::app::{EntryKind, FileClass};
 use std::{fs::File, io::Read, path::Path};
@@ -38,14 +38,13 @@ pub(crate) fn inspect_path(path: &Path, kind: EntryKind) -> FileFacts {
         .and_then(|ext| ext.to_str())
         .map(normalize_key)
         .unwrap_or_default();
-    let facts = inspect_extension(&ext);
+    let mut facts = inspect_extension(&ext);
     if ext.is_empty() {
-        return sniff_extensionless_file_type(path).unwrap_or(facts);
+        facts = sniff_extensionless_file_type(path).unwrap_or(facts);
+    } else if matches!(ext.as_str(), "conf" | "cfg") {
+        facts = sniff_config_file_type(path).unwrap_or(facts);
     }
-    if matches!(ext.as_str(), "conf" | "cfg") {
-        return sniff_config_file_type(path).unwrap_or(facts);
-    }
-    facts
+    sniff_license_file_type(path, &name, &ext, facts).unwrap_or(facts)
 }
 
 fn normalize_key(input: &str) -> String {

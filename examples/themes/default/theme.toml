@@ -57,6 +57,10 @@ color = "#b38cff"
 icon = "󰈙"
 color = "#8ddf6d"
 
+[classes.license]
+icon = "󰿃"
+color = "#f5d85b"
+
 [classes.image]
 icon = "󰋩"
 color = "#24d9b8"
@@ -316,23 +320,23 @@ color = "#66d9ef"
 
 [extensions.sh]
 class = "code"
-icon = ""
-color = "#8ddf6d"
+icon = ""
+color = "#d6def0"
 
 [extensions.bash]
 class = "code"
-icon = ""
-color = "#8ddf6d"
+icon = ""
+color = "#d6def0"
 
 [extensions.zsh]
 class = "code"
-icon = ""
-color = "#8ddf6d"
+icon = ""
+color = "#d6def0"
 
 [extensions.fish]
 class = "code"
-icon = ""
-color = "#8ddf6d"
+icon = ""
+color = "#d6def0"
 
 [extensions.c]
 class = "code"
@@ -421,7 +425,33 @@ color = "#cf88ff"
 
 [extensions.md]
 class = "document"
-color = "#8ddf6d"
+icon = ""
+color = "#d8b26e"
+
+[extensions.markdown]
+class = "document"
+icon = ""
+color = "#d8b26e"
+
+[extensions.mdown]
+class = "document"
+icon = ""
+color = "#d8b26e"
+
+[extensions.mkd]
+class = "document"
+icon = ""
+color = "#d8b26e"
+
+[extensions.mdx]
+class = "document"
+icon = ""
+color = "#d8b26e"
+
+[extensions.txt]
+class = "document"
+icon = ""
+color = "#aeb8c7"
 
 [extensions.sql]
 class = "data"
@@ -490,13 +520,8 @@ color = "#28d5c2"
 
 [files."README.md"]
 class = "document"
-icon = "󰈙"
-color = "#8ddf6d"
-
-[files."LICENSE"]
-class = "document"
-icon = "󰿃"
-color = "#f2cf68"
+icon = ""
+color = "#d8b26e"
 
 [files.".gitignore"]
 class = "config"

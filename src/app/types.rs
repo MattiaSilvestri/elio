@@ -61,6 +61,7 @@ pub(crate) enum FileClass {
     Code,
     Config,
     Document,
+    License,
     Image,
     Audio,
     Video,

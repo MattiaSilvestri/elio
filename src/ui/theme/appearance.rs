@@ -275,6 +275,13 @@ impl Theme {
             },
         );
         classes.insert(
+            FileClass::License,
+            ClassStyle {
+                icon: "󰿃".to_string(),
+                color: rgb(245, 216, 91),
+            },
+        );
+        classes.insert(
             FileClass::Image,
             ClassStyle {
                 icon: "󰋩".to_string(),
@@ -342,10 +349,38 @@ impl Theme {
             ("rb".to_string(), rule_class(FileClass::Code)),
             ("swift".to_string(), rule_class(FileClass::Code)),
             ("kt".to_string(), rule_class(FileClass::Code)),
-            ("sh".to_string(), rule_class(FileClass::Code)),
-            ("bash".to_string(), rule_class(FileClass::Code)),
-            ("zsh".to_string(), rule_class(FileClass::Code)),
-            ("fish".to_string(), rule_class(FileClass::Code)),
+            (
+                "sh".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(214, 222, 240)),
+                },
+            ),
+            (
+                "bash".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(214, 222, 240)),
+                },
+            ),
+            (
+                "zsh".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(214, 222, 240)),
+                },
+            ),
+            (
+                "fish".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(214, 222, 240)),
+                },
+            ),
             ("json".to_string(), rule_class(FileClass::Config)),
             (
                 "toml".to_string(),
@@ -363,8 +398,54 @@ impl Theme {
             ("desktop".to_string(), rule_class(FileClass::Config)),
             ("ron".to_string(), rule_class(FileClass::Config)),
             ("env".to_string(), rule_class(FileClass::Config)),
-            ("md".to_string(), rule_class(FileClass::Document)),
-            ("txt".to_string(), rule_class(FileClass::Document)),
+            (
+                "md".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(216, 178, 110)),
+                },
+            ),
+            (
+                "markdown".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(216, 178, 110)),
+                },
+            ),
+            (
+                "mdown".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(216, 178, 110)),
+                },
+            ),
+            (
+                "mkd".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(216, 178, 110)),
+                },
+            ),
+            (
+                "mdx".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(216, 178, 110)),
+                },
+            ),
+            (
+                "txt".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Document),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(174, 184, 199)),
+                },
+            ),
             ("rst".to_string(), rule_class(FileClass::Document)),
             ("pdf".to_string(), rule_class(FileClass::Document)),
             ("doc".to_string(), rule_document_file()),
@@ -495,16 +576,8 @@ impl Theme {
                 normalize_key("README.md"),
                 RuleOverride {
                     class: Some(FileClass::Document),
-                    icon: Some("󰈙".to_string()),
-                    color: Some(rgb(125, 201, 120)),
-                },
-            ),
-            (
-                normalize_key("LICENSE"),
-                RuleOverride {
-                    class: Some(FileClass::Document),
-                    icon: Some("󰿃".to_string()),
-                    color: Some(rgb(190, 205, 120)),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(216, 178, 110)),
                 },
             ),
             (
@@ -633,6 +706,7 @@ impl Theme {
     }
 
     fn resolve(&self, path: &Path, kind: EntryKind) -> ResolvedAppearance<'_> {
+        let builtin_class = builtin_classify_path(path, kind);
         let file_name = path
             .file_name()
             .and_then(|name| name.to_str())
@@ -651,11 +725,13 @@ impl Theme {
         let ext_rule = (kind == EntryKind::File)
             .then(|| self.extensions.get(&ext))
             .flatten();
+        let prefer_builtin_license = exact_rule.is_none() && builtin_class == FileClass::License;
 
         let class = exact_rule
             .and_then(|rule| rule.class)
+            .or(prefer_builtin_license.then_some(FileClass::License))
             .or_else(|| ext_rule.and_then(|rule| rule.class))
-            .unwrap_or_else(|| builtin_classify_path(path, kind));
+            .unwrap_or(builtin_class);
 
         let base = self.classes.get(&class).unwrap_or_else(|| {
             self.classes
@@ -665,11 +741,19 @@ impl Theme {
 
         let icon = exact_rule
             .and_then(|rule| rule.icon.as_deref())
-            .or_else(|| ext_rule.and_then(|rule| rule.icon.as_deref()))
+            .or_else(|| {
+                (!prefer_builtin_license)
+                    .then(|| ext_rule.and_then(|rule| rule.icon.as_deref()))
+                    .flatten()
+            })
             .unwrap_or(base.icon.as_str());
         let color = exact_rule
             .and_then(|rule| rule.color)
-            .or_else(|| ext_rule.and_then(|rule| rule.color))
+            .or_else(|| {
+                (!prefer_builtin_license)
+                    .then(|| ext_rule.and_then(|rule| rule.color))
+                    .flatten()
+            })
             .unwrap_or(base.color);
 
         ResolvedAppearance {
@@ -804,6 +888,10 @@ fn default_class_style(class: FileClass) -> ClassStyle {
             icon: "󰈙".to_string(),
             color: rgb(112, 182, 117),
         },
+        FileClass::License => ClassStyle {
+            icon: "󰿃".to_string(),
+            color: rgb(245, 216, 91),
+        },
         FileClass::Image => ClassStyle {
             icon: "󰋩".to_string(),
             color: rgb(86, 156, 214),
@@ -876,6 +964,7 @@ fn parse_class_name(name: &str) -> Option<FileClass> {
         "code" => Some(FileClass::Code),
         "config" => Some(FileClass::Config),
         "document" | "doc" | "text" => Some(FileClass::Document),
+        "license" | "licence" | "legal" => Some(FileClass::License),
         "image" | "img" => Some(FileClass::Image),
         "audio" => Some(FileClass::Audio),
         "video" => Some(FileClass::Video),
@@ -910,6 +999,26 @@ fn rgb(red: u8, green: u8, blue: u8) -> Color {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn temp_path(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("elio-theme-{label}-{unique}"))
+    }
+
+    fn write_temp_file(label: &str, file_name: &str, contents: &str) -> (PathBuf, PathBuf) {
+        let root = temp_path(label);
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let path = root.join(file_name);
+        fs::write(&path, contents).expect("failed to write temp file");
+        (root, path)
+    }
 
     #[test]
     fn exact_file_rules_override_extension_defaults() {
@@ -986,6 +1095,66 @@ macro = "#fedcba"
 
         let modules = theme.resolve(Path::new("node_modules"), EntryKind::Directory);
         assert_eq!(modules.icon, "󰏗");
+
+        let shell = theme.resolve(Path::new("deploy.sh"), EntryKind::File);
+        assert_eq!(shell.class, FileClass::Code);
+        assert_eq!(shell.icon, "");
+        assert_eq!(shell.color, rgb(214, 222, 240));
+
+        let bash = theme.resolve(Path::new("profile.bash"), EntryKind::File);
+        assert_eq!(bash.class, FileClass::Code);
+        assert_eq!(bash.icon, "");
+        assert_eq!(bash.color, rgb(214, 222, 240));
+
+        let zsh = theme.resolve(Path::new("prompt.zsh"), EntryKind::File);
+        assert_eq!(zsh.class, FileClass::Code);
+        assert_eq!(zsh.icon, "");
+        assert_eq!(zsh.color, rgb(214, 222, 240));
+
+        let fish = theme.resolve(Path::new("config.fish"), EntryKind::File);
+        assert_eq!(fish.class, FileClass::Code);
+        assert_eq!(fish.icon, "");
+        assert_eq!(fish.color, rgb(214, 222, 240));
+    }
+
+    #[test]
+    fn detected_license_files_use_license_class_appearance() {
+        let theme = Theme::default_theme();
+        let (root, path) = write_temp_file(
+            "license-appearance",
+            "LICENSE.md",
+            "# SPDX-License-Identifier: Apache-2.0\n\nLicensed under the Apache License, Version 2.0.\n",
+        );
+
+        let resolved = theme.resolve(&path, EntryKind::File);
+
+        assert_eq!(resolved.class, FileClass::License);
+        assert_eq!(resolved.icon, "󰿃");
+        assert_eq!(resolved.color, rgb(245, 216, 91));
+        assert_eq!(
+            specific_type_label(&path, EntryKind::File),
+            Some("Apache License 2.0")
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn filename_alone_does_not_force_license_appearance() {
+        let theme = Theme::default_theme();
+        let (root, path) = write_temp_file(
+            "license-false-positive",
+            "LICENSE",
+            "shopping list\n- apples\n- oranges\n",
+        );
+
+        let resolved = theme.resolve(&path, EntryKind::File);
+
+        assert_eq!(resolved.class, FileClass::File);
+        assert_ne!(resolved.icon, "󰿃");
+        assert_eq!(specific_type_label(&path, EntryKind::File), None);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
     }
 
     #[test]
@@ -1002,9 +1171,20 @@ macro = "#fedcba"
         assert_eq!(odt.icon, "󰈬");
         assert_eq!(odt.color, rgb(88, 142, 255));
 
+        let markdown_file = theme.resolve(Path::new("notes.md"), EntryKind::File);
+        assert_eq!(markdown_file.class, FileClass::Document);
+        assert_eq!(markdown_file.icon, "");
+        assert_eq!(markdown_file.color, rgb(216, 178, 110));
+
         let markdown = theme.resolve(Path::new("README.md"), EntryKind::File);
         assert_eq!(markdown.class, FileClass::Document);
-        assert_ne!(markdown.icon, "󰈬");
+        assert_eq!(markdown.icon, "");
+        assert_eq!(markdown.color, rgb(216, 178, 110));
+
+        let text = theme.resolve(Path::new("notes.txt"), EntryKind::File);
+        assert_eq!(text.class, FileClass::Document);
+        assert_eq!(text.icon, "");
+        assert_eq!(text.color, rgb(174, 184, 199));
     }
 
     #[test]

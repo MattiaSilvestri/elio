@@ -471,6 +471,44 @@ fn markdown_preview_renders_mixed_lists() {
 }
 
 #[test]
+fn markdown_license_preview_keeps_detected_detail() {
+    let root = temp_path("markdown-license");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("LICENSE.md");
+    fs::write(
+        &path,
+        "# SPDX-License-Identifier: Apache-2.0\n\nLicensed under the Apache License, Version 2.0.\n",
+    )
+    .expect("failed to write markdown license");
+
+    let preview = build_preview(&file_entry(path));
+
+    assert_eq!(preview.kind, PreviewKind::Markdown);
+    assert_eq!(preview.detail.as_deref(), Some("Apache License 2.0"));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn plain_text_license_preview_shows_specific_license_detail() {
+    let root = temp_path("plain-license");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("LICENSE");
+    fs::write(
+        &path,
+        "MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND.\n",
+    )
+    .expect("failed to write license");
+
+    let preview = build_preview(&file_entry(path));
+
+    assert_eq!(preview.kind, PreviewKind::Text);
+    assert_eq!(preview.detail.as_deref(), Some("MIT License"));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn code_preview_includes_line_numbers() {
     let root = temp_path("code");
     fs::create_dir_all(&root).expect("failed to create temp root");

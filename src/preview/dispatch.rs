@@ -100,7 +100,7 @@ pub(crate) fn build_preview(entry: &Entry) -> PreviewContent {
             markdown::render_markdown_preview(&text_preview.text),
         );
         return finalize_text_preview(
-            preview,
+            apply_type_detail(preview, type_detail),
             source_line_count,
             text_preview.bytes_truncated,
             preview_truncation_note,
