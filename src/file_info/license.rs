@@ -152,6 +152,7 @@ fn has_strong_license_markers(text: &str) -> bool {
         .collect::<Vec<_>>()
         .join(" ");
     let normalized = normalize_license_text(&top_lines);
+    let normalized_signature_text = normalize_high_signal_text(&top_lines);
 
     [
         "mit license",
@@ -173,7 +174,7 @@ fn has_strong_license_markers(text: &str) -> bool {
             signature
                 .top_markers
                 .iter()
-                .any(|marker| contains_phrase(&normalized, marker))
+                .any(|marker| contains_phrase(&normalized_signature_text, marker))
         })
 }
 
@@ -184,6 +185,7 @@ fn detect_license_document(text: &str) -> Option<LicenseDetection> {
 
     let normalized = normalize_license_text(text);
     detect_known_license(&normalized)
+        .or_else(|| detect_high_signal_license(text))
         .or_else(|| looks_like_license_document(&normalized).then_some(LicenseDetection::Generic))
 }
 
@@ -411,8 +413,13 @@ fn detect_known_license(normalized: &str) -> Option<LicenseDetection> {
     if let Some(detail_label) = detect_gnu_license(normalized) {
         return Some(LicenseDetection::Specific { detail_label });
     }
+    None
+}
+
+fn detect_high_signal_license(text: &str) -> Option<LicenseDetection> {
+    let normalized = normalize_high_signal_text(text);
     for signature in HIGH_SIGNAL_LICENSE_SIGNATURES {
-        if matches_signature(normalized, signature) {
+        if matches_signature(&normalized, signature) {
             return Some(LicenseDetection::Specific {
                 detail_label: signature.detail_label,
             });
@@ -499,7 +506,8 @@ fn contains_all(haystack: &str, needles: &[&str]) -> bool {
 }
 
 fn contains_phrase(normalized_text: &str, phrase: &str) -> bool {
-    normalized_text.contains(&normalize_license_text(phrase))
+    let needle = normalize_high_signal_text(phrase);
+    !needle.is_empty() && normalized_text.contains(&needle)
 }
 
 fn matches_signature(normalized_text: &str, signature: &HighSignalLicenseSignature) -> bool {
@@ -525,6 +533,25 @@ fn normalize_license_text(text: &str) -> String {
         } else if !previous_space {
             normalized.push(' ');
             previous_space = true;
+        }
+    }
+
+    normalized.trim().to_string()
+}
+
+fn normalize_high_signal_text(text: &str) -> String {
+    let mut normalized = String::with_capacity(text.len());
+    let mut previous_space = true;
+
+    for ch in text.chars() {
+        for lower in ch.to_lowercase() {
+            if lower.is_alphanumeric() {
+                normalized.push(lower);
+                previous_space = false;
+            } else if !previous_space {
+                normalized.push(' ');
+                previous_space = true;
+            }
         }
     }
 

@@ -757,3 +757,35 @@ fn high_signal_license_texts_are_detected_without_canonical_filenames() {
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
 }
+
+#[test]
+fn phase_numbers_do_not_trigger_japanese_cc_license_detection() {
+    let (root, path) = write_temp_file(
+        "roadmap-phase-numbers",
+        "RoadMap2026.txt",
+        "Phase 2: The \"Modern Systems\" Language (Month 2)\n\nGetting Started with Rust (LFEL1002) [1.5h]: A quick syntax primer.\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Document);
+    assert_eq!(facts.specific_type_label, None);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn diff_like_numeric_text_does_not_trigger_japanese_cc_license_detection() {
+    let (root, path) = write_temp_file(
+        "diff-like-numbers",
+        "undo this.txt",
+        "undo this\n\n145 app frame state preview content area some rect\n146 x 2\n147 y 3\n148 width 48\n149 height 20\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Document);
+    assert_eq!(facts.specific_type_label, None);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
