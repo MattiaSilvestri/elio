@@ -54,7 +54,7 @@ pub(crate) fn build_sidebar_items() -> Vec<SidebarItem> {
 
     for (title, folder, icon) in [
         ("Desktop", "Desktop", "󰍹"),
-        ("Documents", "Documents", "󰈙"),
+        ("Documents", "Documents", "󰲃"),
         ("Downloads", "Downloads", "󰉍"),
         ("Pictures", "Pictures", "󰉏"),
         ("Music", "Music", "󱍙"),

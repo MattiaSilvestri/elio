@@ -216,6 +216,27 @@ fn shell_files_and_dotfiles_get_targeted_preview_support() {
 }
 
 #[test]
+fn extensionless_shebang_scripts_are_classified_as_shell_code() {
+    let (root, path) = write_temp_file(
+        "extensionless-bash-script",
+        "apksigner",
+        "#!/bin/bash\n#\n# Copyright (C) 2016 The Android Open Source Project\n#\n# Licensed under the Apache License, Version 2.0 (the \"License\");\n# you may not use this file except in compliance with the License.\n\nexec java -jar apksigner.jar \"$@\"\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Code);
+    assert_eq!(facts.specific_type_label, Some("Bash script"));
+    assert_eq!(facts.preview.language_hint, Some("bash"));
+    assert_eq!(
+        facts.preview.highlight_language,
+        Some(HighlightLanguage::Shell)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn js_like_files_use_syntax_highlighting() {
     let js = inspect_path(Path::new("main.js"), EntryKind::File);
     let tsx = inspect_path(Path::new("App.tsx"), EntryKind::File);
@@ -759,6 +780,22 @@ fn high_signal_license_texts_are_detected_without_canonical_filenames() {
 }
 
 #[test]
+fn standalone_apache_license_text_is_detected_without_canonical_filename() {
+    let (root, path) = write_temp_file(
+        "apache-third-party",
+        "third-party.txt",
+        "Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/LICENSE-2.0\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::License);
+    assert_eq!(facts.specific_type_label, Some("Apache License 2.0"));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn phase_numbers_do_not_trigger_japanese_cc_license_detection() {
     let (root, path) = write_temp_file(
         "roadmap-phase-numbers",
@@ -780,6 +817,38 @@ fn diff_like_numeric_text_does_not_trigger_japanese_cc_license_detection() {
         "diff-like-numbers",
         "undo this.txt",
         "undo this\n\n145 app frame state preview content area some rect\n146 x 2\n147 y 3\n148 width 48\n149 height 20\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Document);
+    assert_eq!(facts.specific_type_label, None);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn embedded_license_headers_do_not_turn_shell_wrappers_into_license_files() {
+    let (root, path) = write_temp_file(
+        "android-shell-wrapper",
+        "lld",
+        "#!/bin/bash\n#\n# Copyright (C) 2020 The Android Open Source Project\n#\n# Licensed under the Apache License, Version 2.0 (the \"License\");\n# you may not use this file except in compliance with the License.\n# You may obtain a copy of the License at\n#\n#     http://www.apache.org/licenses/LICENSE-2.0\n#\n# Unless required by applicable law or agreed to in writing, software\n# distributed under the License is distributed on an \"AS IS\" BASIS,\n# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n\n$(dirname \"$0\")/lld-bin/lld \"$@\"\n",
+    );
+
+    let facts = inspect_path(&path, EntryKind::File);
+
+    assert_eq!(facts.builtin_class, FileClass::Code);
+    assert_eq!(facts.specific_type_label, Some("Bash script"));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn notice_files_with_embedded_license_text_are_not_classified_as_licenses() {
+    let (root, path) = write_temp_file(
+        "android-notice",
+        "NOTICE.txt",
+        "==============================================================================\nAndroid used by:\n  sdk-repo-linux-build-tools.zip\n\nApache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n",
     );
 
     let facts = inspect_path(&path, EntryKind::File);

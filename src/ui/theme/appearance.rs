@@ -1,5 +1,5 @@
 use crate::{
-    app::{EntryKind, FileClass},
+    app::{Entry, EntryKind, FileClass},
     config, file_info,
 };
 use ratatui::style::Color;
@@ -8,10 +8,12 @@ use std::{
     collections::HashMap,
     fs, io,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Mutex, OnceLock},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 static ACTIVE_THEME: OnceLock<Theme> = OnceLock::new();
+static ENTRY_CLASS_CACHE: OnceLock<Mutex<HashMap<EntryClassCacheKey, FileClass>>> = OnceLock::new();
 
 #[derive(Clone, Copy)]
 pub(crate) struct Palette {
@@ -91,6 +93,14 @@ pub(crate) struct ResolvedAppearance<'a> {
     pub class: FileClass,
     pub icon: &'a str,
     pub color: Color,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct EntryClassCacheKey {
+    path: PathBuf,
+    is_dir: bool,
+    size: u64,
+    modified: Option<(u64, u32)>,
 }
 
 #[derive(Deserialize, Default)]
@@ -191,6 +201,11 @@ pub(crate) fn resolve_path(path: &Path, kind: EntryKind) -> ResolvedAppearance<'
     active_theme().resolve(path, kind)
 }
 
+pub(crate) fn resolve_entry(entry: &Entry) -> ResolvedAppearance<'static> {
+    let builtin_class = builtin_classify_entry(entry);
+    active_theme().resolve_with_builtin_class(&entry.path, entry.kind, builtin_class)
+}
+
 #[cfg(test)]
 pub(crate) fn specific_type_label(path: &Path, kind: EntryKind) -> Option<&'static str> {
     file_info::inspect_path(path, kind).specific_type_label
@@ -198,6 +213,10 @@ pub(crate) fn specific_type_label(path: &Path, kind: EntryKind) -> Option<&'stat
 
 fn active_theme() -> &'static Theme {
     ACTIVE_THEME.get_or_init(Theme::default_theme)
+}
+
+fn entry_class_cache() -> &'static Mutex<HashMap<EntryClassCacheKey, FileClass>> {
+    ENTRY_CLASS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn load_theme_from_disk() -> Theme {
@@ -306,7 +325,7 @@ impl Theme {
             FileClass::Archive,
             ClassStyle {
                 icon: "󰗄".to_string(),
-                color: rgb(191, 142, 74),
+                color: rgb(207, 111, 63),
             },
         );
         classes.insert(
@@ -399,11 +418,43 @@ impl Theme {
             ("ron".to_string(), rule_class(FileClass::Config)),
             ("env".to_string(), rule_class(FileClass::Config)),
             (
+                "xml".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󰗀".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
+                "xsd".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󰗀".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
+                "xsl".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󰗀".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
+                "xslt".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󰗀".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
                 "md".to_string(),
                 RuleOverride {
                     class: Some(FileClass::Document),
                     icon: Some("".to_string()),
-                    color: Some(rgb(216, 178, 110)),
+                    color: Some(rgb(211, 170, 124)),
                 },
             ),
             (
@@ -411,7 +462,7 @@ impl Theme {
                 RuleOverride {
                     class: Some(FileClass::Document),
                     icon: Some("".to_string()),
-                    color: Some(rgb(216, 178, 110)),
+                    color: Some(rgb(211, 170, 124)),
                 },
             ),
             (
@@ -419,7 +470,7 @@ impl Theme {
                 RuleOverride {
                     class: Some(FileClass::Document),
                     icon: Some("".to_string()),
-                    color: Some(rgb(216, 178, 110)),
+                    color: Some(rgb(211, 170, 124)),
                 },
             ),
             (
@@ -427,7 +478,7 @@ impl Theme {
                 RuleOverride {
                     class: Some(FileClass::Document),
                     icon: Some("".to_string()),
-                    color: Some(rgb(216, 178, 110)),
+                    color: Some(rgb(211, 170, 124)),
                 },
             ),
             (
@@ -435,7 +486,7 @@ impl Theme {
                 RuleOverride {
                     class: Some(FileClass::Document),
                     icon: Some("".to_string()),
-                    color: Some(rgb(216, 178, 110)),
+                    color: Some(rgb(211, 170, 124)),
                 },
             ),
             (
@@ -577,7 +628,7 @@ impl Theme {
                 RuleOverride {
                     class: Some(FileClass::Document),
                     icon: Some("".to_string()),
-                    color: Some(rgb(216, 178, 110)),
+                    color: Some(rgb(211, 170, 124)),
                 },
             ),
             (
@@ -707,6 +758,15 @@ impl Theme {
 
     fn resolve(&self, path: &Path, kind: EntryKind) -> ResolvedAppearance<'_> {
         let builtin_class = builtin_classify_path(path, kind);
+        self.resolve_with_builtin_class(path, kind, builtin_class)
+    }
+
+    fn resolve_with_builtin_class(
+        &self,
+        path: &Path,
+        kind: EntryKind,
+        builtin_class: FileClass,
+    ) -> ResolvedAppearance<'_> {
         let file_name = path
             .file_name()
             .and_then(|name| name.to_str())
@@ -906,7 +966,7 @@ fn default_class_style(class: FileClass) -> ClassStyle {
         },
         FileClass::Archive => ClassStyle {
             icon: "󰗄".to_string(),
-            color: rgb(191, 142, 74),
+            color: rgb(207, 111, 63),
         },
         FileClass::Font => ClassStyle {
             icon: "󰛖".to_string(),
@@ -956,6 +1016,37 @@ fn rule_presentation_file() -> RuleOverride {
 
 fn builtin_classify_path(path: &Path, kind: EntryKind) -> FileClass {
     file_info::inspect_path(path, kind).builtin_class
+}
+
+fn builtin_classify_entry(entry: &Entry) -> FileClass {
+    let key = EntryClassCacheKey {
+        path: entry.path.clone(),
+        is_dir: entry.kind == EntryKind::Directory,
+        size: entry.size,
+        modified: fingerprint_time(entry.modified),
+    };
+
+    if let Some(class) = entry_class_cache()
+        .lock()
+        .expect("entry class cache lock")
+        .get(&key)
+        .copied()
+    {
+        return class;
+    }
+
+    let class = builtin_classify_path(&entry.path, entry.kind);
+    entry_class_cache()
+        .lock()
+        .expect("entry class cache lock")
+        .insert(key, class);
+    class
+}
+
+fn fingerprint_time(modified: Option<SystemTime>) -> Option<(u64, u32)> {
+    modified
+        .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| (duration.as_secs(), duration.subsec_nanos()))
 }
 
 fn parse_class_name(name: &str) -> Option<FileClass> {
@@ -1096,6 +1187,36 @@ macro = "#fedcba"
         let modules = theme.resolve(Path::new("node_modules"), EntryKind::Directory);
         assert_eq!(modules.icon, "󰏗");
 
+        let docs = theme.resolve(Path::new("docs"), EntryKind::Directory);
+        assert_eq!(docs.class, FileClass::Directory);
+        assert_eq!(docs.icon, "󱧷");
+        assert_eq!(docs.color, rgb(91, 168, 255));
+
+        let bin = theme.resolve(Path::new("bin"), EntryKind::Directory);
+        assert_eq!(bin.class, FileClass::Directory);
+        assert_eq!(bin.icon, "󱁿");
+        assert_eq!(bin.color, rgb(78, 207, 255));
+
+        let lib = theme.resolve(Path::new("lib"), EntryKind::Directory);
+        assert_eq!(lib.class, FileClass::Directory);
+        assert_eq!(lib.icon, "󰉋");
+        assert_eq!(lib.color, rgb(91, 168, 255));
+
+        let target = theme.resolve(Path::new("target"), EntryKind::Directory);
+        assert_eq!(target.class, FileClass::Directory);
+        assert_eq!(target.icon, "󱧽");
+        assert_eq!(target.color, rgb(91, 168, 255));
+
+        let dist = theme.resolve(Path::new("dist"), EntryKind::Directory);
+        assert_eq!(dist.class, FileClass::Directory);
+        assert_eq!(dist.icon, "󰉋");
+        assert_eq!(dist.color, rgb(91, 168, 255));
+
+        let xml = theme.resolve(Path::new("config.xml"), EntryKind::File);
+        assert_eq!(xml.class, FileClass::Code);
+        assert_eq!(xml.icon, "󰗀");
+        assert_eq!(xml.color, rgb(179, 140, 255));
+
         let shell = theme.resolve(Path::new("deploy.sh"), EntryKind::File);
         assert_eq!(shell.class, FileClass::Code);
         assert_eq!(shell.icon, "");
@@ -1158,6 +1279,39 @@ macro = "#fedcba"
     }
 
     #[test]
+    fn resolve_entry_cache_respects_entry_metadata_when_builtin_class_changes() {
+        let (root, path) = write_temp_file(
+            "appearance-cache",
+            "third-party.txt",
+            "Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/LICENSE-2.0\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n",
+        );
+
+        let metadata = fs::metadata(&path).expect("metadata should exist");
+        let mut entry = Entry {
+            path: path.clone(),
+            name: "third-party.txt".to_string(),
+            name_key: "third-party.txt".to_string(),
+            kind: EntryKind::File,
+            size: metadata.len(),
+            modified: metadata.modified().ok(),
+            readonly: false,
+        };
+
+        let initial = resolve_entry(&entry);
+        assert_eq!(initial.class, FileClass::License);
+
+        fs::write(&path, "shopping list\n- apples\n- oranges\n").expect("failed to rewrite file");
+        let metadata = fs::metadata(&path).expect("updated metadata should exist");
+        entry.size = metadata.len();
+        entry.modified = metadata.modified().ok();
+
+        let updated = resolve_entry(&entry);
+        assert_eq!(updated.class, FileClass::Document);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
     fn word_processing_documents_get_blue_document_icons() {
         let theme = Theme::default_theme();
 
@@ -1174,17 +1328,26 @@ macro = "#fedcba"
         let markdown_file = theme.resolve(Path::new("notes.md"), EntryKind::File);
         assert_eq!(markdown_file.class, FileClass::Document);
         assert_eq!(markdown_file.icon, "");
-        assert_eq!(markdown_file.color, rgb(216, 178, 110));
+        assert_eq!(markdown_file.color, rgb(211, 170, 124));
 
         let markdown = theme.resolve(Path::new("README.md"), EntryKind::File);
         assert_eq!(markdown.class, FileClass::Document);
         assert_eq!(markdown.icon, "");
-        assert_eq!(markdown.color, rgb(216, 178, 110));
+        assert_eq!(markdown.color, rgb(211, 170, 124));
 
         let text = theme.resolve(Path::new("notes.txt"), EntryKind::File);
         assert_eq!(text.class, FileClass::Document);
         assert_eq!(text.icon, "");
         assert_eq!(text.color, rgb(174, 184, 199));
+
+        let documents_dir = theme.resolve(Path::new("Documents"), EntryKind::Directory);
+        assert_eq!(documents_dir.class, FileClass::Directory);
+        assert_eq!(documents_dir.icon, "󰲃");
+        assert_eq!(documents_dir.color, rgb(141, 223, 109));
+
+        let archive = theme.resolve(Path::new("bundle.zip"), EntryKind::File);
+        assert_eq!(archive.class, FileClass::Archive);
+        assert_eq!(archive.color, rgb(207, 111, 63));
 
         let video = theme.resolve(Path::new("clip.mp4"), EntryKind::File);
         assert_eq!(video.class, FileClass::Video);

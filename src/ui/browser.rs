@@ -5,10 +5,11 @@ use crate::app::{
 };
 use ratatui::{
     Frame,
+    buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Paragraph, Widget},
 };
 
 pub(super) fn render_body(
@@ -567,17 +568,26 @@ fn render_preview_body(
         return;
     }
 
-    let mut paragraph = Paragraph::new(app.preview_lines())
-        .style(Style::default().bg(palette.panel).fg(palette.text))
-        .scroll((
-            app.preview_scroll_offset().min(u16::MAX as usize) as u16,
-            app.preview_horizontal_scroll_offset()
-                .min(u16::MAX as usize) as u16,
-        ));
     if app.preview_wraps() {
-        paragraph = paragraph.wrap(Wrap { trim: false });
+        let wrapped_lines = app.preview_wrapped_lines(text_area.width as usize);
+        frame.render_widget(
+            PreviewLinesWidget::new(
+                wrapped_lines.as_ref(),
+                app.preview_scroll_offset(),
+                Style::default().bg(palette.panel).fg(palette.text),
+            ),
+            text_area,
+        );
+    } else {
+        let paragraph = Paragraph::new(app.preview_lines())
+            .style(Style::default().bg(palette.panel).fg(palette.text))
+            .scroll((
+                app.preview_scroll_offset().min(u16::MAX as usize) as u16,
+                app.preview_horizontal_scroll_offset()
+                    .min(u16::MAX as usize) as u16,
+            ));
+        frame.render_widget(paragraph, text_area);
     }
-    frame.render_widget(paragraph, text_area);
 
     if let Some(scrollbar_area) = scrollbar_area {
         render_preview_scrollbar(
@@ -588,6 +598,48 @@ fn render_preview_body(
             text_area.width as usize,
             palette,
         );
+    }
+}
+
+struct PreviewLinesWidget<'a> {
+    lines: &'a [Line<'static>],
+    scroll: usize,
+    style: Style,
+}
+
+impl<'a> PreviewLinesWidget<'a> {
+    fn new(lines: &'a [Line<'static>], scroll: usize, style: Style) -> Self {
+        Self {
+            lines,
+            scroll,
+            style,
+        }
+    }
+}
+
+impl Widget for PreviewLinesWidget<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let area = area.intersection(buf.area);
+        if area.is_empty() {
+            return;
+        }
+
+        buf.set_style(area, self.style);
+        for (line, row) in self.lines.iter().skip(self.scroll).zip(area.rows()) {
+            let line_width = line.width();
+            let offset = match line.alignment.unwrap_or(Alignment::Left) {
+                Alignment::Center => row.width.saturating_sub(line_width as u16) / 2,
+                Alignment::Right => row.width.saturating_sub(line_width as u16),
+                Alignment::Left => 0,
+            };
+            if offset >= row.width {
+                continue;
+            }
+
+            let x = row.x.saturating_add(offset);
+            let max_width = row.width.saturating_sub(offset);
+            buf.set_line(x, row.y, line, max_width);
+        }
     }
 }
 

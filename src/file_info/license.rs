@@ -4,6 +4,7 @@ use std::{fs::File, io::Read, path::Path};
 
 const LICENSE_SNIFF_BYTE_LIMIT: usize = 64 * 1024;
 const LICENSE_MARKER_LINE_LIMIT: usize = 12;
+const LICENSE_PREAMBLE_LINE_LIMIT: usize = 8;
 
 struct HighSignalLicenseSignature {
     detail_label: &'static str,
@@ -90,8 +91,14 @@ pub(super) fn sniff_license_file_type(
     }
 
     let text = read_license_text(path)?;
-    if !canonical_candidate && !has_strong_license_markers(&text) {
-        return None;
+    if !canonical_candidate {
+        let has_spdx = detect_spdx_identifier(&text).is_some();
+        if !has_spdx && !has_strong_license_markers(&text) {
+            return None;
+        }
+        if !has_spdx && !starts_like_standalone_license(&text) {
+            return None;
+        }
     }
 
     let detection = detect_license_document(&text)?;
@@ -176,6 +183,57 @@ fn has_strong_license_markers(text: &str) -> bool {
                 .iter()
                 .any(|marker| contains_phrase(&normalized_signature_text, marker))
         })
+}
+
+fn starts_like_standalone_license(text: &str) -> bool {
+    let preamble = text
+        .lines()
+        .take(LICENSE_PREAMBLE_LINE_LIMIT)
+        .filter_map(clean_license_preamble_line)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if preamble.is_empty() {
+        return false;
+    }
+
+    let normalized = normalize_license_text(&preamble);
+    if [
+        "apache license",
+        "mit license",
+        "mozilla public license",
+        "gnu general public license",
+        "gnu lesser general public license",
+        "gnu affero general public license",
+        "the unlicense",
+        "creative commons legal code",
+        "cc0 1 0 universal",
+        "bsd 2 clause license",
+        "bsd 3 clause license",
+        "isc license",
+    ]
+    .iter()
+    .any(|title| normalized.starts_with(title))
+    {
+        return true;
+    }
+
+    let normalized_signature_text = normalize_high_signal_text(&preamble);
+    HIGH_SIGNAL_LICENSE_SIGNATURES.iter().any(|signature| {
+        signature
+            .top_markers
+            .iter()
+            .any(|marker| starts_with_phrase(&normalized_signature_text, marker))
+    })
+}
+
+fn clean_license_preamble_line(line: &str) -> Option<&str> {
+    let cleaned = line
+        .trim()
+        .trim_start_matches(|ch: char| {
+            ch.is_ascii_whitespace() || matches!(ch, '/' | '*' | '#' | ';' | '!' | '<' | '>' | '-')
+        })
+        .trim();
+    (!cleaned.is_empty()).then_some(cleaned)
 }
 
 fn detect_license_document(text: &str) -> Option<LicenseDetection> {
@@ -508,6 +566,11 @@ fn contains_all(haystack: &str, needles: &[&str]) -> bool {
 fn contains_phrase(normalized_text: &str, phrase: &str) -> bool {
     let needle = normalize_high_signal_text(phrase);
     !needle.is_empty() && normalized_text.contains(&needle)
+}
+
+fn starts_with_phrase(normalized_text: &str, phrase: &str) -> bool {
+    let needle = normalize_high_signal_text(phrase);
+    !needle.is_empty() && normalized_text.starts_with(&needle)
 }
 
 fn matches_signature(normalized_text: &str, signature: &HighSignalLicenseSignature) -> bool {

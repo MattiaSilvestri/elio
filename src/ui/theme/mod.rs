@@ -7,7 +7,8 @@ use std::path::Path;
 #[cfg(test)]
 pub(crate) use self::appearance::classify_path;
 pub(crate) use self::appearance::{
-    CodePreviewPalette, Palette, code_preview_palette, initialize, palette, resolve_path,
+    CodePreviewPalette, Palette, code_preview_palette, initialize, palette, resolve_entry,
+    resolve_path,
 };
 
 pub(super) fn mix_color(base: Color, tint: Color, tint_weight: u8) -> Color {
@@ -27,11 +28,11 @@ pub(super) fn mix_color(base: Color, tint: Color, tint_weight: u8) -> Color {
 
 pub(super) fn entry_color(entry: &Entry, palette: Palette) -> Color {
     let _ = palette;
-    resolve_path(&entry.path, entry.kind).color
+    resolve_entry(entry).color
 }
 
 pub(super) fn entry_symbol(entry: &Entry) -> &'static str {
-    resolve_path(&entry.path, entry.kind).icon
+    resolve_entry(entry).icon
 }
 
 pub(super) fn path_color(path: &Path, is_dir: bool, palette: Palette) -> Color {

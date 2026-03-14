@@ -1,6 +1,7 @@
 use super::{
     FileFacts, HighlightLanguage, PreviewSpec, archives::inspect_archive_name,
     extensions::inspect_extension, license::sniff_license_file_type, names::inspect_exact_name,
+    types::shell_file_facts,
 };
 use crate::app::{EntryKind, FileClass};
 use std::{fs::File, io::Read, path::Path};
@@ -55,7 +56,8 @@ fn sniff_extensionless_file_type(path: &Path) -> Option<FileFacts> {
     let mut file = File::open(path).ok()?;
     let mut buffer = [0_u8; 512];
     let bytes_read = file.read(&mut buffer).ok()?;
-    sniff_image_type(&buffer[..bytes_read])
+    let prefix = &buffer[..bytes_read];
+    sniff_image_type(prefix).or_else(|| sniff_shebang_script_type(prefix))
 }
 
 fn sniff_image_type(buffer: &[u8]) -> Option<FileFacts> {
@@ -87,6 +89,41 @@ fn image_facts(label: &'static str) -> FileFacts {
         specific_type_label: Some(label),
         preview: PreviewSpec::plain_text(),
     }
+}
+
+fn sniff_shebang_script_type(buffer: &[u8]) -> Option<FileFacts> {
+    let text = std::str::from_utf8(buffer).ok()?;
+    let first_line = text.lines().next()?.trim_start_matches('\u{feff}');
+    let interpreter = shebang_interpreter_name(first_line)?;
+
+    match interpreter {
+        "bash" => Some(shell_file_facts(FileClass::Code, "Bash script", "bash")),
+        "zsh" => Some(shell_file_facts(FileClass::Code, "Zsh script", "zsh")),
+        "ksh" => Some(shell_file_facts(FileClass::Code, "KornShell script", "ksh")),
+        "sh" => Some(shell_file_facts(FileClass::Code, "Shell script", "sh")),
+        _ => None,
+    }
+}
+
+fn shebang_interpreter_name(first_line: &str) -> Option<&str> {
+    let command = first_line.strip_prefix("#!")?.trim();
+    if command.is_empty() {
+        return None;
+    }
+
+    let mut tokens = command.split_whitespace();
+    let program = shebang_basename(tokens.next()?)?;
+    if program != "env" {
+        return Some(program);
+    }
+
+    tokens
+        .find(|token| !token.starts_with('-'))
+        .and_then(shebang_basename)
+}
+
+fn shebang_basename(token: &str) -> Option<&str> {
+    Path::new(token).file_name()?.to_str()
 }
 
 fn sniff_config_file_type(path: &Path) -> Option<FileFacts> {

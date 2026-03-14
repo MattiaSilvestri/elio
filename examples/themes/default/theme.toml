@@ -75,7 +75,7 @@ color = "#ff86d8"
 
 [classes.archive]
 icon = "󰀼"
-color = "#ff9b61"
+color = "#cf6f3f"
 
 [classes.font]
 icon = "󰛖"
@@ -413,6 +413,26 @@ class = "code"
 icon = ""
 color = "#ff9b61"
 
+[extensions.xml]
+class = "code"
+icon = "󰗀"
+color = "#b38cff"
+
+[extensions.xsd]
+class = "code"
+icon = "󰗀"
+color = "#b38cff"
+
+[extensions.xsl]
+class = "code"
+icon = "󰗀"
+color = "#b38cff"
+
+[extensions.xslt]
+class = "code"
+icon = "󰗀"
+color = "#b38cff"
+
 [extensions.css]
 class = "code"
 icon = ""
@@ -426,27 +446,27 @@ color = "#cf88ff"
 [extensions.md]
 class = "document"
 icon = ""
-color = "#d8b26e"
+color = "#d3aa7c"
 
 [extensions.markdown]
 class = "document"
 icon = ""
-color = "#d8b26e"
+color = "#d3aa7c"
 
 [extensions.mdown]
 class = "document"
 icon = ""
-color = "#d8b26e"
+color = "#d3aa7c"
 
 [extensions.mkd]
 class = "document"
 icon = ""
-color = "#d8b26e"
+color = "#d3aa7c"
 
 [extensions.mdx]
 class = "document"
 icon = ""
-color = "#d8b26e"
+color = "#d3aa7c"
 
 [extensions.txt]
 class = "document"
@@ -521,7 +541,7 @@ color = "#28d5c2"
 [files."README.md"]
 class = "document"
 icon = ""
-color = "#d8b26e"
+color = "#d3aa7c"
 
 [files.".gitignore"]
 class = "config"
@@ -901,7 +921,7 @@ color = "#ff9b61"
 
 [directories."dist"]
 icon = "󰉋"
-color = "#ff9b61"
+color = "#5ba8ff"
 
 [directories.".next"]
 icon = ""
@@ -968,19 +988,19 @@ icon = "󰉏"
 color = "#24d9b8"
 
 [directories."documents"]
-icon = "󰈙"
+icon = "󰲃"
 color = "#8ddf6d"
 
 [directories."Documents"]
-icon = "󰈙"
+icon = "󰲃"
 color = "#8ddf6d"
 
 [directories."documentos"]
-icon = "󰈙"
+icon = "󰲃"
 color = "#8ddf6d"
 
 [directories."Documentos"]
-icon = "󰈙"
+icon = "󰲃"
 color = "#8ddf6d"
 
 [directories."downloads"]
@@ -1076,16 +1096,16 @@ icon = "󰉋"
 color = "#ff9b61"
 
 [directories."target"]
-icon = "󰓾"
-color = "#ff9b61"
+icon = "󱧽"
+color = "#5ba8ff"
 
 [directories."bin"]
-icon = ""
+icon = "󱁿"
 color = "#4ecfff"
 
 [directories."lib"]
-icon = ""
-color = "#7db0ff"
+icon = "󰉋"
+color = "#5ba8ff"
 
 [directories."vendor"]
 icon = "󰏖"
@@ -1100,5 +1120,5 @@ icon = "󰒓"
 color = "#b38cff"
 
 [directories."docs"]
-icon = "󰈙"
-color = "#8ddf6d"
+icon = "󱧷"
+color = "#5ba8ff"

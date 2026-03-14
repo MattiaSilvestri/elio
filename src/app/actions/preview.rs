@@ -3,10 +3,15 @@ use crate::preview::{
     PreviewContent, PreviewKind, build_preview, loading_preview_for,
     should_build_preview_in_background,
 };
+use std::sync::Arc;
 
 impl App {
     pub fn preview_lines(&self) -> Vec<Line<'static>> {
         self.preview_state.content.lines()
+    }
+
+    pub fn preview_wrapped_lines(&self, visible_cols: usize) -> Arc<[Line<'static>]> {
+        self.preview_state.content.wrapped_lines(visible_cols)
     }
 
     pub fn preview_section_label(&self) -> &'static str {

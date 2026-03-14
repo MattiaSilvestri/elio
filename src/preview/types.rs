@@ -1,10 +1,15 @@
 use crate::fs as browser_support;
 use crate::ui::theme;
 use ratatui::{
+    layout::Alignment,
     style::Style,
-    text::{Line, Span},
+    text::{Line, Span, StyledGrapheme},
 };
-use std::collections::BTreeMap;
+use std::{
+    collections::{BTreeMap, HashMap, VecDeque},
+    sync::{Arc, Mutex},
+};
+use unicode_width::UnicodeWidthStr;
 
 pub(super) const PREVIEW_LIMIT_BYTES: usize = 64 * 1024;
 pub(super) const PREVIEW_RENDER_LINE_LIMIT: usize = 240;
@@ -14,6 +19,9 @@ pub(super) const ISO_METADATA_SCAN_BYTES: u64 = 128 * 1024;
 pub(super) const ISO_DESCRIPTOR_START_SECTOR: usize = 16;
 pub(super) const ISO_SECTOR_SIZE: usize = 2048;
 pub(super) const ISO_BOOT_SYSTEM_ID: &str = "EL TORITO SPECIFICATION";
+const WRAPPED_LAYOUT_CACHE_LIMIT: usize = 4;
+const NBSP: &str = "\u{00a0}";
+const ZWSP: &str = "\u{200b}";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PreviewKind {
@@ -70,7 +78,15 @@ pub(crate) struct PreviewContent {
     pub item_count: Option<usize>,
     pub folder_count: Option<usize>,
     pub file_count: Option<usize>,
-    pub lines: Vec<Line<'static>>,
+    pub lines: Arc<[Line<'static>]>,
+    max_line_width: usize,
+    wrapped_layout_cache: Arc<Mutex<WrappedLayoutCache>>,
+}
+
+#[derive(Debug, Default)]
+struct WrappedLayoutCache {
+    lines_by_width: HashMap<usize, Arc<[Line<'static>]>>,
+    width_order: VecDeque<usize>,
 }
 
 #[derive(Default)]
@@ -168,6 +184,8 @@ pub(super) enum ArchiveFormat {
 
 impl PreviewContent {
     pub(crate) fn new(kind: PreviewKind, lines: Vec<Line<'static>>) -> Self {
+        let lines = sanitize_preview_lines(lines);
+        let max_line_width = lines.iter().map(Line::width).max().unwrap_or(0);
         Self {
             kind,
             detail: None,
@@ -178,7 +196,9 @@ impl PreviewContent {
             item_count: None,
             folder_count: None,
             file_count: None,
-            lines: sanitize_preview_lines(lines),
+            lines,
+            max_line_width,
+            wrapped_layout_cache: Arc::new(Mutex::new(WrappedLayoutCache::default())),
         }
     }
 
@@ -231,26 +251,49 @@ impl PreviewContent {
     }
 
     pub(crate) fn lines(&self) -> Vec<Line<'static>> {
-        self.lines.clone()
+        self.lines.iter().cloned().collect()
+    }
+
+    pub(crate) fn wrapped_lines(&self, width: usize) -> Arc<[Line<'static>]> {
+        if !self.kind.wraps_in_preview() {
+            return Arc::clone(&self.lines);
+        }
+
+        let width = width.max(1);
+        if let Some(lines) = self.cached_wrapped_lines(width) {
+            return lines;
+        }
+
+        let wrapped = Arc::from(wrap_preview_lines(&self.lines, width));
+        let mut cache = self
+            .wrapped_layout_cache
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some(existing) = cache.lines_by_width.get(&width) {
+            return Arc::clone(existing);
+        }
+        cache
+            .width_order
+            .retain(|cached_width| *cached_width != width);
+        cache.width_order.push_back(width);
+        cache.lines_by_width.insert(width, Arc::clone(&wrapped));
+        while cache.width_order.len() > WRAPPED_LAYOUT_CACHE_LIMIT {
+            if let Some(stale_width) = cache.width_order.pop_front() {
+                cache.lines_by_width.remove(&stale_width);
+            }
+        }
+        wrapped
     }
 
     pub(crate) fn visual_line_count(&self, width: usize) -> usize {
         if !self.kind.wraps_in_preview() {
             return self.total_lines();
         }
-        let width = width.max(1);
-        self.lines
-            .iter()
-            .map(|line| {
-                let line_width = preview_line_width(line);
-                line_width.max(1).div_ceil(width)
-            })
-            .sum::<usize>()
-            .max(1)
+        self.wrapped_lines(width).len().max(1)
     }
 
     pub(crate) fn max_line_width(&self) -> usize {
-        self.lines.iter().map(preview_line_width).max().unwrap_or(0)
+        self.max_line_width
     }
 
     pub(crate) fn header_detail(&self, offset: usize, visible_rows: usize) -> Option<String> {
@@ -301,21 +344,23 @@ impl PreviewContent {
             _ => Some(range),
         }
     }
+
+    fn cached_wrapped_lines(&self, width: usize) -> Option<Arc<[Line<'static>]>> {
+        self.wrapped_layout_cache
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .lines_by_width
+            .get(&width)
+            .cloned()
+    }
 }
 
-fn preview_line_width(line: &Line<'_>) -> usize {
-    line.spans
-        .iter()
-        .map(|span| {
-            browser_support::sanitize_terminal_text(span.content.as_ref())
-                .chars()
-                .count()
-        })
-        .sum()
-}
-
-fn sanitize_preview_lines(lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
-    lines.into_iter().map(sanitize_preview_line).collect()
+fn sanitize_preview_lines(lines: Vec<Line<'static>>) -> Arc<[Line<'static>]> {
+    lines
+        .into_iter()
+        .map(sanitize_preview_line)
+        .collect::<Vec<_>>()
+        .into()
 }
 
 fn sanitize_preview_line(mut line: Line<'static>) -> Line<'static> {
@@ -370,4 +415,203 @@ pub(super) fn line_number_width(lines: usize) -> usize {
 
 pub(super) fn expand_tabs(text: &str) -> String {
     browser_support::sanitize_terminal_text(text)
+}
+
+fn wrap_preview_lines(lines: &[Line<'static>], width: usize) -> Vec<Line<'static>> {
+    let width = width.max(1);
+    let mut wrapped = Vec::new();
+    for line in lines {
+        wrap_preview_line(line, width, &mut wrapped);
+    }
+    if wrapped.is_empty() {
+        wrapped.push(Line::default());
+    }
+    wrapped
+}
+
+fn wrap_preview_line<'a>(
+    line: &'a Line<'static>,
+    max_width: usize,
+    wrapped: &mut Vec<Line<'static>>,
+) {
+    let mut pending_line = Vec::<StyledGrapheme<'a>>::new();
+    let mut pending_word = Vec::<StyledGrapheme<'a>>::new();
+    let mut pending_whitespace = VecDeque::<StyledGrapheme<'a>>::new();
+    let mut line_width = 0usize;
+    let mut word_width = 0usize;
+    let mut whitespace_width = 0usize;
+    let mut non_whitespace_previous = false;
+    let alignment = line.alignment;
+    let trim = false;
+
+    for grapheme in line.styled_graphemes(Style::default()) {
+        let is_whitespace = preview_grapheme_is_whitespace(grapheme.symbol);
+        let symbol_width = grapheme.symbol.width();
+        if symbol_width > max_width {
+            continue;
+        }
+
+        let word_found = non_whitespace_previous && is_whitespace;
+        let trimmed_overflow =
+            pending_line.is_empty() && trim && word_width + symbol_width > max_width;
+        let whitespace_overflow =
+            pending_line.is_empty() && trim && whitespace_width + symbol_width > max_width;
+        let untrimmed_overflow = pending_line.is_empty()
+            && !trim
+            && word_width + whitespace_width + symbol_width > max_width;
+
+        if word_found || trimmed_overflow || whitespace_overflow || untrimmed_overflow {
+            if !pending_line.is_empty() || !trim {
+                pending_line.extend(pending_whitespace.drain(..));
+                line_width += whitespace_width;
+            }
+
+            pending_line.append(&mut pending_word);
+            line_width += word_width;
+
+            whitespace_width = 0;
+            word_width = 0;
+        }
+
+        let line_full = line_width >= max_width;
+        let pending_word_overflow =
+            symbol_width > 0 && line_width + whitespace_width + word_width >= max_width;
+
+        if line_full || pending_word_overflow {
+            let mut remaining_width = max_width.saturating_sub(line_width);
+            push_wrapped_preview_line(wrapped, &pending_line, alignment);
+            pending_line.clear();
+            line_width = 0;
+
+            while let Some(grapheme) = pending_whitespace.front() {
+                let width = grapheme.symbol.width();
+                if width > remaining_width {
+                    break;
+                }
+
+                whitespace_width = whitespace_width.saturating_sub(width);
+                remaining_width = remaining_width.saturating_sub(width);
+                pending_whitespace.pop_front();
+            }
+
+            if is_whitespace && pending_whitespace.is_empty() {
+                continue;
+            }
+        }
+
+        if is_whitespace {
+            whitespace_width += symbol_width;
+            pending_whitespace.push_back(grapheme);
+        } else {
+            word_width += symbol_width;
+            pending_word.push(grapheme);
+        }
+
+        non_whitespace_previous = !is_whitespace;
+    }
+
+    if pending_line.is_empty() && pending_word.is_empty() && !pending_whitespace.is_empty() {
+        wrapped.push(empty_wrapped_preview_line(alignment));
+    }
+    if !pending_line.is_empty() || !trim {
+        pending_line.extend(pending_whitespace.drain(..));
+    }
+    pending_line.append(&mut pending_word);
+    if pending_line.is_empty() {
+        wrapped.push(empty_wrapped_preview_line(alignment));
+    } else {
+        push_wrapped_preview_line(wrapped, &pending_line, alignment);
+    }
+}
+
+fn preview_grapheme_is_whitespace(symbol: &str) -> bool {
+    symbol == ZWSP || (symbol != NBSP && symbol.chars().all(char::is_whitespace))
+}
+
+fn push_wrapped_preview_line(
+    wrapped: &mut Vec<Line<'static>>,
+    graphemes: &[StyledGrapheme<'_>],
+    alignment: Option<Alignment>,
+) {
+    let mut line = line_from_graphemes(graphemes);
+    line.alignment = alignment;
+    wrapped.push(line);
+}
+
+fn empty_wrapped_preview_line(alignment: Option<Alignment>) -> Line<'static> {
+    let mut line = Line::default();
+    line.alignment = alignment;
+    line
+}
+
+fn line_from_graphemes(graphemes: &[StyledGrapheme<'_>]) -> Line<'static> {
+    if graphemes.is_empty() {
+        return Line::default();
+    }
+
+    let mut spans = Vec::<Span<'static>>::new();
+    let mut current_style = graphemes[0].style;
+    let mut current_content = String::new();
+
+    for grapheme in graphemes {
+        if grapheme.style == current_style {
+            current_content.push_str(grapheme.symbol);
+            continue;
+        }
+
+        spans.push(Span::styled(
+            std::mem::take(&mut current_content),
+            current_style,
+        ));
+        current_style = grapheme.style;
+        current_content.push_str(grapheme.symbol);
+    }
+
+    if !current_content.is_empty() {
+        spans.push(Span::styled(current_content, current_style));
+    }
+
+    Line::from(spans)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{
+        style::{Color, Style},
+        text::Span,
+    };
+
+    #[test]
+    fn wrapped_preview_lines_cache_by_width() {
+        let preview = PreviewContent::new(
+            PreviewKind::Text,
+            vec![Line::from("alpha beta gamma delta epsilon")],
+        );
+
+        let first = preview.wrapped_lines(8);
+        let second = preview.wrapped_lines(8);
+
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(preview.visual_line_count(8), first.len());
+    }
+
+    #[test]
+    fn wrapped_preview_lines_preserve_text_and_styles() {
+        let preview = PreviewContent::new(
+            PreviewKind::Text,
+            vec![Line::from(vec![
+                Span::styled("abcdef", Style::default().fg(Color::Red)),
+                Span::styled("ghij", Style::default().fg(Color::Blue)),
+            ])],
+        );
+
+        let wrapped = preview.wrapped_lines(6);
+
+        assert_eq!(wrapped.len(), 2);
+        assert_eq!(wrapped[0].to_string(), "abcdef");
+        assert_eq!(wrapped[1].to_string(), "ghij");
+        assert_eq!(wrapped[0].spans[0].style.fg, Some(Color::Red));
+        assert_eq!(wrapped[1].spans[0].style.fg, Some(Color::Blue));
+    }
 }
