@@ -298,7 +298,7 @@ impl Theme {
         classes.insert(
             FileClass::Video,
             ClassStyle {
-                icon: "󰈫".to_string(),
+                icon: "".to_string(),
                 color: rgb(204, 112, 79),
             },
         );
@@ -901,7 +901,7 @@ fn default_class_style(class: FileClass) -> ClassStyle {
             color: rgb(138, 110, 214),
         },
         FileClass::Video => ClassStyle {
-            icon: "󰈫".to_string(),
+            icon: "".to_string(),
             color: rgb(204, 112, 79),
         },
         FileClass::Archive => ClassStyle {
@@ -1185,6 +1185,16 @@ macro = "#fedcba"
         assert_eq!(text.class, FileClass::Document);
         assert_eq!(text.icon, "");
         assert_eq!(text.color, rgb(174, 184, 199));
+
+        let video = theme.resolve(Path::new("clip.mp4"), EntryKind::File);
+        assert_eq!(video.class, FileClass::Video);
+        assert_eq!(video.icon, "");
+        assert_eq!(video.color, rgb(255, 134, 216));
+
+        let videos_dir = theme.resolve(Path::new("Videos"), EntryKind::Directory);
+        assert_eq!(videos_dir.class, FileClass::Directory);
+        assert_eq!(videos_dir.icon, "󰕧");
+        assert_eq!(videos_dir.color, rgb(255, 134, 216));
     }
 
     #[test]
