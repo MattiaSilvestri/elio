@@ -246,6 +246,7 @@ pub(super) struct ZipManifestMetadata {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ArchiveFormat {
     ComicZip,
+    ComicRar,
     Zip,
     SevenZip,
     Tar,
@@ -535,6 +536,9 @@ impl PreviewContent {
             position.index + 1,
             position.count
         );
+        if self.ebook_section_count.is_some() {
+            return Some(label);
+        }
         match position.title.as_deref() {
             Some(title) if !title.is_empty() => Some(format!(
                 "{label}  •  {}",

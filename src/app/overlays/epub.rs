@@ -5,6 +5,8 @@ use std::{
     time::{Instant, SystemTime},
 };
 
+const EPUB_SECTION_PREFETCH_OFFSETS: [isize; 3] = [1, 2, -1];
+
 #[derive(Clone, Debug, Default)]
 pub(in crate::app) struct EpubPreviewState {
     session: Option<EpubSession>,
@@ -64,6 +66,10 @@ impl App {
         is_epub_entry(entry).then_some(preview::PreviewRequestOptions::EpubSection(0))
     }
 
+    pub(in crate::app) fn epub_preview_wheel_capture_active(&self) -> bool {
+        self.epub_preview.session.is_some()
+    }
+
     pub(in crate::app) fn apply_current_epub_preview_metadata(&mut self) {
         let Some((path, size, modified)) = self
             .selected_entry()
@@ -84,6 +90,23 @@ impl App {
         if let Some(section_index) = self.preview_state.content.ebook_section_index {
             session.current_section = section_index;
         }
+    }
+
+    pub(in crate::app) fn apply_current_epub_loading_navigation(
+        &self,
+        preview: preview::PreviewContent,
+    ) -> preview::PreviewContent {
+        let Some(session) = self.epub_preview.session.as_ref() else {
+            return preview;
+        };
+        let Some(total_sections) = session.total_sections else {
+            return preview;
+        };
+        if preview.ebook_section_count.is_some() {
+            return preview;
+        }
+
+        preview.with_ebook_section(session.current_section, total_sections, None)
     }
 
     pub(in crate::app) fn step_epub_section(&mut self, delta: isize) -> bool {
@@ -114,6 +137,82 @@ impl App {
         true
     }
 
+    pub(in crate::app) fn epub_prefetch_section_indices(&self) -> Vec<usize> {
+        let Some(session) = self.epub_preview.session.as_ref() else {
+            return Vec::new();
+        };
+        let total_sections = session
+            .total_sections
+            .or(self.preview_state.content.ebook_section_count)
+            .unwrap_or(0);
+        if total_sections == 0 {
+            return Vec::new();
+        }
+
+        EPUB_SECTION_PREFETCH_OFFSETS
+            .into_iter()
+            .filter_map(|offset| {
+                let section = if offset.is_negative() {
+                    session.current_section.checked_sub(offset.unsigned_abs())?
+                } else {
+                    session.current_section.checked_add(offset as usize)?
+                };
+                (section < total_sections && section != session.current_section).then_some(section)
+            })
+            .collect()
+    }
+
+    pub(in crate::app) fn prefetch_nearby_epub_sections(&mut self) {
+        let Some(entry) = self.selected_entry().cloned() else {
+            return;
+        };
+        if !is_epub_entry(&entry) {
+            return;
+        }
+
+        for section in self.epub_prefetch_section_indices() {
+            let variant = preview::PreviewRequestOptions::EpubSection(section);
+            if self.cached_preview_for(&entry, &variant).is_some() {
+                continue;
+            }
+
+            let _ = self.scheduler.submit_preview(PreviewRequest {
+                token: self.preview_state.token,
+                entry: entry.clone(),
+                variant,
+                priority: PreviewPriority::Low,
+            });
+        }
+    }
+
+    pub(in crate::app) fn nearby_epub_preview_visual_overlay_requests(
+        &self,
+    ) -> Vec<crate::app::overlays::images::StaticImageOverlayRequest> {
+        let Some(entry) = self.selected_entry() else {
+            return Vec::new();
+        };
+        if !is_epub_entry(entry) {
+            return Vec::new();
+        }
+        let Some(area) = self.frame_state.preview_media_area else {
+            return Vec::new();
+        };
+
+        self.epub_prefetch_section_indices()
+            .into_iter()
+            .filter_map(|section| {
+                let variant = preview::PreviewRequestOptions::EpubSection(section);
+                let cached = self.cached_preview_for(entry, &variant)?;
+                let visual = cached.preview_visual.as_ref()?;
+                (cached.kind == preview::PreviewKind::Document
+                    && visual.kind == preview::PreviewVisualKind::PageImage)
+                    .then(|| {
+                        self.preview_visual_overlay_request_for_visual(cached.kind, visual, area)
+                    })
+            })
+            .collect()
+    }
+
     fn cached_epub_section_count(&self, entry: &Entry) -> Option<usize> {
         self.preview_state
             .result_cache
@@ -127,6 +226,19 @@ impl App {
             })
     }
 
+    #[cfg(test)]
+    pub(in crate::app) fn has_cached_epub_preview_section(
+        &self,
+        path: &std::path::Path,
+        section: usize,
+    ) -> bool {
+        self.preview_state
+            .result_cache
+            .contains_key(&PreviewCacheKey {
+                path: path.to_path_buf(),
+                variant: preview::PreviewRequestOptions::EpubSection(section),
+            })
+    }
 }
 
 fn is_epub_entry(entry: &Entry) -> bool {

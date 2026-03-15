@@ -55,6 +55,104 @@ fn write_binary_zip_entries(path: &std::path::Path, entries: &[(&str, &[u8])]) {
     zip.finish().expect("failed to finish zip");
 }
 
+fn write_epub_fixture(path: &std::path::Path, sections: &[(&str, &str)]) {
+    let file = File::create(path).expect("failed to create epub");
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+
+    zip.start_file("META-INF/container.xml", options)
+        .expect("failed to start container entry");
+    zip.write_all(
+        br#"<?xml version="1.0" encoding="UTF-8"?>
+            <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+              <rootfiles>
+                <rootfile full-path="OPS/package.opf" media-type="application/oebps-package+xml"/>
+              </rootfiles>
+            </container>"#,
+    )
+    .expect("failed to write container entry");
+
+    let manifest = sections
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            format!(
+                r#"<item id="chapter-{id}" href="text/chapter-{id}.xhtml" media-type="application/xhtml+xml"/>"#,
+                id = index + 1
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    let spine = sections
+        .iter()
+        .enumerate()
+        .map(|(index, _)| format!(r#"<itemref idref="chapter-{}"/>"#, index + 1))
+        .collect::<Vec<_>>()
+        .join("");
+    let nav = sections
+        .iter()
+        .enumerate()
+        .map(|(index, (title, _))| {
+            format!(
+                r#"<li><a href="text/chapter-{id}.xhtml">{title}</a></li>"#,
+                id = index + 1
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    let package = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+            <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+              <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                <dc:title>Wheel Book</dc:title>
+                <dc:creator>Regueiro</dc:creator>
+              </metadata>
+              <manifest>
+                <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                {manifest}
+              </manifest>
+              <spine>{spine}</spine>
+            </package>"#
+    );
+    zip.start_file("OPS/package.opf", options)
+        .expect("failed to start package entry");
+    zip.write_all(package.as_bytes())
+        .expect("failed to write package entry");
+
+    let nav_document = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+            <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+              <body>
+                <nav epub:type="toc">
+                  <ol>{nav}</ol>
+                </nav>
+              </body>
+            </html>"#
+    );
+    zip.start_file("OPS/nav.xhtml", options)
+        .expect("failed to start nav entry");
+    zip.write_all(nav_document.as_bytes())
+        .expect("failed to write nav entry");
+
+    for (index, (title, body)) in sections.iter().enumerate() {
+        let chapter = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <html xmlns="http://www.w3.org/1999/xhtml">
+                  <body>
+                    <h1>{title}</h1>
+                    {body}
+                  </body>
+                </html>"#
+        );
+        zip.start_file(format!("OPS/text/chapter-{}.xhtml", index + 1), options)
+            .expect("failed to start chapter entry");
+        zip.write_all(chapter.as_bytes())
+            .expect("failed to write chapter entry");
+    }
+
+    zip.finish().expect("failed to finish epub");
+}
+
 #[test]
 fn right_arrow_does_not_open_selected_file_in_list_view() {
     let root = temp_path("right-file");
@@ -1059,6 +1157,165 @@ fn comic_preview_wheel_clears_pending_entry_scroll_before_page_turns() {
 
     let _ = app.process_pending_scroll();
     assert_eq!(app.selected, 0);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn preview_wheel_steps_cbr_pages_instead_of_scrolling_summary_text() {
+    let root = temp_path("preview-wheel-cbr-pages");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let archive = root.join("issue.cbr");
+    write_binary_zip_entries(
+        &archive,
+        &[
+            ("1.jpg", b"page-one"),
+            ("2.jpg", b"page-two"),
+            ("3.jpg", b"page-three"),
+        ],
+    );
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    app.view_mode = ViewMode::List;
+    app.select_index(0);
+    wait_for_background_preview(&mut app);
+    app.set_frame_state(FrameState {
+        entries_panel: Some(Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 8,
+        }),
+        preview_panel: Some(Rect {
+            x: 21,
+            y: 0,
+            width: 20,
+            height: 8,
+        }),
+        preview_rows_visible: 6,
+        preview_cols_visible: 20,
+        ..FrameState::default()
+    });
+
+    app.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 22,
+        row: 1,
+        modifiers: KeyModifiers::NONE,
+    }))
+    .expect("preview wheel should be handled");
+
+    assert_eq!(
+        app.preview_state
+            .content
+            .navigation_position
+            .as_ref()
+            .map(|position| position.index),
+        Some(1)
+    );
+    assert!(app.pending_preview_refresh_timer().is_some());
+    assert_eq!(app.preview_state.scroll, 0);
+
+    thread::sleep(HIGH_FREQUENCY_PREVIEW_REFRESH_DELAY + Duration::from_millis(20));
+    assert!(app.process_preview_refresh_timers());
+    wait_for_background_preview(&mut app);
+
+    assert_eq!(
+        app.preview_state
+            .content
+            .navigation_position
+            .as_ref()
+            .map(|position| position.index),
+        Some(1)
+    );
+    assert_eq!(app.preview_state.scroll, 0);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn preview_wheel_scrolls_epub_section_before_advancing_to_next_section() {
+    let root = temp_path("preview-wheel-epub-sections");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let archive = root.join("story.epub");
+    let long_body = (1..=30)
+        .map(|index| format!("<p>Paragraph {index} {} </p>", "word ".repeat(20)))
+        .collect::<Vec<_>>()
+        .join("");
+    write_epub_fixture(
+        &archive,
+        &[
+            ("Opening", long_body.as_str()),
+            ("Second Step", "<p>Second chapter text.</p>"),
+        ],
+    );
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    app.view_mode = ViewMode::List;
+    app.select_index(0);
+    wait_for_background_preview(&mut app);
+    app.set_frame_state(FrameState {
+        entries_panel: Some(Rect {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 8,
+        }),
+        preview_panel: Some(Rect {
+            x: 21,
+            y: 0,
+            width: 24,
+            height: 8,
+        }),
+        preview_rows_visible: 4,
+        preview_cols_visible: 24,
+        ..FrameState::default()
+    });
+
+    app.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 22,
+        row: 1,
+        modifiers: KeyModifiers::NONE,
+    }))
+    .expect("preview wheel should be handled");
+
+    assert!(app.process_pending_scroll());
+    assert!(app.preview_state.scroll > 0);
+    assert_eq!(app.preview_state.content.ebook_section_index, Some(0));
+
+    let max_scroll = app
+        .preview_total_lines(app.frame_state.preview_cols_visible.max(1))
+        .saturating_sub(app.frame_state.preview_rows_visible.max(1));
+    app.preview_state.scroll = max_scroll;
+    app.sync_preview_scroll();
+
+    app.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 22,
+        row: 1,
+        modifiers: KeyModifiers::NONE,
+    }))
+    .expect("preview wheel should advance the section at the bottom boundary");
+
+    assert_eq!(app.preview_state.scroll, 0);
+    assert_eq!(app.preview_state.content.ebook_section_index, Some(1));
+    assert_eq!(app.preview_state.content.ebook_section_count, Some(2));
+    assert!(
+        app.preview_header_detail(10)
+            .as_deref()
+            .is_some_and(|detail| detail.contains("Section 2/2"))
+    );
+
+    wait_for_background_preview(&mut app);
+
+    assert_eq!(app.preview_state.content.ebook_section_index, Some(1));
+    assert!(
+        app.preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("Second chapter text."))
+    );
+    assert_eq!(app.preview_state.scroll, 0);
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

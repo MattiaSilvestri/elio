@@ -2,12 +2,12 @@ use super::*;
 use std::{collections::HashMap, sync::Arc};
 
 impl App {
-    fn refresh_static_image_preloads_for_cached_selected_comic_preview(
+    fn refresh_static_image_preloads_for_cached_selected_page_preview(
         &mut self,
-        build_is_comic: bool,
+        build_has_page_image: bool,
         is_current_entry: bool,
     ) {
-        if build_is_comic && is_current_entry {
+        if build_has_page_image && is_current_entry {
             self.refresh_static_image_preloads();
         }
     }
@@ -120,6 +120,14 @@ impl App {
                 JobResult::Preview(build) => {
                     self.cache_preview_result(&build.entry, &build.variant, &build.result);
                     let build_is_comic = build.result.kind == preview::PreviewKind::Comic;
+                    let build_is_epub_section = matches!(
+                        build.variant,
+                        preview::PreviewRequestOptions::EpubSection(_)
+                    );
+                    let build_has_page_image =
+                        build.result.preview_visual.as_ref().is_some_and(|visual| {
+                            visual.kind == preview::PreviewVisualKind::PageImage
+                        });
                     let is_current_entry = self
                         .selected_entry()
                         .map(|entry| {
@@ -134,8 +142,8 @@ impl App {
                         || !is_current_entry
                         || !is_current_variant
                     {
-                        self.refresh_static_image_preloads_for_cached_selected_comic_preview(
-                            build_is_comic,
+                        self.refresh_static_image_preloads_for_cached_selected_page_preview(
+                            build_has_page_image,
                             is_current_entry,
                         );
                         self.preview_state.metrics.stale_results_dropped += 1;
@@ -150,9 +158,14 @@ impl App {
                     self.preview_state.scroll = 0;
                     self.preview_state.horizontal_scroll = 0;
                     self.sync_preview_scroll();
-                    if build_is_comic {
+                    if build_has_page_image {
                         self.refresh_static_image_preloads();
+                    }
+                    if build_is_comic {
                         self.prefetch_nearby_comic_pages();
+                    }
+                    if build_is_epub_section {
+                        self.prefetch_nearby_epub_sections();
                     }
                     self.preview_state.metrics.applied_results += 1;
                     dirty = true;

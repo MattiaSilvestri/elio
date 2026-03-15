@@ -287,5 +287,5 @@ fn is_comic_entry(entry: &Entry) -> bool {
         .path
         .extension()
         .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("cbz"))
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("cbz") || ext.eq_ignore_ascii_case("cbr"))
 }

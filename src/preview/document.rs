@@ -10,7 +10,7 @@ use std::{
     env,
     fs::{self, File},
     hash::{Hash, Hasher},
-    io::{Cursor, Read},
+    io::{Cursor, Read, Write},
     path::{Component, Path, PathBuf},
     process::Command,
     sync::{Arc, Mutex, OnceLock},
@@ -26,6 +26,7 @@ const EPUB_SECTION_TEXT_LIMIT_CHARS: usize = 32 * 1024;
 const EPUB_COVER_ENTRY_LIMIT_BYTES: usize = 4 * 1024 * 1024;
 const EPUB_SECTION_IMAGE_ENTRY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 const EPUB_PACKAGE_CACHE_LIMIT: usize = 16;
+const EPUB_ASSET_CACHE_VERSION: usize = 2;
 const DOC_SUMMARY_INFORMATION_STREAM: &str = "/\u{5}SummaryInformation";
 const DOC_PROPERTY_TITLE: u32 = 2;
 const DOC_PROPERTY_SUBJECT: u32 = 3;
@@ -268,11 +269,9 @@ fn render_document_preview(format: DocumentFormat, metadata: DocumentMetadata) -
 fn build_epub_preview(path: &Path, section_index: usize) -> Option<PreviewContent> {
     let file = File::open(path).ok()?;
     let preview = match ZipArchive::new(file) {
-        Ok(mut archive) => render_epub_preview(extract_epub_preview_data(
-            &mut archive,
-            path,
-            section_index,
-        )),
+        Ok(mut archive) => {
+            render_epub_preview(extract_epub_preview_data(&mut archive, path, section_index))
+        }
         Err(_) => render_document_preview(
             DocumentFormat::Epub,
             DocumentMetadata {
@@ -285,6 +284,7 @@ fn build_epub_preview(path: &Path, section_index: usize) -> Option<PreviewConten
 }
 
 fn render_epub_preview(preview: EpubPreviewData) -> PreviewContent {
+    let section_navigation_active = preview.section_count > 0;
     let lines = if preview.section_text.is_empty() {
         if preview.section_count == 0 {
             let mut lines = render_document_preview_lines(&preview.metadata);
@@ -297,28 +297,33 @@ fn render_epub_preview(preview: EpubPreviewData) -> PreviewContent {
             .as_ref()
             .is_some_and(|visual| visual.kind == PreviewVisualKind::PageImage)
         {
-            vec![Line::from("Fixed-layout page preview")]
+            Vec::new()
         } else {
             vec![Line::from("No readable content in this section")]
         }
     } else {
         super::render_reflowed_text_preview(&preview.section_text)
     };
-    let detail = preview
-        .metadata
-        .title
-        .clone()
-        .unwrap_or_else(|| DocumentFormat::Epub.detail_label().to_string());
-    let status_note = {
+    let detail = if section_navigation_active {
+        DocumentFormat::Epub.detail_label().to_string()
+    } else {
+        preview
+            .metadata
+            .title
+            .clone()
+            .unwrap_or_else(|| DocumentFormat::Epub.detail_label().to_string())
+    };
+    let status_note = (!section_navigation_active).then(|| {
         let mut parts = vec![DocumentFormat::Epub.detail_label().to_string()];
         if let Some(author) = preview.metadata.author.as_deref() {
             parts.push(author.to_string());
         }
         parts.join("  •  ")
-    };
-    let mut content = PreviewContent::new(PreviewKind::Document, lines)
-        .with_detail(detail)
-        .with_status_note(status_note);
+    });
+    let mut content = PreviewContent::new(PreviewKind::Document, lines).with_detail(detail);
+    if let Some(status_note) = status_note {
+        content = content.with_status_note(status_note);
+    }
     if preview.section_count > 0 {
         content = content.with_ebook_section(
             preview.section_index,
@@ -661,10 +666,11 @@ fn extract_epub_preview_data<R: Read + std::io::Seek>(
     };
 
     preview.visual = package.cover_asset.as_ref().and_then(|asset| {
-        extract_epub_asset_descriptor(path, archive, asset, EPUB_COVER_ENTRY_LIMIT_BYTES)
-            .map(|asset| {
+        extract_epub_asset_descriptor(path, archive, asset, EPUB_COVER_ENTRY_LIMIT_BYTES).map(
+            |asset| {
                 build_preview_visual(PreviewVisualKind::Cover, PreviewVisualLayout::Inline, asset)
-            })
+            },
+        )
     });
     preview.metadata = package.metadata.clone();
     preview.section_index = section_index;
@@ -1146,14 +1152,11 @@ fn build_epub_sections(
         }
 
         let path = resolve_zip_entry_path(package_path, &item.href);
-        let title = titles_by_path
-            .get(&path)
-            .cloned()
-            .or_else(|| {
-                let title = fallback_titles.get(fallback_index).cloned();
-                fallback_index += 1;
-                title
-            });
+        let title = titles_by_path.get(&path).cloned().or_else(|| {
+            let title = fallback_titles.get(fallback_index).cloned();
+            fallback_index += 1;
+            title
+        });
         sections.push(EpubSection { path, title });
     }
 
@@ -1176,14 +1179,19 @@ fn extract_epub_section_preview<R: Read + std::io::Seek>(
     let blocks = extract_xhtml_text_blocks(&xml);
     let visual = extract_xhtml_image_href(&xml).and_then(|href| {
         let asset_path = resolve_zip_entry_path(section_path, &href);
-        extract_epub_asset(source_path, archive, &asset_path, EPUB_SECTION_IMAGE_ENTRY_LIMIT_BYTES)
-            .map(|asset| {
-                build_preview_visual(
-                    PreviewVisualKind::PageImage,
-                    PreviewVisualLayout::FullHeight,
-                    asset,
-                )
-            })
+        extract_epub_asset(
+            source_path,
+            archive,
+            &asset_path,
+            EPUB_SECTION_IMAGE_ENTRY_LIMIT_BYTES,
+        )
+        .map(|asset| {
+            build_preview_visual(
+                PreviewVisualKind::PageImage,
+                PreviewVisualLayout::FullHeight,
+                asset,
+            )
+        })
     });
     if blocks.is_empty() {
         return EpubSectionPreview {
@@ -1248,7 +1256,7 @@ fn extract_epub_asset_descriptor<R: Read + std::io::Seek>(
     }
 
     let bytes = read_zip_entry_bytes_limited(archive, &asset.zip_path, limit_bytes)?;
-    fs::write(&cache_path, bytes).ok()?;
+    write_bytes_atomically(&cache_path, &bytes)?;
     extracted_epub_asset_from_path(cache_path)
 }
 
@@ -1259,6 +1267,40 @@ fn extracted_epub_asset_from_path(path: PathBuf) -> Option<ExtractedEpubAsset> {
         size: metadata.len(),
         modified: metadata.modified().ok(),
     })
+}
+
+fn write_bytes_atomically(path: &Path, bytes: &[u8]) -> Option<()> {
+    let parent = path.parent()?;
+    fs::create_dir_all(parent).ok()?;
+
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let temp_name = format!(
+        ".{}.tmp-{}-{}",
+        path.file_name()?.to_string_lossy(),
+        std::process::id(),
+        unique
+    );
+    let temp_path = parent.join(temp_name);
+
+    let mut file = File::create(&temp_path).ok()?;
+    file.write_all(bytes).ok()?;
+    file.sync_all().ok()?;
+
+    match fs::rename(&temp_path, path) {
+        Ok(()) => Some(()),
+        Err(_) if path.exists() => {
+            let _ = fs::remove_file(&temp_path);
+            Some(())
+        }
+        Err(_) => {
+            let _ = fs::remove_file(&temp_path);
+            None
+        }
+    }
 }
 
 fn build_epub_asset_descriptor(
@@ -1289,7 +1331,11 @@ fn resolve_epub_cover_item<'a>(package: &'a EpubPackageDocument) -> Option<&'a E
     package
         .manifest
         .values()
-        .find(|item| item.properties.iter().any(|property| property == "cover-image"))
+        .find(|item| {
+            item.properties
+                .iter()
+                .any(|property| property == "cover-image")
+        })
         .or_else(|| {
             package
                 .cover_id
@@ -1383,22 +1429,22 @@ fn epub_asset_extension(asset_path: &str) -> Option<&str> {
         })
 }
 
-fn epub_asset_cache_path(
-    source_path: &Path,
-    asset_path: &str,
-    extension: &str,
-) -> Option<PathBuf> {
+fn epub_asset_cache_path(source_path: &Path, asset_path: &str, extension: &str) -> Option<PathBuf> {
     let metadata = fs::metadata(source_path).ok();
     let modified = metadata
         .as_ref()
         .and_then(|metadata| metadata.modified().ok())
         .and_then(system_time_key);
     let mut hasher = DefaultHasher::new();
+    EPUB_ASSET_CACHE_VERSION.hash(&mut hasher);
     source_path.hash(&mut hasher);
     asset_path.hash(&mut hasher);
-    metadata.as_ref().map(|metadata| metadata.len()).hash(&mut hasher);
+    metadata
+        .as_ref()
+        .map(|metadata| metadata.len())
+        .hash(&mut hasher);
     modified.hash(&mut hasher);
-    let cache_dir = env::temp_dir().join("elio-epub-asset");
+    let cache_dir = env::temp_dir().join(format!("elio-epub-asset-v{EPUB_ASSET_CACHE_VERSION}"));
     fs::create_dir_all(&cache_dir).ok()?;
     Some(cache_dir.join(format!("{:016x}.{extension}", hasher.finish())))
 }
@@ -1424,7 +1470,9 @@ fn epub_package_cache_key(path: &Path) -> Option<EpubPackageCacheKey> {
 }
 
 fn cached_epub_package(key: &EpubPackageCacheKey) -> Option<Arc<CachedEpubPackage>> {
-    let mut cache = epub_package_cache().lock().expect("epub package cache lock");
+    let mut cache = epub_package_cache()
+        .lock()
+        .expect("epub package cache lock");
     let package = cache.packages.get(key).cloned();
     if package.is_some() {
         cache.order.retain(|cached| cached != key);
@@ -1434,7 +1482,9 @@ fn cached_epub_package(key: &EpubPackageCacheKey) -> Option<Arc<CachedEpubPackag
 }
 
 fn cache_epub_package(key: EpubPackageCacheKey, package: Arc<CachedEpubPackage>) {
-    let mut cache = epub_package_cache().lock().expect("epub package cache lock");
+    let mut cache = epub_package_cache()
+        .lock()
+        .expect("epub package cache lock");
     cache.packages.insert(key.clone(), package);
     cache.order.retain(|cached| cached != &key);
     cache.order.push_back(key);
@@ -1479,7 +1529,9 @@ pub(super) fn epub_package_parse_count(path: &Path) -> usize {
 
 #[cfg(test)]
 pub(super) fn clear_epub_package_cache() {
-    let mut cache = epub_package_cache().lock().expect("epub package cache lock");
+    let mut cache = epub_package_cache()
+        .lock()
+        .expect("epub package cache lock");
     cache.packages.clear();
     cache.order.clear();
 }
@@ -1605,7 +1657,10 @@ fn parse_ncx_toc(xml: &str) -> Vec<EpubNavPoint> {
                 }
             }
             Ok(Event::Text(text)) => {
-                if in_label && in_text && let Ok(value) = text.decode() {
+                if in_label
+                    && in_text
+                    && let Ok(value) = text.decode()
+                {
                     append_epub_text_fragment(&mut current_label, value.as_ref());
                 }
             }
@@ -1650,11 +1705,7 @@ fn epub_nav_stack_active(nav_stack: &[bool]) -> bool {
     nav_stack.last().copied().unwrap_or(false)
 }
 
-fn push_epub_nav_item(
-    items: &mut Vec<EpubNavPoint>,
-    href: Option<String>,
-    label: &str,
-) {
+fn push_epub_nav_item(items: &mut Vec<EpubNavPoint>, href: Option<String>, label: &str) {
     let label = label.trim();
     if label.is_empty() {
         return;

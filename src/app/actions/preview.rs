@@ -201,8 +201,11 @@ impl App {
                     }
                 } else {
                     self.preview_state.metrics.cache_misses += 1;
-                    let placeholder = self.apply_current_comic_loading_navigation(
-                        loading_preview_for(&entry, &preview_options),
+                    let placeholder = self.apply_current_epub_loading_navigation(
+                        self.apply_current_comic_loading_navigation(loading_preview_for(
+                            &entry,
+                            &preview_options,
+                        )),
                     );
                     let loading_path = entry.path.clone();
                     let request = PreviewRequest {
@@ -238,6 +241,7 @@ impl App {
         self.sync_preview_scroll();
         self.refresh_static_image_preloads();
         self.prefetch_nearby_comic_pages();
+        self.prefetch_nearby_epub_sections();
         self.prefetch_nearby_previews();
     }
 
@@ -531,6 +535,7 @@ impl App {
             .as_ref()
             .and_then(|position| position.title.as_deref())
             .filter(|title| !title.is_empty())
+            .filter(|_| content.ebook_section_count.is_none())
         {
             let title = sanitize_terminal_text(title);
             segments.push(PreviewHeaderSegment::new(
@@ -714,6 +719,7 @@ fn fallback_preview_header_segment(segments: &[PreviewHeaderSegment]) -> Option<
 fn compact_preview_header_label(label: &str) -> Option<String> {
     let compact = match label {
         "Comic ZIP archive" => "CBZ".to_string(),
+        "Comic RAR archive" => "CBR".to_string(),
         "EPUB ebook" => "EPUB".to_string(),
         "PDF document" => "PDF".to_string(),
         "JSON with comments" => "JSONC".to_string(),
@@ -956,6 +962,14 @@ mod tests {
             compact_preview_header_note("truncated to 64 KiB  •  showing first 240 lines")
                 .as_deref(),
             Some("64 KiB cap • 240-line cap")
+        );
+    }
+
+    #[test]
+    fn compact_preview_header_label_shortens_comic_rar_archive() {
+        assert_eq!(
+            compact_preview_header_label("Comic RAR archive").as_deref(),
+            Some("CBR")
         );
     }
 }

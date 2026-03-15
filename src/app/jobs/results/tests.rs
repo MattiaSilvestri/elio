@@ -46,6 +46,207 @@ fn write_binary_zip_entries(path: &Path, entries: &[(&str, &[u8])]) {
     zip.finish().expect("failed to finish zip");
 }
 
+fn write_epub_fixture(path: &Path, sections: &[(&str, &str)]) {
+    let file = File::create(path).expect("failed to create epub");
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+
+    zip.start_file("META-INF/container.xml", options)
+        .expect("failed to start container entry");
+    zip.write_all(
+        br#"<?xml version="1.0" encoding="UTF-8"?>
+            <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+              <rootfiles>
+                <rootfile full-path="OPS/package.opf" media-type="application/oebps-package+xml"/>
+              </rootfiles>
+            </container>"#,
+    )
+    .expect("failed to write container entry");
+
+    let manifest = sections
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            format!(
+                r#"<item id="chapter-{id}" href="text/chapter-{id}.xhtml" media-type="application/xhtml+xml"/>"#,
+                id = index + 1
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    let spine = sections
+        .iter()
+        .enumerate()
+        .map(|(index, _)| format!(r#"<itemref idref="chapter-{}"/>"#, index + 1))
+        .collect::<Vec<_>>()
+        .join("");
+    let nav = sections
+        .iter()
+        .enumerate()
+        .map(|(index, (title, _))| {
+            format!(
+                r#"<li><a href="text/chapter-{id}.xhtml">{title}</a></li>"#,
+                id = index + 1
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    let package = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+            <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+              <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                <dc:title>Wheel Book</dc:title>
+                <dc:creator>Regueiro</dc:creator>
+              </metadata>
+              <manifest>
+                <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                {manifest}
+              </manifest>
+              <spine>{spine}</spine>
+            </package>"#
+    );
+    zip.start_file("OPS/package.opf", options)
+        .expect("failed to start package entry");
+    zip.write_all(package.as_bytes())
+        .expect("failed to write package entry");
+
+    let nav_document = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+            <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+              <body>
+                <nav epub:type="toc">
+                  <ol>{nav}</ol>
+                </nav>
+              </body>
+            </html>"#
+    );
+    zip.start_file("OPS/nav.xhtml", options)
+        .expect("failed to start nav entry");
+    zip.write_all(nav_document.as_bytes())
+        .expect("failed to write nav entry");
+
+    for (index, (title, body)) in sections.iter().enumerate() {
+        let chapter = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <html xmlns="http://www.w3.org/1999/xhtml">
+                  <body>
+                    <h1>{title}</h1>
+                    {body}
+                  </body>
+                </html>"#
+        );
+        zip.start_file(format!("OPS/text/chapter-{}.xhtml", index + 1), options)
+            .expect("failed to start chapter entry");
+        zip.write_all(chapter.as_bytes())
+            .expect("failed to write chapter entry");
+    }
+
+    zip.finish().expect("failed to finish epub");
+}
+
+fn write_fixed_layout_epub_fixture(path: &Path, section_titles: &[&str]) {
+    let file = File::create(path).expect("failed to create epub");
+    let mut zip = ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
+
+    zip.start_file("META-INF/container.xml", options)
+        .expect("failed to start container entry");
+    zip.write_all(
+        br#"<?xml version="1.0" encoding="UTF-8"?>
+            <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+              <rootfiles>
+                <rootfile full-path="OPS/package.opf" media-type="application/oebps-package+xml"/>
+              </rootfiles>
+            </container>"#,
+    )
+    .expect("failed to write container entry");
+
+    let manifest = section_titles
+        .iter()
+        .enumerate()
+        .map(|(index, _)| {
+            let id = index + 1;
+            format!(
+                r#"<item id="page-{id}" href="xhtml/page-{id}.xhtml" media-type="application/xhtml+xml" properties="svg"/><item id="image-{id}" href="image/page-{id}.jpg" media-type="image/jpeg"/>"#
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    let spine = section_titles
+        .iter()
+        .enumerate()
+        .map(|(index, _)| format!(r#"<itemref idref="page-{}"/>"#, index + 1))
+        .collect::<Vec<_>>()
+        .join("");
+    let nav = section_titles
+        .iter()
+        .enumerate()
+        .map(|(index, title)| {
+            format!(
+                r#"<li><a href="xhtml/page-{id}.xhtml">{title}</a></li>"#,
+                id = index + 1
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+    let package = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+            <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+              <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+                <dc:title>Fixed Layout Book</dc:title>
+                <meta property="rendition:layout">pre-paginated</meta>
+              </metadata>
+              <manifest>
+                <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                {manifest}
+              </manifest>
+              <spine>{spine}</spine>
+            </package>"#
+    );
+    zip.start_file("OPS/package.opf", options)
+        .expect("failed to start package entry");
+    zip.write_all(package.as_bytes())
+        .expect("failed to write package entry");
+
+    let nav_document = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+            <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+              <body>
+                <nav epub:type="toc">
+                  <ol>{nav}</ol>
+                </nav>
+              </body>
+            </html>"#
+    );
+    zip.start_file("OPS/nav.xhtml", options)
+        .expect("failed to start nav entry");
+    zip.write_all(nav_document.as_bytes())
+        .expect("failed to write nav entry");
+
+    for (index, _) in section_titles.iter().enumerate() {
+        let id = index + 1;
+        let chapter = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+                <html xmlns="http://www.w3.org/1999/xhtml">
+                  <body>
+                    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+                      <image width="1600" height="900" xlink:href="../image/page-{id}.jpg"/>
+                    </svg>
+                  </body>
+                </html>"#
+        );
+        zip.start_file(format!("OPS/xhtml/page-{id}.xhtml"), options)
+            .expect("failed to start chapter entry");
+        zip.write_all(chapter.as_bytes())
+            .expect("failed to write chapter entry");
+        zip.start_file(format!("OPS/image/page-{id}.jpg"), options)
+            .expect("failed to start image entry");
+        zip.write_all(b"jpeg").expect("failed to write image entry");
+    }
+
+    zip.finish().expect("failed to finish epub");
+}
+
 fn wait_for_background_preview(app: &mut App) {
     for _ in 0..200 {
         if app.process_background_jobs() {
@@ -192,6 +393,49 @@ fn comic_preview_loads_in_background_and_steps_pages() {
 }
 
 #[test]
+fn epub_preview_keeps_section_navigation_while_next_section_loads() {
+    let root = temp_path("epub-background");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("story.epub");
+    write_epub_fixture(
+        &path,
+        &[
+            ("Opening", "<p>First chapter text.</p>"),
+            ("Second Step", "<p>Second chapter text.</p>"),
+        ],
+    );
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    wait_for_background_preview(&mut app);
+
+    assert_eq!(app.preview_state.content.ebook_section_index, Some(0));
+    assert_eq!(app.preview_state.content.ebook_section_count, Some(2));
+    assert!(app.step_epub_section(1));
+    assert!(app.preview_lines().is_empty());
+    assert_eq!(app.preview_state.content.ebook_section_index, Some(1));
+    assert_eq!(app.preview_state.content.ebook_section_count, Some(2));
+    assert_eq!(
+        app.preview_header_detail(10).as_deref(),
+        Some("EPUB ebook  •  Section 2/2")
+    );
+
+    wait_for_background_preview(&mut app);
+
+    assert_eq!(app.preview_state.content.ebook_section_index, Some(1));
+    assert_eq!(
+        app.preview_state.content.ebook_section_title.as_deref(),
+        Some("Second Step")
+    );
+    assert!(
+        app.preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("Second chapter text."))
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn comic_preview_prefetches_adjacent_pages_for_instant_page_steps() {
     let root = temp_path("comic-page-prefetch");
     fs::create_dir_all(&root).expect("failed to create temp root");
@@ -244,6 +488,89 @@ fn comic_preview_prefetches_adjacent_pages_for_instant_page_steps() {
         app.preview_header_detail(10).as_deref(),
         Some("Comic ZIP archive  •  Page 3/4")
     );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn epub_preview_prefetches_adjacent_sections_for_instant_page_steps() {
+    let root = temp_path("epub-section-prefetch");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let archive = root.join("story.epub");
+    write_fixed_layout_epub_fixture(&archive, &["Page 1", "Page 2", "Page 3", "Page 4"]);
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    wait_for_background_preview(&mut app);
+
+    for _ in 0..200 {
+        let _ = app.process_background_jobs();
+        if app.has_cached_epub_preview_section(&archive, 1)
+            && app.has_cached_epub_preview_section(&archive, 2)
+        {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    assert!(app.has_cached_epub_preview_section(&archive, 1));
+    assert!(app.has_cached_epub_preview_section(&archive, 2));
+    assert!(app.scheduler_metrics().preview_jobs_submitted_low >= 2);
+
+    let preview_metrics = app.preview_metrics();
+    assert!(app.step_epub_section(1));
+    assert_eq!(
+        app.preview_metrics().cache_hits,
+        preview_metrics.cache_hits + 1
+    );
+    assert_eq!(
+        app.preview_header_detail(10).as_deref(),
+        Some("EPUB ebook  •  Section 2/4")
+    );
+
+    let preview_metrics = app.preview_metrics();
+    assert!(app.step_epub_section(1));
+    assert_eq!(
+        app.preview_metrics().cache_hits,
+        preview_metrics.cache_hits + 1
+    );
+    assert_eq!(
+        app.preview_header_detail(10).as_deref(),
+        Some("EPUB ebook  •  Section 3/4")
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn comic_rar_preview_loads_in_background_and_steps_pages() {
+    let root = temp_path("comic-rar-background");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let archive = root.join("issue.cbr");
+    write_binary_zip_entries(&archive, &[("1.jpg", b"page-one"), ("2.jpg", b"page-two")]);
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+
+    assert_eq!(app.preview_section_label(), "Comic");
+    assert_eq!(
+        app.preview_header_detail(10).as_deref(),
+        Some("Comic RAR archive")
+    );
+    assert!(app.preview_lines().is_empty());
+
+    wait_for_background_preview(&mut app);
+
+    assert_eq!(app.preview_section_label(), "Comic");
+    assert_eq!(
+        app.preview_header_detail(10).as_deref(),
+        Some("Comic RAR archive  •  Page 1/2")
+    );
+
+    assert!(app.step_comic_page(1));
+    assert_eq!(
+        app.preview_header_detail(10).as_deref(),
+        Some("Comic RAR archive  •  Page 2/2")
+    );
+    wait_for_background_preview(&mut app);
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

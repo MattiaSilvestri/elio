@@ -7,6 +7,8 @@ pub(super) fn inspect_archive_name(name: &str) -> Option<FileFacts> {
         Some(kind.detail_label())
     } else if name.ends_with(".cbz") {
         Some("Comic ZIP archive")
+    } else if name.ends_with(".cbr") {
+        Some("Comic RAR archive")
     } else if name.ends_with(".zip") {
         Some("ZIP archive")
     } else if name.ends_with(".7z") {

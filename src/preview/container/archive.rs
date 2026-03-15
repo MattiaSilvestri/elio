@@ -57,9 +57,9 @@ pub(in crate::preview) fn build_archive_preview(
     comic_page_index: Option<usize>,
 ) -> Option<PreviewContent> {
     let format = detect_archive_format(path);
-    if format == ArchiveFormat::ComicZip
+    if matches!(format, ArchiveFormat::ComicZip | ArchiveFormat::ComicRar)
         && let Some(preview) =
-            build_comic_archive_preview(path, type_detail, comic_page_index.unwrap_or(0))
+            build_comic_archive_preview(path, format, type_detail, comic_page_index.unwrap_or(0))
     {
         return Some(preview);
     }
@@ -107,6 +107,7 @@ fn detect_archive_format(path: &Path) -> ArchiveFormat {
         .as_deref()
     {
         Some("cbz") => ArchiveFormat::ComicZip,
+        Some("cbr") => ArchiveFormat::ComicRar,
         Some("zip" | "jar" | "apk" | "aab" | "apkg") => ArchiveFormat::Zip,
         Some("7z") => ArchiveFormat::SevenZip,
         Some("tar") => ArchiveFormat::Tar,
@@ -124,6 +125,7 @@ fn detect_archive_format(path: &Path) -> ArchiveFormat {
 fn archive_default_label(format: ArchiveFormat) -> &'static str {
     match format {
         ArchiveFormat::ComicZip => "Comic ZIP archive",
+        ArchiveFormat::ComicRar => "Comic RAR archive",
         ArchiveFormat::Zip => "ZIP archive",
         ArchiveFormat::SevenZip => "7z archive",
         ArchiveFormat::Tar => "TAR archive",
@@ -145,6 +147,7 @@ fn archive_default_label(format: ArchiveFormat) -> &'static str {
 fn archive_format_name(format: ArchiveFormat) -> &'static str {
     match format {
         ArchiveFormat::ComicZip => "ZIP",
+        ArchiveFormat::ComicRar => "RAR",
         ArchiveFormat::Zip => "ZIP",
         ArchiveFormat::SevenZip => "7z",
         ArchiveFormat::Tar => "TAR",
@@ -242,6 +245,7 @@ fn build_zip_archive_preview(
 
 fn build_comic_archive_preview(
     path: &Path,
+    format: ArchiveFormat,
     type_detail: Option<&'static str>,
     page_index: usize,
 ) -> Option<PreviewContent> {
@@ -252,7 +256,7 @@ fn build_comic_archive_preview(
 
     let current_index = page_index.min(comic.page_entries.len().saturating_sub(1));
     let detail = type_detail
-        .unwrap_or(archive_default_label(ArchiveFormat::ComicZip))
+        .unwrap_or(archive_default_label(format))
         .to_string();
     let mut preview = PreviewContent::new(PreviewKind::Comic, Vec::new())
         .with_detail(detail)
@@ -648,6 +652,7 @@ struct ArchiveRenderConfig {
 fn archive_is_empty_label(format: ArchiveFormat) -> &'static str {
     match format {
         ArchiveFormat::ComicZip => "Archive is empty",
+        ArchiveFormat::ComicRar => "Archive is empty",
         ArchiveFormat::Zip => "Archive is empty",
         ArchiveFormat::SevenZip => "Archive is empty",
         ArchiveFormat::Tar
@@ -1083,8 +1088,13 @@ Packed Size = 40
             return;
         }
 
-        let preview = build_comic_archive_preview(&archive, Some("Comic ZIP archive"), 0)
-            .expect("mislabeled cbz should still build comic preview");
+        let preview = build_comic_archive_preview(
+            &archive,
+            ArchiveFormat::ComicZip,
+            Some("Comic ZIP archive"),
+            0,
+        )
+        .expect("mislabeled cbz should still build comic preview");
 
         assert_eq!(preview.kind, PreviewKind::Comic);
         assert_eq!(preview.detail.as_deref(), Some("Comic ZIP archive"));
@@ -1108,5 +1118,54 @@ Packed Size = 40
         assert_eq!(dimensions, (1, 1));
 
         fs::remove_dir_all(&root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn build_archive_preview_detects_cbr_as_comic_when_7z_backend_is_needed() {
+        let root = temp_path("cbr-7z-backend");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let first = root.join("001.png");
+        let second = root.join("010.png");
+        let image = DynamicImage::ImageRgba8(RgbaImage::from_pixel(1, 1, Rgba([1, 2, 3, 255])));
+        image
+            .save_with_format(&first, ImageFormat::Png)
+            .expect("failed to write first image");
+        image
+            .save_with_format(&second, ImageFormat::Png)
+            .expect("failed to write second image");
+
+        let archive = root.join("issue.cbr");
+        let status = Command::new("7z")
+            .current_dir(&root)
+            .arg("a")
+            .arg("-t7z")
+            .arg(&archive)
+            .arg("001.png")
+            .arg("010.png")
+            .status();
+        let Ok(status) = status else {
+            fs::remove_dir_all(&root).expect("failed to remove temp root");
+            return;
+        };
+        if !status.success() {
+            fs::remove_dir_all(&root).expect("failed to remove temp root");
+            return;
+        }
+
+        let preview = build_archive_preview(&archive, Some("Comic RAR archive"), Some(0))
+            .expect("cbr should build comic preview");
+
+        assert_eq!(preview.kind, PreviewKind::Comic);
+        assert_eq!(preview.detail.as_deref(), Some("Comic RAR archive"));
+        assert_eq!(
+            preview
+                .navigation_position
+                .as_ref()
+                .map(|position| position.count),
+            Some(2)
+        );
+        assert!(preview.preview_visual.is_some());
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
     }
 }

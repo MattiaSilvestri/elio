@@ -30,22 +30,20 @@ pub(crate) fn loading_preview_for(
         .to_string();
     let is_comic_page_preview = matches!(
         (facts.specific_type_label, options.comic_page_index()),
-        (Some("Comic ZIP archive"), Some(_))
+        (Some("Comic ZIP archive" | "Comic RAR archive"), Some(_))
+    );
+    let is_epub_section_preview = matches!(
+        (facts.preview.document_format, options.epub_section_index()),
+        (Some(file_info::DocumentFormat::Epub), Some(_))
     );
     let lines = if is_comic_page_preview {
+        Vec::new()
+    } else if is_epub_section_preview {
         Vec::new()
     } else if facts.builtin_class == FileClass::Archive {
         vec![
             Line::from("Loading preview"),
             Line::from("Inspecting archive contents in background"),
-        ]
-    } else if matches!(
-        (facts.preview.document_format, options.epub_section_index()),
-        (Some(file_info::DocumentFormat::Epub), Some(_))
-    ) {
-        vec![
-            Line::from("Loading preview"),
-            Line::from("Extracting ebook section in background"),
         ]
     } else if facts.preview.document_format.is_some() {
         vec![
@@ -61,6 +59,8 @@ pub(crate) fn loading_preview_for(
     PreviewContent::new(
         if is_comic_page_preview {
             PreviewKind::Comic
+        } else if is_epub_section_preview {
+            PreviewKind::Document
         } else {
             PreviewKind::Unavailable
         },

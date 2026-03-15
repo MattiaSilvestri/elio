@@ -107,6 +107,9 @@ impl App {
                 {
                     return;
                 }
+                if self.step_epub_section_from_preview_wheel(delta) {
+                    return;
+                }
                 if mouse.modifiers.contains(KeyModifiers::SHIFT)
                     && self.preview_allows_horizontal_scroll()
                 {
@@ -474,6 +477,36 @@ impl App {
 
     fn comic_page_wheel_navigation_active(&self) -> bool {
         self.comic_preview_wheel_capture_active()
+    }
+
+    fn step_epub_section_from_preview_wheel(&mut self, delta: isize) -> bool {
+        if !self.epub_section_wheel_navigation_active(delta) {
+            return false;
+        }
+
+        Self::reset_scroll_lane(&mut self.wheel_scroll.preview);
+        Self::reset_scroll_lane(&mut self.wheel_scroll.preview_horizontal);
+        self.step_epub_section(delta)
+    }
+
+    fn epub_section_wheel_navigation_active(&self, delta: isize) -> bool {
+        if delta == 0 || !self.epub_preview_wheel_capture_active() {
+            return false;
+        }
+
+        let visible_cols = self.frame_state.preview_cols_visible.max(1);
+        let visible_rows = self.frame_state.preview_rows_visible.max(1);
+        let total_lines = self.preview_total_lines(visible_cols);
+        if total_lines <= visible_rows {
+            return true;
+        }
+
+        let max_scroll = total_lines.saturating_sub(visible_rows);
+        if delta.is_negative() {
+            self.preview_state.scroll == 0
+        } else {
+            self.preview_state.scroll >= max_scroll
+        }
     }
 
     fn preview_has_vertical_overflow(&self) -> bool {
