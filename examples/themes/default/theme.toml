@@ -938,7 +938,7 @@ color = "#ffd866"
 
 [directories."node_modules"]
 icon = "󰏗"
-color = "#8ddf6d"
+color = "#5ba8ff"
 
 [directories."tests"]
 icon = "󰉋"
@@ -954,7 +954,7 @@ color = "#5ba8ff"
 
 [directories."scripts"]
 icon = "󰉋"
-color = "#38d5ff"
+color = "#5ba8ff"
 
 [directories."build"]
 icon = "󰉋"
@@ -966,19 +966,19 @@ color = "#5ba8ff"
 
 [directories.".next"]
 icon = ""
-color = "#d6def0"
+color = "#5ba8ff"
 
 [directories.".nuxt"]
 icon = "󱄆"
-color = "#59de94"
+color = "#5ba8ff"
 
 [directories.".svelte-kit"]
 icon = ""
-color = "#ff9b61"
+color = "#5ba8ff"
 
 [directories.".astro"]
 icon = ""
-color = "#d6def0"
+color = "#5ba8ff"
 
 [directories."public"]
 icon = "󰉋"
@@ -1118,23 +1118,23 @@ color = "#7db0ff"
 
 [directories."assets"]
 icon = "󰉏"
-color = "#24d9b8"
+color = "#5ba8ff"
 
 [directories."coverage"]
 icon = "󰙨"
-color = "#8ddf6d"
+color = "#5ba8ff"
 
 [directories."tmp"]
 icon = "󰪺"
-color = "#8a92a8"
+color = "#5ba8ff"
 
 [directories."temp"]
 icon = "󰪺"
-color = "#8a92a8"
+color = "#5ba8ff"
 
 [directories."out"]
 icon = "󰉋"
-color = "#ff9b61"
+color = "#5ba8ff"
 
 [directories."target"]
 icon = "󱧽"
@@ -1142,7 +1142,7 @@ color = "#5ba8ff"
 
 [directories."bin"]
 icon = "󱁿"
-color = "#4ecfff"
+color = "#5ba8ff"
 
 [directories."lib"]
 icon = "󰉋"
@@ -1154,11 +1154,11 @@ color = "#5ba8ff"
 
 [directories."src"]
 icon = "󰉋"
-color = "#44d8ff"
+color = "#5ba8ff"
 
 [directories."config"]
 icon = "󰒓"
-color = "#b38cff"
+color = "#5ba8ff"
 
 [directories."docs"]
 icon = "󱧷"

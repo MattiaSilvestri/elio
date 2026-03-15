@@ -142,7 +142,7 @@ icon = "󰌾"
 color = "#59de94"
 ```
 
-The built-in default theme is mirrored in [examples/themes/default/theme.toml](examples/themes/default/theme.toml). The older blue-heavier variant is kept in [examples/themes/navi/theme.toml](examples/themes/navi/theme.toml).
+Example config, including the example themes, lives under [examples/](examples/).
 
 ## Controls
 
