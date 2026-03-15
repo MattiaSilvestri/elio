@@ -137,13 +137,13 @@ pub(crate) enum StructuredFormat {
 impl StructuredFormat {
     pub(crate) fn detail_label(self) -> &'static str {
         match self {
-            Self::Json => "JSON (structured)",
-            Self::Jsonc => "JSONC (structured)",
-            Self::Json5 => "JSON5 (structured)",
-            Self::Toml => "TOML (structured)",
-            Self::Yaml => "YAML (structured)",
-            Self::Dotenv => ".env (structured)",
-            Self::Log => "Log (structured)",
+            Self::Json => "JSON",
+            Self::Jsonc => "JSONC",
+            Self::Json5 => "JSON5",
+            Self::Toml => "TOML",
+            Self::Yaml => "YAML",
+            Self::Dotenv => ".env",
+            Self::Log => "Log",
         }
     }
 }

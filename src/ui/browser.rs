@@ -529,11 +529,11 @@ fn render_preview_body(
     let visible_rows = text_area.height as usize;
     state.preview_cols_visible = text_area.width as usize;
     let section_label = app.preview_section_label();
-    let header_detail = app.preview_header_detail(visible_rows);
     let header_detail_width = sections[0]
         .width
         .saturating_sub(section_label.len() as u16 + 2) as usize;
-    let header_detail = header_detail
+    let header_detail = app
+        .preview_header_detail_for_width(visible_rows, header_detail_width)
         .as_deref()
         .map(|detail| {
             if header_detail_width == 0 {
@@ -1040,7 +1040,7 @@ mod tests {
     }
 
     #[test]
-    fn preview_header_detail_is_clamped_to_panel_width() {
+    fn preview_header_detail_uses_compact_labels_before_final_clamp() {
         let root = temp_path("preview-header-clamp");
         fs::create_dir_all(&root).expect("failed to create temp root");
         let contents = (1..=300)
@@ -1063,8 +1063,12 @@ mod tests {
             "expected preview header row to contain the section label, got: {header_row:?}"
         );
         assert!(
-            header_row.contains("…"),
-            "expected preview header row to clamp long detail text, got: {header_row:?}"
+            header_row.contains("240 / 300 lines shown"),
+            "expected preview header row to show semantic line coverage, got: {header_row:?}"
+        );
+        assert!(
+            !header_row.contains("240-line cap"),
+            "expected preview header row to avoid internal cap wording, got: {header_row:?}"
         );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");

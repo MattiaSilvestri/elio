@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     env,
     path::PathBuf,
     sync::Arc,
@@ -114,6 +114,13 @@ pub(super) struct PreviewCacheKey {
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(super) struct PreviewLineCountKey {
+    pub(super) path: PathBuf,
+    pub(super) size: u64,
+    pub(super) modified: Option<SystemTime>,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub(super) struct DirectoryItemCountKey {
     pub(super) path: PathBuf,
     pub(super) modified: Option<SystemTime>,
@@ -212,6 +219,9 @@ pub(super) struct PreviewState {
     pub(super) deferred_refresh_at: Option<Instant>,
     pub(super) result_cache: HashMap<PreviewCacheKey, CachedPreview>,
     pub(super) result_order: VecDeque<PreviewCacheKey>,
+    pub(super) line_count_cache: HashMap<PreviewLineCountKey, usize>,
+    pub(super) line_count_order: VecDeque<PreviewLineCountKey>,
+    pub(super) pending_line_counts: HashSet<PreviewLineCountKey>,
 }
 
 #[derive(Clone, Debug)]
@@ -312,6 +322,9 @@ impl App {
                 deferred_refresh_at: None,
                 result_cache: HashMap::new(),
                 result_order: VecDeque::new(),
+                line_count_cache: HashMap::new(),
+                line_count_order: VecDeque::new(),
+                pending_line_counts: HashSet::new(),
             },
             comic_preview: comic::ComicPreviewState::default(),
             epub_preview: epub::EpubPreviewState::default(),

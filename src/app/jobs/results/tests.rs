@@ -57,6 +57,17 @@ fn wait_for_background_preview(app: &mut App) {
     panic!("timed out waiting for background preview");
 }
 
+fn wait_for_preview_header(app: &mut App, visible_rows: usize, width: usize, expected: &str) {
+    for _ in 0..200 {
+        if app.preview_header_detail_for_width(visible_rows, width).as_deref() == Some(expected) {
+            return;
+        }
+        let _ = app.process_background_jobs();
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("timed out waiting for preview header {expected:?}");
+}
+
 fn wait_for_directory_load(app: &mut App) {
     for _ in 0..200 {
         let _ = app.process_background_jobs();
@@ -306,6 +317,49 @@ fn wrapped_text_header_reports_visual_cap_compactly() {
 
     assert!(header.contains("1 lines"));
     assert!(header.contains("first 240 wrapped"));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn narrow_code_header_prefers_compact_subtype_and_drops_low_priority_notes() {
+    let root = temp_path("narrow-code-header");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let source = root.join("main.rs");
+    let contents = (1..=1_500)
+        .map(|index| format!("fn line_{index}() {{ println!(\"{}\"); }}", "word ".repeat(20)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(&source, contents).expect("failed to write source");
+
+    let app = App::new_at(root.clone()).expect("failed to create app");
+    let header = app
+        .preview_header_detail_for_width(8, 20)
+        .expect("header detail should be present");
+
+    assert_eq!(header, "Rust • 240 shown");
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn byte_truncated_code_header_upgrades_to_exact_total_lines_after_background_count() {
+    let root = temp_path("byte-truncated-code-header");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let source = root.join("main.rs");
+    let contents = (1..=1_500)
+        .map(|index| format!("fn line_{index}() {{ println!(\"{}\"); }}", "word ".repeat(20)))
+        .collect::<Vec<_>>()
+        .join("\n");
+    fs::write(&source, contents).expect("failed to write source");
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    assert_eq!(
+        app.preview_header_detail_for_width(8, 40).as_deref(),
+        Some("Rust • 240 lines shown")
+    );
+
+    wait_for_preview_header(&mut app, 8, 40, "Rust • 240 / 1,500 lines shown");
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

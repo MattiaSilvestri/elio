@@ -127,6 +127,14 @@ pub(crate) struct PreviewNavigationPosition {
     pub title: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct PreviewLineCoverage {
+    pub shown_lines: usize,
+    pub total_lines: Option<usize>,
+    pub total_lines_pending: bool,
+    pub partial: bool,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct PreviewContent {
     pub kind: PreviewKind,
@@ -140,6 +148,7 @@ pub(crate) struct PreviewContent {
     pub truncated: bool,
     pub truncation_note: Option<String>,
     pub source_lines: Option<usize>,
+    pub line_coverage: Option<PreviewLineCoverage>,
     pub item_count: Option<usize>,
     pub folder_count: Option<usize>,
     pub file_count: Option<usize>,
@@ -270,6 +279,7 @@ impl PreviewContent {
             truncated: false,
             truncation_note: None,
             source_lines: None,
+            line_coverage: None,
             item_count: None,
             folder_count: None,
             file_count: None,
@@ -341,10 +351,48 @@ impl PreviewContent {
         self
     }
 
+    pub(crate) fn with_line_coverage(
+        mut self,
+        shown_lines: usize,
+        total_lines: Option<usize>,
+        partial: bool,
+    ) -> Self {
+        self.line_coverage = Some(PreviewLineCoverage {
+            shown_lines: shown_lines.max(1),
+            total_lines: total_lines.map(|count| count.max(shown_lines.max(1))),
+            total_lines_pending: false,
+            partial,
+        });
+        self
+    }
+
     pub(crate) fn with_truncation(mut self, note: impl Into<String>) -> Self {
         self.truncated = true;
         self.truncation_note = Some(note.into());
         self
+    }
+
+    pub(crate) fn needs_total_line_count(&self) -> bool {
+        self.line_coverage
+            .as_ref()
+            .is_some_and(|coverage| coverage.partial && coverage.total_lines.is_none())
+    }
+
+    pub(crate) fn set_total_line_count_pending(&mut self, pending: bool) {
+        if let Some(coverage) = &mut self.line_coverage
+            && coverage.partial
+            && coverage.total_lines.is_none()
+        {
+            coverage.total_lines_pending = pending;
+        }
+    }
+
+    pub(crate) fn apply_total_line_count(&mut self, total_lines: usize) {
+        let total_lines = total_lines.max(1);
+        if let Some(coverage) = &mut self.line_coverage {
+            coverage.total_lines = Some(total_lines.max(coverage.shown_lines));
+            coverage.total_lines_pending = false;
+        }
     }
 
     pub(crate) fn with_directory_counts(
@@ -428,6 +476,7 @@ impl PreviewContent {
         self.max_line_width
     }
 
+    #[cfg(test)]
     pub(crate) fn header_detail(&self, offset: usize, visible_rows: usize) -> Option<String> {
         let mut parts = Vec::new();
         if let Some(detail) = &self.detail
@@ -477,6 +526,7 @@ impl PreviewContent {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn navigation_header_detail(&self) -> Option<String> {
         let position = self.navigation_position.as_ref()?;
         let label = format!(

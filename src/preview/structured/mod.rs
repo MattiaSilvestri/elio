@@ -30,7 +30,7 @@ pub(super) fn render_structured_preview(
     if input_truncated {
         return StructuredPreviewAttempt {
             preview: None,
-            note: Some("structured preview skipped: input truncated".to_string()),
+            note: Some("formatted preview unavailable for partial file".to_string()),
         };
     }
 
@@ -75,7 +75,7 @@ mod tests {
         );
 
         let preview = attempt.preview.expect("jsonc should render");
-        assert_eq!(preview.detail, "JSONC (structured)");
+        assert_eq!(preview.detail, "JSONC");
         assert!(
             preview
                 .lines
@@ -91,7 +91,7 @@ mod tests {
             render_structured_preview("APP_ENV=dev\nPORT=3000\n", StructuredFormat::Dotenv, false);
 
         let preview = attempt.preview.expect("dotenv should render");
-        assert_eq!(preview.detail, ".env (structured)");
+        assert_eq!(preview.detail, ".env");
         assert!(
             preview
                 .lines
@@ -110,7 +110,7 @@ mod tests {
         );
 
         let preview = attempt.preview.expect("toml should render");
-        assert_eq!(preview.detail, "TOML (structured)");
+        assert_eq!(preview.detail, "TOML");
 
         let lines = preview
             .lines
@@ -157,7 +157,7 @@ mod tests {
         );
 
         let preview = attempt.preview.expect("log should render");
-        assert_eq!(preview.detail, "Log (structured)");
+        assert_eq!(preview.detail, "Log");
         assert!(
             preview
                 .lines

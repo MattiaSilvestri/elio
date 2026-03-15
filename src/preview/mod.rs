@@ -19,10 +19,11 @@ use self::text::{
     read_text_preview, render_plain_text_preview, render_reflowed_text_preview,
     trim_trailing_line_endings, truncation_note,
 };
+pub(crate) use self::text::count_total_text_lines;
 use self::types::*;
 pub(crate) use self::types::{
-    PreviewContent, PreviewKind, PreviewRequestOptions, PreviewVisual, PreviewVisualKind,
-    PreviewVisualLayout,
+    PreviewContent, PreviewKind, PreviewLineCoverage, PreviewRequestOptions, PreviewVisual,
+    PreviewVisualKind, PreviewVisualLayout,
 };
 
 #[cfg(test)]

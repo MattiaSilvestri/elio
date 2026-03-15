@@ -1660,7 +1660,7 @@ fn toml_preview_uses_structured_renderer() {
     let preview = build_preview(&file_entry(path));
 
     assert_eq!(preview.kind, PreviewKind::Code);
-    assert_eq!(preview.detail.as_deref(), Some("TOML (structured)"));
+    assert_eq!(preview.detail.as_deref(), Some("TOML"));
     let lines = preview
         .lines
         .iter()
@@ -1956,7 +1956,7 @@ fn log_preview_uses_structured_renderer() {
     let preview = build_preview(&file_entry(path));
 
     assert_eq!(preview.kind, PreviewKind::Code);
-    assert_eq!(preview.detail.as_deref(), Some("Log (structured)"));
+    assert_eq!(preview.detail.as_deref(), Some("Log"));
     assert!(
         preview
             .lines
@@ -1998,7 +1998,7 @@ fn multiline_log_preview_keeps_stack_trace_context() {
         .join("\n");
 
     assert_eq!(preview.kind, PreviewKind::Code);
-    assert_eq!(preview.detail.as_deref(), Some("Log (structured)"));
+    assert_eq!(preview.detail.as_deref(), Some("Log"));
     assert!(rendered.contains("request failed"));
     assert!(rendered.contains("Caused by: timeout"));
     assert!(rendered.contains("recovered"));
@@ -2882,7 +2882,7 @@ fn json_preview_formats_minified_content() {
     let preview = build_preview(&file_entry(path));
 
     assert_eq!(preview.kind, PreviewKind::Code);
-    assert_eq!(preview.detail.as_deref(), Some("JSON (structured)"));
+    assert_eq!(preview.detail.as_deref(), Some("JSON"));
     assert_eq!(preview.source_lines, Some(1));
     assert!(
         preview
@@ -2983,7 +2983,7 @@ fn truncated_json_preview_reports_why_formatting_was_skipped() {
 
     assert_eq!(preview.kind, PreviewKind::Code);
     assert!(
-        header.contains("structured preview skipped: input truncated"),
+        header.contains("formatted preview unavailable for partial file"),
         "unexpected header: {header}"
     );
 
@@ -3004,7 +3004,7 @@ fn dotenv_preview_uses_structured_renderer() {
         preview
             .detail
             .as_deref()
-            .is_some_and(|detail| detail == ".env (structured)")
+            .is_some_and(|detail| detail == ".env")
     );
     assert!(
         preview
@@ -3027,7 +3027,7 @@ fn jsonc_preview_uses_structured_renderer() {
     let preview = build_preview(&file_entry(path));
 
     assert_eq!(preview.kind, PreviewKind::Code);
-    assert_eq!(preview.detail.as_deref(), Some("JSONC (structured)"));
+    assert_eq!(preview.detail.as_deref(), Some("JSONC"));
     assert!(
         preview
             .lines
@@ -3049,7 +3049,7 @@ fn json5_preview_uses_structured_renderer() {
     let preview = build_preview(&file_entry(path));
 
     assert_eq!(preview.kind, PreviewKind::Code);
-    assert_eq!(preview.detail.as_deref(), Some("JSON5 (structured)"));
+    assert_eq!(preview.detail.as_deref(), Some("JSON5"));
     assert!(
         preview
             .lines
@@ -3075,7 +3075,7 @@ fn yaml_preview_uses_structured_renderer() {
     let preview = build_preview(&file_entry(path));
 
     assert_eq!(preview.kind, PreviewKind::Code);
-    assert_eq!(preview.detail.as_deref(), Some("YAML (structured)"));
+    assert_eq!(preview.detail.as_deref(), Some("YAML"));
     assert!(
         preview
             .lines

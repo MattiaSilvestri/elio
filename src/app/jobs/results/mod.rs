@@ -41,6 +41,14 @@ impl App {
                         build.show_hidden,
                     );
                 }
+                JobResult::PreviewLineCount(build) => {
+                    dirty |= self.apply_preview_line_count_result(
+                        &build.path,
+                        build.size,
+                        build.modified,
+                        build.total_lines,
+                    );
+                }
                 JobResult::PdfProbe(build) => {
                     dirty |= self.apply_pdf_probe_build(build);
                 }
@@ -123,6 +131,7 @@ impl App {
                     self.preview_state.load_state = None;
                     self.apply_current_comic_preview_metadata();
                     self.apply_current_epub_preview_metadata();
+                    self.sync_current_preview_line_count();
                     self.preview_state.scroll = 0;
                     self.preview_state.horizontal_scroll = 0;
                     self.sync_preview_scroll();

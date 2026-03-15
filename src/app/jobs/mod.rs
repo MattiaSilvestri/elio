@@ -11,7 +11,7 @@ use self::{
     pool::{preview::PreviewPool, search::SearchPool},
     tasks::{
         directory::DirectoryPool, image::ImagePreparePool, item_count::DirectoryItemCountPool,
-        pdf_probe::PdfProbePool, pdf_render::PdfRenderPool,
+        line_count::PreviewLineCountPool, pdf_probe::PdfProbePool, pdf_render::PdfRenderPool,
     },
 };
 use super::overlays::images::PreparedStaticImageAsset;
@@ -27,11 +27,13 @@ use std::{
 const PREVIEW_WORKER_COUNT: usize = 2;
 const SEARCH_WORKER_COUNT: usize = 1;
 const DIRECTORY_ITEM_COUNT_WORKER_COUNT: usize = 1;
+const PREVIEW_LINE_COUNT_WORKER_COUNT: usize = 1;
 const IMAGE_PREPARE_WORKER_COUNT: usize = 1;
 const PDF_PROBE_WORKER_COUNT: usize = 2;
 const PDF_RENDER_WORKER_COUNT: usize = 2;
 const PREVIEW_QUEUE_LIMIT: usize = 8;
 const DIRECTORY_ITEM_COUNT_QUEUE_LIMIT: usize = 48;
+const PREVIEW_LINE_COUNT_QUEUE_LIMIT: usize = 16;
 const IMAGE_PREPARE_QUEUE_LIMIT: usize = 6;
 const PDF_PROBE_QUEUE_LIMIT: usize = 16;
 const PDF_RENDER_QUEUE_LIMIT: usize = 8;
@@ -43,6 +45,8 @@ struct SchedulerConfig {
     preview_queue_limit: usize,
     directory_item_count_worker_count: usize,
     directory_item_count_queue_limit: usize,
+    preview_line_count_worker_count: usize,
+    preview_line_count_queue_limit: usize,
     image_prepare_worker_count: usize,
     image_prepare_queue_limit: usize,
     pdf_probe_worker_count: usize,
@@ -59,6 +63,8 @@ impl SchedulerConfig {
             preview_queue_limit: PREVIEW_QUEUE_LIMIT,
             directory_item_count_worker_count: DIRECTORY_ITEM_COUNT_WORKER_COUNT,
             directory_item_count_queue_limit: DIRECTORY_ITEM_COUNT_QUEUE_LIMIT,
+            preview_line_count_worker_count: PREVIEW_LINE_COUNT_WORKER_COUNT,
+            preview_line_count_queue_limit: PREVIEW_LINE_COUNT_QUEUE_LIMIT,
             image_prepare_worker_count: IMAGE_PREPARE_WORKER_COUNT,
             image_prepare_queue_limit: IMAGE_PREPARE_QUEUE_LIMIT,
             pdf_probe_worker_count: PDF_PROBE_WORKER_COUNT,
@@ -80,6 +86,8 @@ impl SchedulerConfig {
             preview_queue_limit,
             directory_item_count_worker_count: DIRECTORY_ITEM_COUNT_WORKER_COUNT,
             directory_item_count_queue_limit: DIRECTORY_ITEM_COUNT_QUEUE_LIMIT,
+            preview_line_count_worker_count: 0,
+            preview_line_count_queue_limit: PREVIEW_LINE_COUNT_QUEUE_LIMIT,
             image_prepare_worker_count: 0,
             image_prepare_queue_limit: IMAGE_PREPARE_QUEUE_LIMIT,
             pdf_probe_worker_count: 0,
@@ -153,6 +161,21 @@ pub(super) struct DirectoryItemCountRequest {
     pub path: PathBuf,
     pub modified: Option<SystemTime>,
     pub show_hidden: bool,
+}
+
+#[derive(Debug)]
+pub(super) struct PreviewLineCountBuild {
+    pub path: PathBuf,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
+    pub total_lines: Option<usize>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct PreviewLineCountRequest {
+    pub path: PathBuf,
+    pub size: u64,
+    pub modified: Option<SystemTime>,
 }
 
 #[derive(Debug)]
@@ -235,6 +258,7 @@ pub(super) struct PreviewRequest {
 pub(super) enum JobResult {
     Directory(DirectoryBuild),
     DirectoryItemCount(DirectoryItemCountBuild),
+    PreviewLineCount(PreviewLineCountBuild),
     ImagePrepare(ImagePrepareBuild),
     PdfProbe(PdfProbeBuild),
     PdfRender(PdfRenderBuild),
@@ -264,6 +288,7 @@ pub struct SchedulerMetricsSnapshot {
 pub(super) struct JobScheduler {
     directory: DirectoryPool,
     directory_item_count: DirectoryItemCountPool,
+    preview_line_count: PreviewLineCountPool,
     image_prepare: ImagePreparePool,
     pdf_probe: PdfProbePool,
     pdf_render: PdfRenderPool,
@@ -287,6 +312,11 @@ impl JobScheduler {
             directory_item_count: DirectoryItemCountPool::new(
                 config.directory_item_count_worker_count,
                 config.directory_item_count_queue_limit,
+                result_tx.clone(),
+            ),
+            preview_line_count: PreviewLineCountPool::new(
+                config.preview_line_count_worker_count,
+                config.preview_line_count_queue_limit,
                 result_tx.clone(),
             ),
             image_prepare: ImagePreparePool::new(
@@ -327,6 +357,10 @@ impl JobScheduler {
 
     pub(super) fn submit_directory_item_count(&self, request: DirectoryItemCountRequest) -> bool {
         self.directory_item_count.submit(request)
+    }
+
+    pub(super) fn submit_preview_line_count(&self, request: PreviewLineCountRequest) -> bool {
+        self.preview_line_count.submit(request)
     }
 
     pub(super) fn submit_image_prepare(&self, request: ImagePrepareRequest) -> bool {
@@ -404,6 +438,7 @@ impl JobScheduler {
     pub(super) fn has_pending_work(&self) -> bool {
         self.directory.has_pending_work()
             || self.directory_item_count.has_pending_work()
+            || self.preview_line_count.has_pending_work()
             || self.image_prepare.has_pending_work()
             || self.pdf_probe.has_pending_work()
             || self.pdf_render.has_pending_work()

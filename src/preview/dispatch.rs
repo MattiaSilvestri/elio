@@ -138,6 +138,7 @@ pub(crate) fn build_preview_with_options(
             apply_type_detail(preview, type_detail),
             source_line_count,
             text_preview.bytes_truncated,
+            line_truncated,
             preview_truncation_note,
         );
     }
@@ -159,6 +160,7 @@ pub(crate) fn build_preview_with_options(
                     preview,
                     source_line_count,
                     false,
+                    line_truncated,
                     combine_preview_notes(
                         preview_truncation_note,
                         structured_preview.truncation_note.as_deref(),
@@ -182,6 +184,7 @@ pub(crate) fn build_preview_with_options(
             preview,
             source_line_count,
             text_preview.bytes_truncated,
+            line_truncated,
             preview_truncation_note,
         );
     }
@@ -195,6 +198,7 @@ pub(crate) fn build_preview_with_options(
             apply_type_detail(preview, type_detail),
             source_line_count,
             text_preview.bytes_truncated,
+            false,
             truncation_note(text_preview.bytes_truncated, false),
         );
     }
@@ -207,6 +211,7 @@ pub(crate) fn build_preview_with_options(
         apply_type_detail(preview, type_detail),
         source_line_count,
         text_preview.bytes_truncated,
+        line_truncated,
         preview_truncation_note,
     )
 }

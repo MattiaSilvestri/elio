@@ -20,6 +20,7 @@ pub(super) const WHEEL_SCROLL_BURST_WINDOW: Duration = Duration::from_millis(90)
 pub(super) const SEARCH_MATCH_LIMIT: usize = 250;
 pub(super) const SEARCH_CACHE_LIMIT: usize = 32;
 pub(super) const PREVIEW_CACHE_LIMIT: usize = 24;
+pub(super) const PREVIEW_LINE_COUNT_CACHE_LIMIT: usize = 64;
 pub(super) const PREVIEW_PREFETCH_LIMIT: usize = 2;
 pub(super) const DIRECTORY_ITEM_COUNT_CACHE_LIMIT: usize = 128;
 pub(super) const AUTO_RELOAD_INTERVAL: Duration = Duration::from_millis(250);

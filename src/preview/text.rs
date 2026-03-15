@@ -4,7 +4,11 @@ use ratatui::{
     style::Style,
     text::{Line, Span},
 };
-use std::{fs::File, io::Read, path::Path};
+use std::{
+    fs::File,
+    io::{BufReader, Read},
+    path::Path,
+};
 
 pub(super) struct TextPreview {
     pub text: String,
@@ -78,8 +82,19 @@ pub(super) fn finalize_text_preview(
     mut preview: PreviewContent,
     source_line_count: usize,
     bytes_truncated: bool,
+    line_truncated: bool,
     truncation_note: Option<String>,
 ) -> PreviewContent {
+    let shown_lines = if line_truncated {
+        PREVIEW_RENDER_LINE_LIMIT
+    } else {
+        source_line_count
+    };
+    preview = preview.with_line_coverage(
+        shown_lines,
+        (!bytes_truncated).then_some(source_line_count),
+        bytes_truncated || line_truncated,
+    );
     if !bytes_truncated {
         preview = preview.with_source_lines(source_line_count);
     }
@@ -160,6 +175,21 @@ pub(super) fn read_text_preview(path: &Path) -> anyhow::Result<Option<TextPrevie
     }
 }
 
+pub(crate) fn count_total_text_lines(path: &Path) -> anyhow::Result<usize> {
+    let mut file = File::open(path)?;
+    let mut prefix = [0u8; 2];
+    let prefix_len = file.read(&mut prefix)?;
+    if prefix_len == 0 {
+        return Ok(1);
+    }
+
+    match &prefix[..prefix_len] {
+        [0xFF, 0xFE] => count_utf16_lines(BufReader::new(file), Utf16Endian::Little),
+        [0xFE, 0xFF] => count_utf16_lines(BufReader::new(file), Utf16Endian::Big),
+        _ => count_utf8_lines(BufReader::new(file), &prefix[..prefix_len]),
+    }
+}
+
 pub(super) fn collect_preview_lines(text: &str) -> Vec<String> {
     text.lines()
         .take(PREVIEW_RENDER_LINE_LIMIT)
@@ -192,4 +222,73 @@ fn decode_utf16_preview(buffer: &[u8]) -> Option<String> {
         .collect::<Vec<_>>();
 
     Some(String::from_utf16_lossy(&units))
+}
+
+fn count_utf8_lines(mut reader: BufReader<File>, prefix: &[u8]) -> anyhow::Result<usize> {
+    let mut newline_count = prefix.iter().filter(|&&byte| byte == b'\n').count();
+    let mut saw_bytes = !prefix.is_empty();
+    let mut last_byte = prefix.last().copied();
+    let mut buffer = [0u8; 8 * 1024];
+
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        let chunk = &buffer[..read];
+        newline_count += chunk.iter().filter(|&&byte| byte == b'\n').count();
+        saw_bytes = true;
+        last_byte = chunk.last().copied();
+    }
+
+    Ok(finalize_counted_lines(saw_bytes, newline_count, last_byte == Some(b'\n')))
+}
+
+fn count_utf16_lines(mut reader: BufReader<File>, endian: Utf16Endian) -> anyhow::Result<usize> {
+    let mut newline_count = 0usize;
+    let mut saw_units = false;
+    let mut last_unit_was_newline = false;
+    let mut buffer = [0u8; 8 * 1024];
+    let mut pending = Vec::new();
+
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+
+        pending.extend_from_slice(&buffer[..read]);
+        let complete_len = pending.len() - (pending.len() % 2);
+        for chunk in pending[..complete_len].chunks_exact(2) {
+            let unit = match endian {
+                Utf16Endian::Little => u16::from_le_bytes([chunk[0], chunk[1]]),
+                Utf16Endian::Big => u16::from_be_bytes([chunk[0], chunk[1]]),
+            };
+            if unit == 0x000A {
+                newline_count += 1;
+                last_unit_was_newline = true;
+            } else {
+                last_unit_was_newline = false;
+            }
+            saw_units = true;
+        }
+        pending.drain(..complete_len);
+    }
+
+    Ok(finalize_counted_lines(
+        saw_units,
+        newline_count,
+        last_unit_was_newline,
+    ))
+}
+
+fn finalize_counted_lines(saw_content: bool, newline_count: usize, ends_with_newline: bool) -> usize {
+    if !saw_content {
+        return 1;
+    }
+    if ends_with_newline {
+        newline_count.max(1)
+    } else {
+        newline_count.saturating_add(1).max(1)
+    }
 }
