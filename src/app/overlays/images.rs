@@ -22,6 +22,7 @@ const STATIC_IMAGE_RENDER_CACHE_LIMIT: usize = 24;
 const STATIC_IMAGE_PRELOAD_LIMIT: usize = 6;
 const STATIC_IMAGE_INLINE_FALLBACK_PREPARE_MAX_BYTES: u64 = 512 * 1024;
 const STATIC_IMAGE_INLINE_EXTERNAL_PREPARE_MAX_BYTES: u64 = 16 * 1024 * 1024;
+const STATIC_IMAGE_RENDER_CACHE_VERSION: usize = 2;
 const FAST_FORCE_RENDER_FFMPEG_RASTER_ARGS: [&str; 4] =
     ["-compression_level", "1", "-sws_flags", "fast_bilinear"];
 const DEFAULT_FFMPEG_RASTER_ARGS: [&str; 0] = [];
@@ -94,6 +95,14 @@ pub(in crate::app) enum StaticImageOverlayPreparation {
 }
 
 impl App {
+    fn current_page_preview_visual_active(&self) -> bool {
+        self.preview_state
+            .content
+            .preview_visual
+            .as_ref()
+            .is_some_and(|visual| visual.kind == preview::PreviewVisualKind::PageImage)
+    }
+
     pub(crate) fn process_image_preview_timers(&mut self) -> bool {
         let Some(ready_at) = self.image_preview.activation_ready_at else {
             return false;
@@ -276,6 +285,9 @@ impl App {
         if let Some(prepared) = self.try_prepare_current_static_image_inline(request) {
             return StaticImageOverlayPreparation::Ready(prepared);
         }
+        if self.image_preview.pending_prepares.contains(&key) {
+            return StaticImageOverlayPreparation::Pending;
+        }
         if self.image_preview.failed_images.contains(&key) {
             StaticImageOverlayPreparation::Failed
         } else {
@@ -358,6 +370,11 @@ impl App {
             .get_or_insert_with(|| command_exists("ffmpeg"))
     }
 
+    #[cfg(test)]
+    pub(in crate::app) fn set_ffmpeg_available_for_tests(&mut self, available: bool) {
+        self.image_preview.ffmpeg_available = Some(available);
+    }
+
     pub(in crate::app) fn image_selection_activation_ready(&self) -> bool {
         self.image_preview.activation_ready_at.is_none()
     }
@@ -370,6 +387,24 @@ impl App {
         self.image_preview.displayed = None;
     }
 
+    pub(in crate::app) fn preview_visual_force_render_to_cache(
+        &self,
+        visual: &preview::PreviewVisual,
+    ) -> bool {
+        if visual.kind != preview::PreviewVisualKind::PageImage {
+            return false;
+        }
+
+        let Some(format) = static_image_format_for_path(&visual.path) else {
+            return true;
+        };
+        let ffmpeg_available = self
+            .image_preview
+            .ffmpeg_available
+            .unwrap_or_else(|| command_exists("ffmpeg"));
+        !static_image_can_prepare_inline(visual.size, format, ffmpeg_available)
+    }
+
     pub(in crate::app) fn displayed_static_image_matches_active(&self) -> bool {
         self.active_static_image_display_target()
             .as_ref()
@@ -377,29 +412,18 @@ impl App {
             .is_some_and(|(active, displayed)| active == displayed)
     }
 
-    pub(in crate::app) fn keep_displayed_comic_preview_overlay_while_pending(&self) -> bool {
+    pub(in crate::app) fn keep_displayed_page_preview_overlay_while_pending(&self) -> bool {
         let Some(displayed) = self.image_preview.displayed.as_ref() else {
             return false;
         };
+        let loading_current_page_preview = self.current_page_preview_loading_active();
         if displayed.mode != StaticImageOverlayMode::Inline
-            || self.preview_state.content.kind != preview::PreviewKind::Comic
+            || (!self.current_page_preview_visual_active() && !loading_current_page_preview)
         {
             return false;
         }
 
-        let loading_current_comic_page =
-            self.preview_state
-                .load_state
-                .as_ref()
-                .is_some_and(|load_state| {
-                    let loading_path = match load_state {
-                        PreviewLoadState::Placeholder(path)
-                        | PreviewLoadState::Refreshing(path) => path,
-                    };
-                    self.selected_entry()
-                        .is_some_and(|entry| entry.path == *loading_path)
-                });
-        if loading_current_comic_page {
+        if loading_current_page_preview {
             return true;
         }
 
@@ -407,7 +431,7 @@ impl App {
             return false;
         };
         let key = StaticImageKey::from_request(&request);
-        if !request.force_render_to_cache || self.image_preview.failed_images.contains(&key) {
+        if self.image_preview.failed_images.contains(&key) {
             return false;
         }
         if !self.image_selection_activation_ready() {
@@ -437,7 +461,9 @@ impl App {
         let nearby = if let Some(request) = current_static.as_ref() {
             self.nearby_static_image_overlay_requests(Some(request))
         } else if current_preview_visual.is_some() {
-            self.nearby_comic_preview_visual_overlay_requests()
+            let mut requests = self.nearby_comic_preview_visual_overlay_requests();
+            requests.extend(self.nearby_epub_preview_visual_overlay_requests());
+            requests
         } else {
             Vec::new()
         };
@@ -459,7 +485,9 @@ impl App {
         self.scheduler
             .retain_image_prepares(current_job.as_ref(), &nearby_jobs);
 
-        if let Some(request) = current.as_ref() {
+        if let Some(request) = current.as_ref()
+            && (request.force_render_to_cache || !self.static_image_can_prepare_inline_now(request))
+        {
             self.ensure_static_image_preload(request, jobs::ImageJobPriority::Current);
         }
         for request in &nearby {
@@ -661,6 +689,23 @@ impl App {
             ),
         ))
     }
+
+    fn current_page_preview_loading_active(&self) -> bool {
+        self.preview_state
+            .load_state
+            .as_ref()
+            .is_some_and(|load_state| {
+                let loading_path = match load_state {
+                    PreviewLoadState::Placeholder(path) | PreviewLoadState::Refreshing(path) => {
+                        path
+                    }
+                };
+                self.selected_entry()
+                    .is_some_and(|entry| entry.path == *loading_path)
+                    && (self.comic_preview_wheel_capture_active()
+                        || self.epub_preview_wheel_capture_active())
+            })
+    }
 }
 
 impl StaticImageKey {
@@ -780,20 +825,23 @@ where
                 dimensions: source_dimensions,
             });
         }
+        let temp_path = static_image_render_temp_path(&cache_path)?;
         if request.magick_available
             && render_svg_to_png(
                 &request.path,
-                &cache_path,
+                &temp_path,
                 target_width_px,
                 target_height_px,
                 &canceled,
             )
         {
+            finalize_static_image_render(&temp_path, &cache_path)?;
             return Some(PreparedStaticImageAsset {
                 display_path: cache_path,
                 dimensions: source_dimensions,
             });
         }
+        let _ = fs::remove_file(temp_path);
         return None;
     }
 
@@ -816,18 +864,20 @@ where
     if canceled() {
         return None;
     }
+    let temp_path = static_image_render_temp_path(&cache_path)?;
 
     if request.ffmpeg_available
         && should_render_raster_with_ffmpeg(format)
         && render_raster_to_png_with_ffmpeg(
             &request.path,
-            &cache_path,
+            &temp_path,
             target_width_px,
             target_height_px,
             request.force_render_to_cache,
             &canceled,
         )
     {
+        finalize_static_image_render(&temp_path, &cache_path)?;
         return Some(PreparedStaticImageAsset {
             display_path: cache_path,
             dimensions: source_dimensions,
@@ -851,7 +901,8 @@ where
     if canceled() {
         return None;
     }
-    image.save_with_format(&cache_path, ImageFormat::Png).ok()?;
+    image.save_with_format(&temp_path, ImageFormat::Png).ok()?;
+    finalize_static_image_render(&temp_path, &cache_path)?;
 
     Some(PreparedStaticImageAsset {
         display_path: cache_path,
@@ -861,10 +912,47 @@ where
 
 fn static_image_render_cache_path(key: &StaticImageKey) -> Option<PathBuf> {
     let mut hasher = DefaultHasher::new();
+    STATIC_IMAGE_RENDER_CACHE_VERSION.hash(&mut hasher);
     key.hash(&mut hasher);
-    let cache_dir = env::temp_dir().join("elio-image-preview");
+    let cache_dir = env::temp_dir().join(format!(
+        "elio-image-preview-v{STATIC_IMAGE_RENDER_CACHE_VERSION}"
+    ));
     fs::create_dir_all(&cache_dir).ok()?;
     Some(cache_dir.join(format!("image-{:016x}.png", hasher.finish())))
+}
+
+fn static_image_render_temp_path(path: &Path) -> Option<PathBuf> {
+    let parent = path.parent()?;
+    fs::create_dir_all(parent).ok()?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let stem = path.file_stem()?.to_string_lossy();
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    let file_name = match extension {
+        Some(extension) if !extension.is_empty() => format!(
+            ".{stem}.tmp-{}-{unique}.{extension}",
+            std::process::id()
+        ),
+        _ => format!(".{stem}.tmp-{}-{unique}", std::process::id()),
+    };
+    Some(parent.join(file_name))
+}
+
+fn finalize_static_image_render(temp_path: &Path, cache_path: &Path) -> Option<()> {
+    match fs::rename(temp_path, cache_path) {
+        Ok(()) => Some(()),
+        Err(_) if cache_path.exists() => {
+            let _ = fs::remove_file(temp_path);
+            Some(())
+        }
+        Err(_) => {
+            let _ = fs::remove_file(temp_path);
+            None
+        }
+    }
 }
 
 fn should_prepare_static_image_inline(
@@ -876,13 +964,21 @@ fn should_prepare_static_image_inline(
         return false;
     }
 
+    static_image_can_prepare_inline(request.size, format, ffmpeg_available)
+}
+
+fn static_image_can_prepare_inline(
+    size: u64,
+    format: StaticImageFormat,
+    ffmpeg_available: bool,
+) -> bool {
     match format {
         StaticImageFormat::Png => true,
         StaticImageFormat::Jpeg | StaticImageFormat::Gif | StaticImageFormat::Webp => {
             if ffmpeg_available {
-                request.size <= STATIC_IMAGE_INLINE_EXTERNAL_PREPARE_MAX_BYTES
+                size <= STATIC_IMAGE_INLINE_EXTERNAL_PREPARE_MAX_BYTES
             } else {
-                request.size <= STATIC_IMAGE_INLINE_FALLBACK_PREPARE_MAX_BYTES
+                size <= STATIC_IMAGE_INLINE_FALLBACK_PREPARE_MAX_BYTES
             }
         }
         StaticImageFormat::Svg => false,

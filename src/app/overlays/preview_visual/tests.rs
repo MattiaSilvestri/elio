@@ -14,6 +14,7 @@ use std::{
     fs::File,
     io::{Cursor, Write},
     path::{Path, PathBuf},
+    sync::{Arc, Barrier},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -90,14 +91,18 @@ fn wait_for_displayed_preview_overlay(app: &mut App) {
 }
 
 #[test]
-fn preview_visual_overlay_request_uses_asset_metadata() {
+fn page_image_overlay_request_uses_asset_metadata_without_forcing_render_cache() {
     let root = temp_root("request-metadata");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let asset_path = root.join("page.jpg");
-    fs::write(&asset_path, b"jpeg").expect("failed to write image placeholder");
+    write_test_raster_image(&asset_path, ImageFormat::Jpeg, 600, 300);
+    let asset_size = fs::metadata(&asset_path)
+        .expect("asset metadata should exist")
+        .len();
 
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
+    app.set_ffmpeg_available_for_tests(true);
     app.entries = vec![Entry {
         path: root.join("book.cbz"),
         name: "book.cbz".to_string(),
@@ -119,7 +124,7 @@ fn preview_visual_overlay_request_uses_asset_metadata() {
             kind: PreviewVisualKind::PageImage,
             layout: PreviewVisualLayout::Inline,
             path: asset_path.clone(),
-            size: 11 * 1024,
+            size: asset_size,
             modified: None,
         });
 
@@ -128,7 +133,7 @@ fn preview_visual_overlay_request_uses_asset_metadata() {
         .expect("preview visual overlay request should be available");
 
     assert_eq!(request.path, asset_path);
-    assert_eq!(request.size, 11 * 1024);
+    assert_eq!(request.size, asset_size);
     assert_eq!(request.modified, None);
     assert!(!request.force_render_to_cache);
 
@@ -136,12 +141,15 @@ fn preview_visual_overlay_request_uses_asset_metadata() {
 }
 
 #[test]
-fn comic_page_overlay_request_forces_rendered_cache() {
-    let root = temp_root("comic-force-render");
+fn oversized_page_overlay_request_forces_rendered_cache() {
+    let root = temp_root("page-force-render");
     fs::create_dir_all(&root).expect("failed to create temp root");
+    let page = root.join("page.jpg");
+    write_test_raster_image(&page, ImageFormat::Jpeg, 1600, 900);
 
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
+    app.set_ffmpeg_available_for_tests(true);
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
@@ -152,8 +160,8 @@ fn comic_page_overlay_request_forces_rendered_cache() {
         .with_preview_visual(PreviewVisual {
             kind: PreviewVisualKind::PageImage,
             layout: PreviewVisualLayout::FullHeight,
-            path: root.join("page.png"),
-            size: 11 * 1024,
+            path: page,
+            size: 20 * 1024 * 1024,
             modified: None,
         });
 
@@ -239,7 +247,7 @@ fn failed_full_height_page_image_falls_back_to_text_layout() {
         target_width_px: image_target_width_px(area, app.cached_terminal_window()),
         target_height_px: image_target_height_px(area, app.cached_terminal_window()),
         mode: StaticImageOverlayMode::Inline,
-        force_render_to_cache: true,
+        force_render_to_cache: false,
     };
     app.image_preview
         .failed_images
@@ -257,6 +265,7 @@ fn inline_page_image_leaves_room_for_summary_text() {
 
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
+    app.set_ffmpeg_available_for_tests(true);
     app.preview_state.content = PreviewContent::new(PreviewKind::Comic, Vec::new())
         .with_preview_visual(PreviewVisual {
             kind: PreviewVisualKind::PageImage,
@@ -307,7 +316,7 @@ fn page_image_placeholder_message_stays_silent() {
 }
 
 #[test]
-fn comic_jpeg_page_waits_for_background_prepare_instead_of_inline_display() {
+fn comic_jpeg_page_renders_inline_without_waiting_for_background_prepare() {
     let root = temp_root("comic-jpeg-background");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let page = root.join("page.jpg");
@@ -318,6 +327,7 @@ fn comic_jpeg_page_waits_for_background_prepare_instead_of_inline_display() {
 
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
+    app.set_ffmpeg_available_for_tests(true);
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
@@ -338,11 +348,171 @@ fn comic_jpeg_page_waits_for_background_prepare_instead_of_inline_display() {
     let key = StaticImageKey::from_request(&request);
 
     app.refresh_static_image_preloads();
+    assert!(!app.image_preview.pending_prepares.contains(&key));
+    app.image_preview.pending_prepares.insert(key.clone());
     app.present_preview_overlay()
         .expect("presenting a comic jpeg overlay should not fail");
 
-    assert!(!app.static_image_overlay_displayed());
-    assert!(app.image_preview.pending_prepares.contains(&key));
+    assert!(app.static_image_overlay_displayed());
+    assert!(app.image_preview.dimensions.contains_key(&key));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn document_page_image_renders_inline_without_waiting_for_background_prepare() {
+    let root = temp_root("document-jpeg-background");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let page = root.join("page.jpg");
+    write_test_raster_image(&page, ImageFormat::Jpeg, 1600, 900);
+    let page_size = fs::metadata(&page)
+        .expect("page image metadata should exist")
+        .len();
+
+    let mut app = App::new_at(root.clone()).expect("app should initialize");
+    configure_terminal_image_support(&mut app);
+    app.set_ffmpeg_available_for_tests(true);
+    app.frame_state.preview_media_area = Some(Rect {
+        x: 2,
+        y: 3,
+        width: 48,
+        height: 20,
+    });
+    app.preview_state.content = PreviewContent::new(PreviewKind::Document, Vec::new())
+        .with_preview_visual(PreviewVisual {
+            kind: PreviewVisualKind::PageImage,
+            layout: PreviewVisualLayout::FullHeight,
+            path: page,
+            size: page_size,
+            modified: None,
+        });
+    let request = app
+        .active_preview_visual_overlay_request()
+        .expect("document page image request should be available");
+    let key = StaticImageKey::from_request(&request);
+
+    app.refresh_static_image_preloads();
+    assert!(!app.image_preview.pending_prepares.contains(&key));
+    app.image_preview.pending_prepares.insert(key.clone());
+    app.present_preview_overlay()
+        .expect("presenting a document page overlay should not fail");
+
+    assert!(app.static_image_overlay_displayed());
+    assert!(app.image_preview.dimensions.contains_key(&key));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn concurrent_inline_raster_prepares_keep_shared_render_cache_readable() {
+    let root = temp_root("concurrent-inline-render");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let page = root.join("page.jpg");
+    write_test_raster_image(&page, ImageFormat::Jpeg, 2200, 3200);
+    let metadata = fs::metadata(&page).expect("page image metadata should exist");
+    let request = Arc::new(crate::app::jobs::ImagePrepareRequest {
+        path: page,
+        size: metadata.len(),
+        modified: metadata.modified().ok(),
+        target_width_px: 384,
+        target_height_px: 640,
+        ffmpeg_available: false,
+        magick_available: false,
+        force_render_to_cache: false,
+    });
+    let barrier = Arc::new(Barrier::new(7));
+    let mut handles = Vec::new();
+    for _ in 0..6 {
+        let request = Arc::clone(&request);
+        let barrier = Arc::clone(&barrier);
+        handles.push(thread::spawn(move || {
+            barrier.wait();
+            for _ in 0..6 {
+                let prepared =
+                    crate::app::overlays::images::prepare_static_image_asset(&request, || false)
+                        .expect("shared render cache should prepare");
+                let dimensions =
+                    crate::app::overlays::inline_image::read_png_dimensions(&prepared.display_path)
+                        .expect("shared render cache should contain a readable png");
+                assert!(dimensions.width_px > 0);
+                assert!(dimensions.height_px > 0);
+                assert!(dimensions.width_px <= 384);
+                assert!(dimensions.height_px <= 640);
+                assert!(
+                    prepared
+                        .display_path
+                        .parent()
+                        .is_some_and(|parent| parent.ends_with("elio-image-preview-v2"))
+                );
+            }
+        }));
+    }
+
+    barrier.wait();
+    for handle in handles {
+        handle
+            .join()
+            .expect("concurrent inline render worker should finish");
+    }
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn document_overlay_keeps_previous_page_visible_while_next_page_waits() {
+    let root = temp_root("document-overlay-pending");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let first = root.join("001.png");
+    let second = root.join("002.jpg");
+    write_test_raster_image(&first, ImageFormat::Png, 600, 300);
+    write_test_raster_image(&second, ImageFormat::Jpeg, 1600, 900);
+    let first_size = fs::metadata(&first)
+        .expect("first image metadata should exist")
+        .len();
+
+    let mut app = App::new_at(root.clone()).expect("app should initialize");
+    configure_terminal_image_support(&mut app);
+    app.set_ffmpeg_available_for_tests(true);
+    app.frame_state.preview_media_area = Some(Rect {
+        x: 2,
+        y: 3,
+        width: 48,
+        height: 20,
+    });
+    app.preview_state.content = PreviewContent::new(PreviewKind::Document, Vec::new())
+        .with_preview_visual(PreviewVisual {
+            kind: PreviewVisualKind::PageImage,
+            layout: PreviewVisualLayout::FullHeight,
+            path: first,
+            size: first_size,
+            modified: None,
+        });
+
+    app.refresh_static_image_preloads();
+    wait_for_displayed_preview_overlay(&mut app);
+    assert!(app.static_image_overlay_displayed());
+
+    app.preview_state.content = PreviewContent::new(PreviewKind::Document, Vec::new())
+        .with_preview_visual(PreviewVisual {
+            kind: PreviewVisualKind::PageImage,
+            layout: PreviewVisualLayout::FullHeight,
+            path: second,
+            size: 20 * 1024 * 1024,
+            modified: None,
+        });
+    let next_request = app
+        .active_preview_visual_overlay_request()
+        .expect("next document preview request should be available");
+    let next_key = StaticImageKey::from_request(&next_request);
+    app.refresh_static_image_preloads();
+    app.last_selection_change_at = Instant::now() - std::time::Duration::from_secs(1);
+    app.sync_image_preview_selection_activation();
+
+    app.present_preview_overlay()
+        .expect("pending document page transition should not fail");
+    assert!(app.static_image_overlay_displayed());
+    assert!(app.image_preview.pending_prepares.contains(&next_key));
+    assert!(!app.displayed_static_image_matches_active());
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -359,6 +529,7 @@ fn current_comic_prepare_build_marks_preview_dirty() {
 
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
+    app.set_ffmpeg_available_for_tests(true);
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
@@ -390,7 +561,7 @@ fn current_comic_prepare_build_marks_preview_dirty() {
                 .expect("preview media area should exist"),
             app.cached_terminal_window(),
         ),
-        force_render_to_cache: true,
+        force_render_to_cache: false,
         canceled: false,
         result: Some(crate::app::overlays::images::PreparedStaticImageAsset {
             display_path: rendered,
@@ -487,6 +658,86 @@ fn cached_adjacent_comic_page_queues_background_image_prepare() {
 }
 
 #[test]
+fn cached_adjacent_epub_section_queues_background_image_prepare() {
+    let root = temp_root("epub-adjacent-image-prepare");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let epub = root.join("story.epub");
+    fs::write(&epub, b"epub").expect("failed to write epub placeholder");
+    let epub_metadata = fs::metadata(&epub).expect("epub metadata should exist");
+    let current_page = root.join("page-1.jpg");
+    let next_page = root.join("page-2.jpg");
+    write_test_raster_image(&current_page, ImageFormat::Jpeg, 1600, 900);
+    write_test_raster_image(&next_page, ImageFormat::Jpeg, 1600, 900);
+    let next_page_metadata = fs::metadata(&next_page).expect("next page metadata should exist");
+
+    let mut app = App::new_at(root.clone()).expect("app should initialize");
+    configure_terminal_image_support(&mut app);
+    app.entries = vec![Entry {
+        path: epub.clone(),
+        name: "story.epub".to_string(),
+        name_key: "story.epub".to_string(),
+        kind: EntryKind::File,
+        size: epub_metadata.len(),
+        modified: epub_metadata.modified().ok(),
+        readonly: false,
+    }];
+    app.selected = 0;
+    app.frame_state.preview_media_area = Some(Rect {
+        x: 2,
+        y: 3,
+        width: 48,
+        height: 20,
+    });
+    app.sync_epub_preview_selection();
+    app.preview_state.content = PreviewContent::new(PreviewKind::Document, Vec::new())
+        .with_ebook_section(0, 2, Some("Page 1".to_string()))
+        .with_preview_visual(PreviewVisual {
+            kind: PreviewVisualKind::PageImage,
+            layout: PreviewVisualLayout::FullHeight,
+            path: current_page,
+            size: 11 * 1024,
+            modified: None,
+        });
+    app.apply_current_epub_preview_metadata();
+
+    let adjacent_preview = PreviewContent::new(PreviewKind::Document, Vec::new())
+        .with_ebook_section(1, 2, Some("Page 2".to_string()))
+        .with_preview_visual(PreviewVisual {
+            kind: PreviewVisualKind::PageImage,
+            layout: PreviewVisualLayout::FullHeight,
+            path: next_page,
+            size: next_page_metadata.len(),
+            modified: next_page_metadata.modified().ok(),
+        });
+    let entry = app
+        .selected_entry()
+        .cloned()
+        .expect("selected entry should exist");
+    app.cache_preview_result(
+        &entry,
+        &preview::PreviewRequestOptions::EpubSection(1),
+        &adjacent_preview,
+    );
+    let adjacent_request = app.preview_visual_overlay_request_for_visual(
+        PreviewKind::Document,
+        adjacent_preview
+            .preview_visual
+            .as_ref()
+            .expect("adjacent preview should have a visual"),
+        app.frame_state
+            .preview_media_area
+            .expect("preview media area should exist"),
+    );
+    let adjacent_key = StaticImageKey::from_request(&adjacent_request);
+
+    app.refresh_static_image_preloads();
+
+    assert!(app.image_preview.pending_prepares.contains(&adjacent_key));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn stale_adjacent_comic_preview_result_immediately_queues_image_prepare() {
     let root = temp_root("comic-stale-adjacent-image-prepare");
     fs::create_dir_all(&root).expect("failed to create temp root");
@@ -537,18 +788,16 @@ fn comic_overlay_keeps_previous_page_visible_while_next_page_waits() {
     let root = temp_root("comic-overlay-pending");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let first = root.join("001.png");
-    let second = root.join("002.png");
+    let second = root.join("002.jpg");
     write_test_raster_image(&first, ImageFormat::Png, 600, 300);
-    write_test_raster_image(&second, ImageFormat::Png, 600, 300);
+    write_test_raster_image(&second, ImageFormat::Jpeg, 1600, 900);
     let first_size = fs::metadata(&first)
         .expect("first image metadata should exist")
-        .len();
-    let second_size = fs::metadata(&second)
-        .expect("second image metadata should exist")
         .len();
 
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
+    app.set_ffmpeg_available_for_tests(true);
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
@@ -573,7 +822,7 @@ fn comic_overlay_keeps_previous_page_visible_while_next_page_waits() {
             kind: PreviewVisualKind::PageImage,
             layout: PreviewVisualLayout::FullHeight,
             path: second,
-            size: second_size,
+            size: 20 * 1024 * 1024,
             modified: None,
         });
     let next_request = app

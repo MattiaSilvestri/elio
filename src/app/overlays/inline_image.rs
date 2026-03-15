@@ -75,11 +75,11 @@ impl App {
             return Ok(());
         };
 
-        let keep_stale_comic_preview_overlay =
-            self.keep_displayed_comic_preview_overlay_while_pending();
+        let keep_stale_page_preview_overlay =
+            self.keep_displayed_page_preview_overlay_while_pending();
         if (self.static_image_overlay_displayed()
             && !self.displayed_static_image_matches_active()
-            && !keep_stale_comic_preview_overlay)
+            && !keep_stale_page_preview_overlay)
             || self.pdf_overlay_displayed() && !self.displayed_pdf_overlay_matches_active()
         {
             self.clear_preview_overlay()?;
@@ -97,7 +97,7 @@ impl App {
 
         match self.present_preview_visual_overlay(backend)? {
             OverlayPresentState::Displayed | OverlayPresentState::Waiting => Ok(()),
-            OverlayPresentState::NotRequested if keep_stale_comic_preview_overlay => Ok(()),
+            OverlayPresentState::NotRequested if keep_stale_page_preview_overlay => Ok(()),
             OverlayPresentState::NotRequested => self.clear_preview_overlay(),
         }
     }

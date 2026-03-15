@@ -137,7 +137,7 @@ impl App {
 
     pub(in crate::app) fn preview_visual_overlay_request_for_visual(
         &self,
-        preview_kind: preview::PreviewKind,
+        _preview_kind: preview::PreviewKind,
         visual: &preview::PreviewVisual,
         area: Rect,
     ) -> images::StaticImageOverlayRequest {
@@ -149,8 +149,7 @@ impl App {
             target_width_px: images::image_target_width_px(area, self.cached_terminal_window()),
             target_height_px: images::image_target_height_px(area, self.cached_terminal_window()),
             mode: images::StaticImageOverlayMode::Inline,
-            force_render_to_cache: preview_kind == preview::PreviewKind::Comic
-                && visual.kind == preview::PreviewVisualKind::PageImage,
+            force_render_to_cache: self.preview_visual_force_render_to_cache(visual),
         }
     }
 }
