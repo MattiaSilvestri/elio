@@ -61,7 +61,17 @@ impl App {
     pub(in crate::app) fn active_preview_visual_overlay_request(
         &self,
     ) -> Option<images::StaticImageOverlayRequest> {
-        if !self.terminal_image_overlay_available() || self.preview_uses_image_overlay() {
+        if self.preview_uses_image_overlay() {
+            return None;
+        }
+
+        self.active_preview_visual_overlay_request_unchecked()
+    }
+
+    pub(in crate::app) fn active_preview_visual_overlay_request_unchecked(
+        &self,
+    ) -> Option<images::StaticImageOverlayRequest> {
+        if !self.terminal_image_overlay_available() {
             return None;
         }
 

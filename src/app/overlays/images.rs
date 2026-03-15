@@ -586,7 +586,7 @@ impl App {
     fn active_static_image_display_target(&self) -> Option<DisplayedStaticImagePreview> {
         let request = self
             .active_static_image_overlay_request()
-            .or_else(|| self.active_preview_visual_overlay_request())?;
+            .or_else(|| self.active_preview_visual_overlay_request_unchecked())?;
         let window_size = self.cached_terminal_window()?;
         let image_dimensions = self
             .image_preview
