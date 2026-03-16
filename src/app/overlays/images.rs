@@ -218,6 +218,7 @@ impl App {
         if self.image_preview.displayed.as_ref() == Some(&displayed) {
             return Ok(OverlayPresentState::Displayed);
         }
+        self.clear_preview_overlay()?;
         if place_terminal_image(backend, &prepared.display_path, placement).is_err() {
             self.mark_static_image_failed(&request);
             self.refresh_preview();
@@ -260,6 +261,7 @@ impl App {
         if self.image_preview.displayed.as_ref() == Some(&displayed) {
             return Ok(OverlayPresentState::Displayed);
         }
+        self.clear_preview_overlay()?;
         if place_terminal_image(backend, &prepared.display_path, placement).is_err() {
             self.mark_static_image_failed(&request);
             return Ok(OverlayPresentState::NotRequested);

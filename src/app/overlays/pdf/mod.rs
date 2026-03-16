@@ -193,6 +193,7 @@ impl App {
         if self.pdf_preview.displayed.as_ref() == Some(&displayed) {
             return Ok(OverlayPresentState::Displayed);
         }
+        self.clear_preview_overlay()?;
         place_terminal_image(backend, &rendered, placement.image_area)
             .context("failed to display PDF page")?;
         self.pdf_preview.displayed = Some(displayed);
