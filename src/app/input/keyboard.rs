@@ -16,6 +16,14 @@ impl App {
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
+        if self.trash.is_some() {
+            return self.handle_trash_key(key);
+        }
+
+        if self.create.is_some() {
+            return self.handle_create_key(key);
+        }
+
         if self.search.is_some() {
             return self.handle_search_key(key);
         }
@@ -158,6 +166,8 @@ impl App {
             }
             KeyCode::Char('s') => self.cycle_sort_mode()?,
             KeyCode::Char('.') => self.toggle_hidden_files()?,
+            KeyCode::Char('a') => self.open_create_prompt(),
+            KeyCode::Char('d') => self.open_trash_prompt(),
             KeyCode::Char('f') => self.open_search_with_status(SearchScope::Folders),
             KeyCode::Char('o') => self.open_in_system()?,
             _ => {}

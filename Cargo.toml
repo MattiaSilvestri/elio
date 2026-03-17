@@ -22,6 +22,7 @@ toml = "0.8"
 toml_edit = "0.22"
 unicode-width = "0.2"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
+trash = "5.2.5"
 
 [profile.release]
 strip = true

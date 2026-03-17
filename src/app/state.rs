@@ -79,6 +79,19 @@ pub(super) enum NavigationRepeatKey {
 }
 
 #[derive(Clone, Debug)]
+pub(super) struct TrashOverlay {
+    pub(super) path: std::path::PathBuf,
+    pub(super) name: String,
+    pub(super) is_dir: bool,
+    pub(super) confirmed: bool,
+}
+
+pub(super) struct CreateOverlay {
+    pub(super) input: String,
+    pub(super) cursor: usize,
+    pub(super) error: Option<String>,
+}
+
 pub(super) struct SearchOverlay {
     pub(super) scope: SearchScope,
     pub(super) query: String,
@@ -269,6 +282,8 @@ pub struct App {
     pub(super) pdf_preview: pdf::PdfPreviewState,
     pub(super) terminal_images: inline_image::TerminalImageState,
     pub(super) frame_state: FrameState,
+    pub(super) trash: Option<TrashOverlay>,
+    pub(super) create: Option<CreateOverlay>,
     pub(super) search: Option<SearchOverlay>,
     pub(super) search_cache: Option<SearchCache>,
     pub(super) search_loading: bool,
@@ -337,6 +352,8 @@ impl App {
             pdf_preview: pdf::PdfPreviewState::default(),
             terminal_images: inline_image::TerminalImageState::default(),
             frame_state: FrameState::default(),
+            trash: None,
+            create: None,
             search: None,
             search_cache: None,
             search_loading: false,

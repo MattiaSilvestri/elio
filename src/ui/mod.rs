@@ -17,6 +17,8 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
     state.sidebar_hits.clear();
     state.entry_hits.clear();
     state.search_hits.clear();
+    state.trash_panel = None;
+    state.create_panel = None;
     state.search_panel = None;
     state.preview_panel = None;
     state.preview_media_area = None;
@@ -64,7 +66,11 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
         chrome::render_status(frame, rows[1], app, palette);
     }
 
-    if app.search_is_open() {
+    if app.trash_is_open() {
+        overlay_manager::render_trash_overlay(frame, area, app, state, palette);
+    } else if app.create_is_open() {
+        overlay_manager::render_create_overlay(frame, area, app, state, palette);
+    } else if app.search_is_open() {
         overlay_manager::render_search_overlay(frame, area, app, state, palette);
     } else if app.help_open {
         overlay_manager::render_help(frame, area, palette);

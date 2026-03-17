@@ -10,6 +10,228 @@ use ratatui::{
 };
 use unicode_width::UnicodeWidthStr;
 
+pub(super) fn render_trash_overlay(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    app: &App,
+    state: &mut FrameState,
+    palette: Palette,
+) {
+    let kind = if app.trash_target_is_dir() { "folder" } else { "file" };
+    let block_title = format!(" Trash 1 selected {kind}? ");
+
+    let popup_width = area.width.saturating_sub(8).clamp(40, 60);
+    let popup_height = 7u16;
+    let popup = helpers::centered_rect(area, popup_width, popup_height);
+    state.trash_panel = Some(popup);
+
+    frame.render_widget(Clear, popup);
+    frame.render_widget(
+        helpers::panel_block(&block_title, palette.chrome_alt, palette),
+        popup,
+    );
+
+    let inner = helpers::inner_with_padding(popup);
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1), // name
+            Constraint::Min(1),    // spacer
+            Constraint::Length(1), // buttons
+        ])
+        .split(inner);
+
+    // Filename
+    let name = app.trash_target_name().unwrap_or("");
+    let max_width = rows[0].width.saturating_sub(2) as usize;
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                helpers::clamp_label(name, max_width.max(4)),
+                Style::default().fg(palette.muted),
+            ),
+        ]))
+        .style(Style::default().bg(palette.chrome_alt)),
+        rows[0],
+    );
+
+    // Centered buttons: [ Cancel ]  [ Confirm ]
+    let confirmed = app.trash_confirmed();
+    let cancel_style = if !confirmed {
+        Style::default().bg(palette.selected_bg).fg(palette.text).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().bg(palette.chrome_alt).fg(palette.muted)
+    };
+    let confirm_style = if confirmed {
+        Style::default().bg(palette.accent).fg(palette.accent_text).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().bg(palette.chrome_alt).fg(palette.muted)
+    };
+    // "  Cancel  " = 10, gap = 3, "  Confirm  " = 11, total = 24
+    let total_btn_width = 24u16;
+    let left_pad = rows[2].width.saturating_sub(total_btn_width) / 2;
+    let pad = " ".repeat(left_pad as usize);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(pad, Style::default().bg(palette.chrome_alt)),
+            Span::styled("  Cancel  ", cancel_style),
+            Span::styled("   ", Style::default().bg(palette.chrome_alt)),
+            Span::styled("  Confirm  ", confirm_style),
+        ]))
+        .style(Style::default().bg(palette.chrome_alt)),
+        rows[2],
+    );
+}
+
+pub(super) fn render_create_overlay(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    app: &App,
+    state: &mut FrameState,
+    palette: Palette,
+) {
+    let popup_width = area.width.saturating_sub(8).clamp(36, 60);
+    let popup_height = 9u16;
+    let popup = helpers::centered_rect(area, popup_width, popup_height);
+    state.create_panel = Some(popup);
+
+    frame.render_widget(Clear, popup);
+    frame.render_widget(
+        helpers::panel_block(" New ", palette.chrome_alt, palette),
+        popup,
+    );
+
+    let inner = helpers::inner_with_padding(popup);
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+
+    // Header: infer file vs folder from current input
+    let input = app.create_input();
+    let is_dir = input.starts_with('/') || input.ends_with('/');
+    let (type_icon, type_label, type_color) = if is_dir {
+        ("󰉋", "Folder", palette.accent)
+    } else {
+        ("󰈔", "File", palette.muted)
+    };
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                type_icon,
+                Style::default().fg(type_color),
+            ),
+            Span::raw("  "),
+            Span::styled(
+                type_label,
+                Style::default()
+                    .fg(type_color)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "  —  / prefix or suffix → folder",
+                Style::default().fg(palette.muted),
+            ),
+        ]))
+        .style(Style::default().bg(palette.chrome_alt).fg(palette.text)),
+        rows[0],
+    );
+
+    // Input box
+    frame.render_widget(
+        helpers::rounded_block(palette.path_bg, palette.border),
+        rows[1],
+    );
+    let input_area = rows[1].inner(Margin {
+        horizontal: 2,
+        vertical: 1,
+    });
+    let (input_line, cursor_x) = if input.is_empty() {
+        (
+            Line::from(vec![
+                Span::styled("󰜄", Style::default().fg(palette.muted)),
+                Span::raw("  "),
+                Span::styled("name…", Style::default().fg(palette.muted)),
+            ]),
+            input_area.x.saturating_add(3),
+        )
+    } else {
+        render_create_input_line(input, app.create_cursor(), input_area.width, input_area.x, palette)
+    };
+    frame.render_widget(
+        Paragraph::new(input_line).style(Style::default().bg(palette.path_bg).fg(palette.text)),
+        input_area,
+    );
+    frame.set_cursor_position((cursor_x, input_area.y));
+
+    // Error or empty row
+    if let Some(error) = app.create_error() {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(
+                    helpers::clamp_label(error, rows[2].width.saturating_sub(2) as usize),
+                    Style::default().fg(palette.accent),
+                ),
+            ]))
+            .style(Style::default().bg(palette.chrome_alt).fg(palette.text)),
+            rows[2],
+        );
+    }
+
+    // Footer hints
+    frame.render_widget(
+        Paragraph::new("Enter create  Esc cancel")
+            .alignment(Alignment::Right)
+            .style(Style::default().bg(palette.chrome_alt).fg(palette.muted)),
+        rows[3],
+    );
+}
+
+fn render_create_input_line(
+    input: &str,
+    cursor: usize,
+    width: u16,
+    origin_x: u16,
+    palette: Palette,
+) -> (Line<'static>, u16) {
+    let chars: Vec<char> = input.chars().collect();
+    let cursor = cursor.min(chars.len());
+    let available = width.saturating_sub(3) as usize;
+
+    let mut start = 0usize;
+    if cursor > available {
+        start = cursor - available;
+    }
+    let mut visible: String = chars.iter().skip(start).take(available).collect();
+    if start > 0 && !visible.is_empty() {
+        visible.remove(0);
+        visible.insert(0, '…');
+    }
+
+    let visible_cursor = cursor.saturating_sub(start).min(visible.chars().count());
+    let cursor_x = origin_x
+        .saturating_add(3)
+        .saturating_add(visible_cursor as u16)
+        .min(origin_x.saturating_add(width.saturating_sub(1)));
+
+    let line = Line::from(vec![
+        Span::styled("󰜄", Style::default().fg(palette.accent)),
+        Span::raw("  "),
+        Span::styled(
+            visible,
+            Style::default()
+                .fg(palette.text)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ]);
+    (line, cursor_x)
+}
+
 pub(super) fn render_search_overlay(
     frame: &mut Frame<'_>,
     area: Rect,
@@ -335,6 +557,14 @@ pub(super) fn render_help(frame: &mut Frame<'_>, area: Rect, palette: Palette) {
         HelpEntry {
             key: "o",
             action: "open externally",
+        },
+        HelpEntry {
+            key: "a",
+            action: "create file or folder",
+        },
+        HelpEntry {
+            key: "d",
+            action: "move to trash",
         },
     ];
     const LEFT_SECTIONS: &[HelpSection<'_>] = &[

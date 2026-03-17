@@ -2,6 +2,14 @@ use super::*;
 
 impl App {
     pub(in crate::app) fn handle_mouse(&mut self, mouse: MouseEvent) -> Result<()> {
+        if self.trash.is_some() {
+            return self.handle_trash_mouse(mouse);
+        }
+
+        if self.create.is_some() {
+            return self.handle_create_mouse(mouse);
+        }
+
         if self.search.is_some() {
             return self.handle_search_mouse(mouse);
         }
