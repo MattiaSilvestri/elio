@@ -964,14 +964,18 @@ fn select_image_protocol_warp_always_enabled() {
 }
 
 #[test]
-fn select_image_protocol_alacritty_and_other_never_enabled() {
+fn select_image_protocol_alacritty_disabled_and_other_override_enabled() {
     assert_eq!(
         select_image_protocol(TerminalIdentity::Alacritty, true),
         ImageProtocol::None
     );
     assert_eq!(
-        select_image_protocol(TerminalIdentity::Other, true),
+        select_image_protocol(TerminalIdentity::Other, false),
         ImageProtocol::None
+    );
+    assert_eq!(
+        select_image_protocol(TerminalIdentity::Other, true),
+        ImageProtocol::KittyGraphics
     );
 }
 
