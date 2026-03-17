@@ -19,6 +19,8 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
     state.search_hits.clear();
     state.trash_panel = None;
     state.create_panel = None;
+    state.create_list_area = None;
+    state.create_scroll_top = 0;
     state.search_panel = None;
     state.preview_panel = None;
     state.preview_media_area = None;

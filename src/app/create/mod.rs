@@ -109,7 +109,8 @@ impl App {
             // New line: Alt+Enter or Ctrl+J (must come before plain Enter)
             // ---------------------------------------------------------------
             KeyCode::Enter
-                if key.modifiers.contains(KeyModifiers::ALT)
+                if (key.modifiers.contains(KeyModifiers::ALT)
+                    || key.modifiers.contains(KeyModifiers::SHIFT))
                     && !key.modifiers.contains(KeyModifiers::CONTROL) =>
             {
                 self.create_insert_newline();
@@ -239,6 +240,27 @@ impl App {
                     .is_some_and(|panel| rect_contains(panel, mouse.column, mouse.row));
                 if !inside {
                     self.create = None;
+                    return Ok(());
+                }
+                // Click inside list area — move cursor to clicked line and column.
+                if let Some(list_area) = self.frame_state.create_list_area {
+                    if rect_contains(list_area, mouse.column, mouse.row) {
+                        let scroll_top = self.frame_state.create_scroll_top;
+                        let row_offset = (mouse.row - list_area.y) as usize;
+                        let line_idx = scroll_top + row_offset;
+                        let line_count = self.create_line_count();
+                        if line_idx < line_count {
+                            let line_len = self.create_line(line_idx).chars().count();
+                            // Text starts after icon (3 cells).
+                            let char_col = (mouse.column.saturating_sub(list_area.x + 3)) as usize;
+                            let cursor_col = char_col.min(line_len);
+                            if let Some(c) = &mut self.create {
+                                c.cursor_line = line_idx;
+                                c.cursor_col = cursor_col;
+                                c.preferred_col = cursor_col;
+                            }
+                        }
+                    }
                 }
             }
             MouseEventKind::ScrollUp => {

@@ -199,6 +199,8 @@ pub(super) fn render_create_overlay(
 
     // Compute scroll_top so cursor stays visible.
     let scroll_top = compute_create_scroll_top(cursor_line, line_count, visible_lines as usize);
+    state.create_list_area = Some(list_area);
+    state.create_scroll_top = scroll_top;
 
     let show_scrollbar = line_count > visible_lines as usize;
     let thumb_size = if show_scrollbar {
