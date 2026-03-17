@@ -9,6 +9,7 @@ use crate::preview;
 mod search;
 mod selection;
 mod state;
+mod text_edit;
 mod types;
 
 #[cfg(test)]

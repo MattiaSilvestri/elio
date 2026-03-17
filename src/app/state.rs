@@ -93,9 +93,15 @@ pub(super) struct TrashOverlay {
 }
 
 pub(super) struct CreateOverlay {
-    pub(super) input: String,
-    pub(super) cursor: usize,
-    pub(super) error: Option<String>,
+    /// One entry per line; always at least one element.
+    pub(super) lines: Vec<String>,
+    pub(super) cursor_line: usize,
+    pub(super) cursor_col: usize,
+    /// Remembered column target for vertical motion — updated on horizontal
+    /// edits but NOT when vertical motion clamps to a shorter line.
+    pub(super) preferred_col: usize,
+    /// Per-line validation error; same length as `lines`.
+    pub(super) line_errors: Vec<Option<String>>,
 }
 
 pub(super) struct SearchOverlay {
