@@ -284,6 +284,11 @@ pub struct App {
     pub(super) wheel_scroll: ScrollState,
     pub(super) wheel_profile: WheelProfile,
     pub(super) last_wheel_target: Option<WheelTarget>,
+    // Cursor panel tracked exclusively from MouseEventKind::Moved events.
+    // These events come from ?1003h (any-event tracking) and always carry the true
+    // cursor position, so this is a reliable fallback when scroll event coordinates
+    // are wrong or absent (observed in some Alacritty/Ghostty configurations).
+    pub(super) hover_panel: Option<WheelTarget>,
     pub(super) browser_wheel_post_burst_pending: bool,
     pub(super) last_navigation_key: Option<(NavigationRepeatKey, Instant)>,
     pub(super) last_selection_change_at: Instant,
@@ -362,6 +367,7 @@ impl App {
             },
             wheel_profile: detect_wheel_profile(),
             last_wheel_target: Some(WheelTarget::Entries),
+            hover_panel: None,
             browser_wheel_post_burst_pending: false,
             last_navigation_key: None,
             last_selection_change_at: Instant::now(),

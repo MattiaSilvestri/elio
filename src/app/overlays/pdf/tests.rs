@@ -1,6 +1,6 @@
 use super::*;
 use crate::app::overlays::images::StaticImageKey;
-use crate::app::overlays::inline_image::TerminalWindowSize;
+use crate::app::overlays::inline_image::{ImageProtocol, TerminalWindowSize};
 use crate::preview::PreviewKind;
 use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
 use std::{
@@ -19,7 +19,7 @@ fn temp_root(label: &str) -> PathBuf {
 
 fn configure_terminal_image_support(app: &mut App) {
     let (cells_width, cells_height) = crossterm::terminal::size().unwrap_or((120, 40));
-    app.terminal_images.backend = Some(TerminalImageBackend::KittyProtocol);
+    app.terminal_images.protocol = ImageProtocol::KittyGraphics;
     app.terminal_images.window = Some(TerminalWindowSize {
         cells_width,
         cells_height,
@@ -916,34 +916,62 @@ fn bucket_render_dimensions_rounds_up_longest_edge_without_distortion() {
 }
 
 #[test]
-fn select_terminal_image_backend_prefers_known_kitty_protocol_terminals() {
+fn select_image_protocol_kitty_always_enabled() {
     assert_eq!(
-        select_terminal_image_backend("xterm-kitty", "", false, false, false),
-        Some(TerminalImageBackend::KittyProtocol)
+        select_image_protocol(TerminalIdentity::Kitty, false),
+        ImageProtocol::KittyGraphics
     );
     assert_eq!(
-        select_terminal_image_backend("xterm-256color", "ghostty", false, false, false),
-        Some(TerminalImageBackend::KittyProtocol)
-    );
-    assert_eq!(
-        select_terminal_image_backend("xterm-256color", "WezTerm", false, false, false),
-        Some(TerminalImageBackend::KittyProtocol)
-    );
-    assert_eq!(
-        select_terminal_image_backend("screen-256color", "", true, false, false),
-        Some(TerminalImageBackend::KittyProtocol)
+        select_image_protocol(TerminalIdentity::Kitty, true),
+        ImageProtocol::KittyGraphics
     );
 }
 
 #[test]
-fn select_terminal_image_backend_falls_back_to_kitten_detection() {
+fn select_image_protocol_ghostty_always_enabled() {
     assert_eq!(
-        select_terminal_image_backend("xterm-256color", "", false, true, true),
-        Some(TerminalImageBackend::Kitten)
+        select_image_protocol(TerminalIdentity::Ghostty, false),
+        ImageProtocol::KittyGraphics
     );
     assert_eq!(
-        select_terminal_image_backend("xterm-256color", "", false, true, false),
-        None
+        select_image_protocol(TerminalIdentity::Ghostty, true),
+        ImageProtocol::KittyGraphics
+    );
+}
+
+#[test]
+fn select_image_protocol_wezterm_requires_override() {
+    assert_eq!(
+        select_image_protocol(TerminalIdentity::WezTerm, false),
+        ImageProtocol::None
+    );
+    assert_eq!(
+        select_image_protocol(TerminalIdentity::WezTerm, true),
+        ImageProtocol::KittyGraphics
+    );
+}
+
+#[test]
+fn select_image_protocol_warp_always_enabled() {
+    assert_eq!(
+        select_image_protocol(TerminalIdentity::Warp, false),
+        ImageProtocol::KittyGraphics
+    );
+    assert_eq!(
+        select_image_protocol(TerminalIdentity::Warp, true),
+        ImageProtocol::KittyGraphics
+    );
+}
+
+#[test]
+fn select_image_protocol_alacritty_and_other_never_enabled() {
+    assert_eq!(
+        select_image_protocol(TerminalIdentity::Alacritty, true),
+        ImageProtocol::None
+    );
+    assert_eq!(
+        select_image_protocol(TerminalIdentity::Other, true),
+        ImageProtocol::None
     );
 }
 

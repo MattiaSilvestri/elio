@@ -93,9 +93,18 @@ impl App {
     }
 
     pub(in crate::app) fn handle_wheel_event(&mut self, mouse: MouseEvent, delta: isize) {
-        let target = self
-            .high_frequency_preview_target(false)
-            .or_else(|| self.resolve_wheel_target(mouse.column, mouse.row));
+        // In HighFrequency mode (Alacritty, Ghostty, VTE), scroll event coordinates can be
+        // unreliable. hover_panel is tracked exclusively from MouseEventKind::Moved events
+        // (via ?1003h any-event tracking), which always carry the true cursor position.
+        // Use it as the primary routing source; fall back to scroll event coords, then auto-focus.
+        let target = if self.wheel_profile == WheelProfile::HighFrequency {
+            self.hover_panel
+                .or_else(|| self.resolve_wheel_target(mouse.column, mouse.row))
+                .or_else(|| self.preview_auto_focus_target(false))
+        } else {
+            self.resolve_wheel_target(mouse.column, mouse.row)
+                .or_else(|| self.preview_auto_focus_target(false))
+        };
         match target {
             Some(WheelTarget::Preview) => {
                 self.focus_preview_scroll();
@@ -113,11 +122,17 @@ impl App {
                 if mouse.modifiers.contains(KeyModifiers::SHIFT)
                     && self.preview_allows_horizontal_scroll()
                 {
-                    Self::queue_scroll(
-                        &mut self.wheel_scroll.preview_horizontal,
-                        delta,
-                        PREVIEW_HORIZONTAL_WHEEL_TUNING,
-                    );
+                    if self.wheel_profile == WheelProfile::HighFrequency {
+                        let _ = self.scroll_preview_columns_immediately(delta);
+                    } else {
+                        Self::queue_scroll(
+                            &mut self.wheel_scroll.preview_horizontal,
+                            delta,
+                            PREVIEW_HORIZONTAL_WHEEL_TUNING,
+                        );
+                    }
+                } else if self.wheel_profile == WheelProfile::HighFrequency {
+                    let _ = self.scroll_preview_immediately(delta);
                 } else {
                     Self::queue_scroll(&mut self.wheel_scroll.preview, delta, PREVIEW_WHEEL_TUNING);
                 }
@@ -143,18 +158,27 @@ impl App {
         mouse: MouseEvent,
         delta: isize,
     ) {
-        let target = self
-            .high_frequency_preview_target(true)
-            .or_else(|| self.resolve_wheel_target(mouse.column, mouse.row));
+        let target = if self.wheel_profile == WheelProfile::HighFrequency {
+            self.hover_panel
+                .or_else(|| self.resolve_wheel_target(mouse.column, mouse.row))
+                .or_else(|| self.preview_auto_focus_target(true))
+        } else {
+            self.resolve_wheel_target(mouse.column, mouse.row)
+                .or_else(|| self.preview_auto_focus_target(true))
+        };
         match target {
             Some(WheelTarget::Preview) => {
                 self.focus_preview_scroll();
                 if self.preview_allows_horizontal_scroll() {
-                    Self::queue_scroll(
-                        &mut self.wheel_scroll.preview_horizontal,
-                        delta,
-                        PREVIEW_HORIZONTAL_WHEEL_TUNING,
-                    );
+                    if self.wheel_profile == WheelProfile::HighFrequency {
+                        let _ = self.scroll_preview_columns_immediately(delta);
+                    } else {
+                        Self::queue_scroll(
+                            &mut self.wheel_scroll.preview_horizontal,
+                            delta,
+                            PREVIEW_HORIZONTAL_WHEEL_TUNING,
+                        );
+                    }
                 }
             }
             Some(WheelTarget::Entries) | None => {
@@ -451,7 +475,7 @@ impl App {
         }
 
         if self.wheel_profile == WheelProfile::HighFrequency
-            && self.high_frequency_preview_target(true) == Some(WheelTarget::Preview)
+            && self.preview_auto_focus_target(true) == Some(WheelTarget::Preview)
             && self.preview_allows_horizontal_scroll()
         {
             self.last_wheel_target = Some(WheelTarget::Preview);
@@ -526,13 +550,13 @@ impl App {
             && self.last_selection_change_at.elapsed() >= PREVIEW_AUTO_FOCUS_DELAY
     }
 
-    fn high_frequency_preview_target(&self, horizontal: bool) -> Option<WheelTarget> {
+    fn preview_auto_focus_target(&self, horizontal: bool) -> Option<WheelTarget> {
+        // Fallback only: routes to preview when cursor is outside both panels and the
+        // preview has scrollable content. Does NOT use last_wheel_target stickiness —
+        // cursor position (via resolve_wheel_target) is always consulted first, so this
+        // only fires when the cursor is genuinely ambiguous (e.g. in sidebar/toolbar).
         if self.wheel_profile != WheelProfile::HighFrequency {
             return None;
-        }
-
-        if self.last_wheel_target == Some(WheelTarget::Preview) {
-            return Some(WheelTarget::Preview);
         }
 
         let preview_ready = if horizontal {
@@ -578,5 +602,21 @@ impl App {
         }
         self.sync_preview_scroll();
         previous != self.preview_state.horizontal_scroll
+    }
+
+    // Scroll preview immediately without queuing, mirroring scroll_entry_immediately.
+    // Used in HighFrequency mode (Alacritty, Ghostty, VTE/Gnome Terminal) where the
+    // terminal sends many raw wheel events. The queue system causes lag and stalls in
+    // these terminals because it caps pending steps and applies burst throttle divisors.
+    fn scroll_preview_immediately(&mut self, delta: isize) -> bool {
+        self.wheel_scroll.preview.pending = 0;
+        self.wheel_scroll.preview.remainder = 0;
+        self.scroll_preview_lines(delta)
+    }
+
+    fn scroll_preview_columns_immediately(&mut self, delta: isize) -> bool {
+        self.wheel_scroll.preview_horizontal.pending = 0;
+        self.wheel_scroll.preview_horizontal.remainder = 0;
+        self.scroll_preview_columns(delta)
     }
 }

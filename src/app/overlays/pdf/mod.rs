@@ -10,13 +10,13 @@ use self::{
 };
 use super::super::*;
 use super::inline_image::{
-    OverlayPresentState, RenderedImageDimensions, TerminalImageBackend, fit_image_area,
-    place_terminal_image, read_png_dimensions,
+    ImageProtocol, OverlayPresentState, RenderedImageDimensions, fit_image_area,
+    place_terminal_image, preview_log, read_png_dimensions,
 };
 #[cfg(test)]
 use super::inline_image::{
-    build_kitty_clear_sequence, build_kitty_display_sequence, fallback_window_size_pixels,
-    parse_window_size, select_terminal_image_backend,
+    TerminalIdentity, build_kitty_clear_sequence, build_kitty_display_sequence,
+    fallback_window_size_pixels, parse_window_size, select_image_protocol,
 };
 use crate::file_info::{self, DocumentFormat};
 use anyhow::{Context, Result};
@@ -165,22 +165,31 @@ impl App {
 
     pub(in crate::app) fn present_pdf_overlay(
         &mut self,
-        backend: TerminalImageBackend,
+        protocol: ImageProtocol,
+        out: &mut Vec<u8>,
     ) -> Result<OverlayPresentState> {
         let Some(request) = self.active_pdf_overlay_request() else {
+            preview_log("present_pdf_overlay: no request");
             return Ok(OverlayPresentState::NotRequested);
         };
+        preview_log(format_args!(
+            "present_pdf_overlay: path={:?} page={}",
+            request.path, request.page
+        ));
 
         if !self.pdf_selection_activation_ready() {
+            preview_log("present_pdf_overlay: activation not ready → Waiting");
             return Ok(OverlayPresentState::Waiting);
         }
 
         let Some(requested_placement) = self.overlay_placement_for_request(&request) else {
+            preview_log("present_pdf_overlay: no placement yet → probe + Waiting");
             let _ = self.ensure_pdf_page_probe(&request);
             return Ok(OverlayPresentState::Waiting);
         };
         let render_key = self.pdf_render_key_from_request(&request, requested_placement);
         let Some(rendered) = self.ensure_pdf_render(&render_key) else {
+            preview_log("present_pdf_overlay: render not ready → Waiting");
             return Ok(OverlayPresentState::Waiting);
         };
         let placement = self.resolved_pdf_display_placement(
@@ -189,13 +198,24 @@ impl App {
             requested_placement,
             &rendered,
         );
+        preview_log(format_args!(
+            "present_pdf_overlay: placement={:?}",
+            placement.image_area
+        ));
         let displayed = DisplayedPdfPreview::from_request(&request, placement);
         if self.pdf_preview.displayed.as_ref() == Some(&displayed) {
+            preview_log("present_pdf_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
         }
-        self.clear_preview_overlay()?;
-        place_terminal_image(backend, &rendered, placement.image_area)
-            .context("failed to display PDF page")?;
+        out.extend(self.clear_preview_overlay()?);
+        let bytes =
+            place_terminal_image(protocol, &rendered, placement.image_area)
+                .context("failed to display PDF page")?;
+        preview_log(format_args!(
+            "present_pdf_overlay: placed {} bytes via {protocol:?}",
+            bytes.len()
+        ));
+        out.extend(bytes);
         self.pdf_preview.displayed = Some(displayed);
         Ok(OverlayPresentState::Displayed)
     }

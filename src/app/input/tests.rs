@@ -698,6 +698,194 @@ fn high_frequency_browser_wheel_moves_selection_immediately() {
 }
 
 #[test]
+fn high_frequency_preview_wheel_scrolls_preview_after_entries_scroll() {
+    // Reproduces: cursor moves to preview after scrolling entries in Alacritty/Ghostty.
+    // Even after entry scroll set last_wheel_target=Entries, a scroll event with
+    // coordinates inside the preview panel must route to preview.
+    let root = temp_path("wheel-hf-preview-after-entries");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    for name in ["a.txt", "b.txt", "c.txt"] {
+        fs::write(root.join(name), name).expect("failed to write temp file");
+    }
+    let long_file = root.join("long.txt");
+    let contents = (0..60).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+    fs::write(&long_file, &contents).expect("failed to write long file");
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    app.view_mode = ViewMode::List;
+    app.wheel_profile = WheelProfile::HighFrequency;
+    // Select the long file so preview has content to scroll.
+    // Plain text preview is built synchronously — no background wait needed.
+    let long_index = app
+        .entries
+        .iter()
+        .position(|e| e.path == long_file)
+        .expect("long.txt should be in entries");
+    app.select_index(long_index);
+
+    // Side-by-side layout: entries on the left, preview on the right
+    app.set_frame_state(FrameState {
+        entries_panel: Some(Rect { x: 0, y: 0, width: 40, height: 20 }),
+        preview_panel: Some(Rect { x: 40, y: 0, width: 40, height: 20 }),
+        preview_rows_visible: 16,
+        preview_cols_visible: 38,
+        metrics: ViewMetrics { cols: 1, rows_visible: 8 },
+        ..FrameState::default()
+    });
+
+    // Step 1: scroll entries (cursor in entries area)
+    app.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 5,
+        row: 5,
+        modifiers: KeyModifiers::NONE,
+    }))
+    .expect("entry scroll should be handled");
+    assert_eq!(app.last_wheel_target, Some(WheelTarget::Entries));
+
+    // Step 2: cursor moves to preview (Moved event — as sent by ?1003h)
+    app.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Moved,
+        column: 45,
+        row: 5,
+        modifiers: KeyModifiers::NONE,
+    }))
+    .expect("hover on preview should be handled");
+    assert_eq!(app.last_wheel_target, Some(WheelTarget::Preview));
+
+    // Step 3: scroll with cursor over preview — must scroll preview, not entries
+    let before_scroll = app.preview_state.scroll;
+    let before_selected = app.selected;
+    app.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 45,
+        row: 5,
+        modifiers: KeyModifiers::NONE,
+    }))
+    .expect("preview scroll should be handled");
+
+    assert_eq!(app.selected, before_selected, "entry selection must not change when scrolling preview");
+    assert!(app.preview_state.scroll > before_scroll, "preview must have scrolled");
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn high_frequency_preview_wheel_scrolls_preview_without_prior_moved_event() {
+    // Reproduces: in terminals where Moved events may not fire, the scroll event's own
+    // coordinates (cursor in preview panel) must be enough to route to preview.
+    let root = temp_path("wheel-hf-preview-no-moved");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let long_file = root.join("long.txt");
+    let contents = (0..60).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+    fs::write(&long_file, &contents).expect("failed to write long file");
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    app.view_mode = ViewMode::List;
+    app.wheel_profile = WheelProfile::HighFrequency;
+    // Force last_wheel_target to Entries (simulates: user was scrolling entries, then moves
+    // cursor to preview with no Moved event generated)
+    app.last_wheel_target = Some(WheelTarget::Entries);
+
+    let long_index = app
+        .entries
+        .iter()
+        .position(|e| e.path == long_file)
+        .expect("long.txt should be in entries");
+    app.select_index(long_index);
+
+    app.set_frame_state(FrameState {
+        entries_panel: Some(Rect { x: 0, y: 0, width: 40, height: 20 }),
+        preview_panel: Some(Rect { x: 40, y: 0, width: 40, height: 20 }),
+        preview_rows_visible: 16,
+        preview_cols_visible: 38,
+        metrics: ViewMetrics { cols: 1, rows_visible: 8 },
+        ..FrameState::default()
+    });
+
+    let before_scroll = app.preview_state.scroll;
+    let before_selected = app.selected;
+
+    // Scroll with cursor over preview, no prior Moved event
+    app.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 45,
+        row: 5,
+        modifiers: KeyModifiers::NONE,
+    }))
+    .expect("preview scroll should be handled");
+
+    assert_eq!(app.selected, before_selected, "entry selection must not change when scrolling preview");
+    assert!(app.preview_state.scroll > before_scroll, "preview must have scrolled without a prior Moved event");
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn hover_panel_routes_scroll_when_event_coords_are_outside_panels() {
+    // Reproduces the Alacritty/Ghostty bug: scroll events arrive with column/row that
+    // don't land inside the preview panel rect (e.g. zero or stale coords), but a prior
+    // Moved event correctly set hover_panel=Preview. hover_panel must win over coords.
+    let root = temp_path("wheel-hover-panel-routing");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let long_file = root.join("long.txt");
+    let contents = (0..60).map(|i| format!("line {i}")).collect::<Vec<_>>().join("\n");
+    fs::write(&long_file, &contents).expect("failed to write long file");
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    app.view_mode = ViewMode::List;
+    app.wheel_profile = WheelProfile::HighFrequency;
+    app.last_wheel_target = Some(WheelTarget::Entries);
+    app.hover_panel = None;
+
+    let long_index = app
+        .entries
+        .iter()
+        .position(|e| e.path == long_file)
+        .expect("long.txt should be in entries");
+    app.select_index(long_index);
+
+    app.set_frame_state(FrameState {
+        entries_panel: Some(Rect { x: 0, y: 0, width: 40, height: 20 }),
+        preview_panel: Some(Rect { x: 40, y: 0, width: 40, height: 20 }),
+        preview_rows_visible: 16,
+        preview_cols_visible: 38,
+        metrics: ViewMetrics { cols: 1, rows_visible: 8 },
+        ..FrameState::default()
+    });
+
+    // Moved event puts cursor in preview — hover_panel = Preview
+    app.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::Moved,
+        column: 45,
+        row: 5,
+        modifiers: KeyModifiers::NONE,
+    }))
+    .expect("moved event should be handled");
+    assert_eq!(app.hover_panel, Some(WheelTarget::Preview));
+
+    // Scroll event arrives with column=0 — outside both panels in terms of coordinate
+    // routing but hover_panel from the Moved event should still win.
+    let before_scroll = app.preview_state.scroll;
+    let before_selected = app.selected;
+    app.handle_event(Event::Mouse(MouseEvent {
+        kind: MouseEventKind::ScrollDown,
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    }))
+    .expect("scroll should be handled");
+
+    assert_eq!(app.selected, before_selected, "entry selection must not change");
+    assert!(
+        app.preview_state.scroll > before_scroll,
+        "hover_panel should have routed scroll to preview despite wrong coords"
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn high_frequency_browser_wheel_keeps_large_flick_distance() {
     let root = temp_path("wheel-high-frequency-distance");
     fs::create_dir_all(&root).expect("failed to create temp root");

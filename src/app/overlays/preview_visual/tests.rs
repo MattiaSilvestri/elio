@@ -3,7 +3,7 @@ use crate::app::overlays::images::{
     StaticImageKey, StaticImageOverlayMode, StaticImageOverlayRequest, image_target_height_px,
     image_target_width_px,
 };
-use crate::app::overlays::inline_image::{TerminalImageBackend, TerminalWindowSize};
+use crate::app::overlays::inline_image::{ImageProtocol, TerminalWindowSize};
 use crate::preview::{
     PreviewContent, PreviewKind, PreviewVisual, PreviewVisualKind, PreviewVisualLayout,
 };
@@ -30,7 +30,7 @@ fn temp_root(label: &str) -> PathBuf {
 
 fn configure_terminal_image_support(app: &mut App) {
     let (cells_width, cells_height) = crossterm::terminal::size().unwrap_or((120, 40));
-    app.terminal_images.backend = Some(TerminalImageBackend::KittyProtocol);
+    app.terminal_images.protocol = ImageProtocol::KittyGraphics;
     app.terminal_images.window = Some(TerminalWindowSize {
         cells_width,
         cells_height,

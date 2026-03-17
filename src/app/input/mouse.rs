@@ -89,6 +89,11 @@ impl App {
                 self.handle_horizontal_wheel_event(mouse, 1);
             }
             MouseEventKind::Moved | MouseEventKind::Drag(_) => {
+                // Track hover panel from Moved events separately. These events come from
+                // ?1003h (any-event tracking) and always carry the true cursor position,
+                // making hover_panel a reliable routing source when scroll event coordinates
+                // are inaccurate (observed in some Alacritty/Ghostty configurations).
+                self.hover_panel = self.panel_target_at(mouse.column, mouse.row);
                 self.update_wheel_target_from_position(mouse.column, mouse.row);
             }
             _ => {}

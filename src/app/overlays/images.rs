@@ -1,7 +1,7 @@
 use super::super::*;
 use super::inline_image::{
-    OverlayPresentState, RenderedImageDimensions, TerminalImageBackend, TerminalWindowSize,
-    command_exists, fit_image_area, place_terminal_image,
+    ImageProtocol, OverlayPresentState, RenderedImageDimensions, TerminalWindowSize,
+    command_exists, fit_image_area, place_terminal_image, preview_log,
 };
 use anyhow::Result;
 use image::{DynamicImage, GenericImageView, ImageFormat, ImageReader, imageops::FilterType};
@@ -186,25 +186,37 @@ impl App {
 
     pub(in crate::app) fn present_static_image_overlay(
         &mut self,
-        backend: TerminalImageBackend,
+        protocol: ImageProtocol,
+        out: &mut Vec<u8>,
     ) -> Result<OverlayPresentState> {
         let Some(request) = self.active_static_image_overlay_request() else {
+            preview_log("present_static_image_overlay: no request");
             return Ok(OverlayPresentState::NotRequested);
         };
+        preview_log(format_args!(
+            "present_static_image_overlay: path={:?} area={:?}",
+            request.path, request.area
+        ));
         if !self.image_selection_activation_ready() {
+            preview_log("present_static_image_overlay: activation not ready → Waiting");
             return Ok(OverlayPresentState::Waiting);
         }
 
         let prepared = match self.prepared_static_image_for_overlay(&request) {
             StaticImageOverlayPreparation::Ready(prepared) => prepared,
-            StaticImageOverlayPreparation::Pending => return Ok(OverlayPresentState::Waiting),
+            StaticImageOverlayPreparation::Pending => {
+                preview_log("present_static_image_overlay: preparation Pending → Waiting");
+                return Ok(OverlayPresentState::Waiting);
+            }
             StaticImageOverlayPreparation::Failed => {
+                preview_log("present_static_image_overlay: preparation Failed");
                 self.mark_static_image_failed(&request);
                 self.refresh_preview();
                 return Ok(OverlayPresentState::NotRequested);
             }
         };
         let Some(window_size) = self.cached_terminal_window() else {
+            preview_log("present_static_image_overlay: no cached window size → failed");
             self.mark_static_image_failed(&request);
             self.refresh_preview();
             return Ok(OverlayPresentState::NotRequested);
@@ -214,15 +226,32 @@ impl App {
             window_size,
             prepared.dimensions.width_px as f32 / prepared.dimensions.height_px as f32,
         );
+        preview_log(format_args!(
+            "present_static_image_overlay: dims={}x{} placement={:?}",
+            prepared.dimensions.width_px, prepared.dimensions.height_px, placement
+        ));
         let displayed = DisplayedStaticImagePreview::from_request(&request, placement);
         if self.image_preview.displayed.as_ref() == Some(&displayed) {
+            preview_log("present_static_image_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
         }
-        self.clear_preview_overlay()?;
-        if place_terminal_image(backend, &prepared.display_path, placement).is_err() {
-            self.mark_static_image_failed(&request);
-            self.refresh_preview();
-            return Ok(OverlayPresentState::NotRequested);
+        out.extend(self.clear_preview_overlay()?);
+        match place_terminal_image(protocol, &prepared.display_path, placement) {
+            Ok(bytes) => {
+                preview_log(format_args!(
+                    "present_static_image_overlay: placed {} bytes via {protocol:?}",
+                    bytes.len()
+                ));
+                out.extend(bytes);
+            }
+            Err(e) => {
+                preview_log(format_args!(
+                    "present_static_image_overlay: place_terminal_image error: {e}"
+                ));
+                self.mark_static_image_failed(&request);
+                self.refresh_preview();
+                return Ok(OverlayPresentState::NotRequested);
+            }
         }
 
         self.image_preview.displayed = Some(displayed);
@@ -231,24 +260,36 @@ impl App {
 
     pub(in crate::app) fn present_preview_visual_overlay(
         &mut self,
-        backend: TerminalImageBackend,
+        protocol: ImageProtocol,
+        out: &mut Vec<u8>,
     ) -> Result<OverlayPresentState> {
         let Some(request) = self.active_preview_visual_overlay_request() else {
+            preview_log("present_preview_visual_overlay: no request");
             return Ok(OverlayPresentState::NotRequested);
         };
+        preview_log(format_args!(
+            "present_preview_visual_overlay: path={:?} area={:?}",
+            request.path, request.area
+        ));
         if !self.image_selection_activation_ready() {
+            preview_log("present_preview_visual_overlay: activation not ready → Waiting");
             return Ok(OverlayPresentState::Waiting);
         }
 
         let prepared = match self.prepared_static_image_for_overlay(&request) {
             StaticImageOverlayPreparation::Ready(prepared) => prepared,
-            StaticImageOverlayPreparation::Pending => return Ok(OverlayPresentState::Waiting),
+            StaticImageOverlayPreparation::Pending => {
+                preview_log("present_preview_visual_overlay: preparation Pending → Waiting");
+                return Ok(OverlayPresentState::Waiting);
+            }
             StaticImageOverlayPreparation::Failed => {
+                preview_log("present_preview_visual_overlay: preparation Failed");
                 self.mark_static_image_failed(&request);
                 return Ok(OverlayPresentState::NotRequested);
             }
         };
         let Some(window_size) = self.cached_terminal_window() else {
+            preview_log("present_preview_visual_overlay: no cached window size → failed");
             self.mark_static_image_failed(&request);
             return Ok(OverlayPresentState::NotRequested);
         };
@@ -257,14 +298,31 @@ impl App {
             window_size,
             prepared.dimensions.width_px as f32 / prepared.dimensions.height_px as f32,
         );
+        preview_log(format_args!(
+            "present_preview_visual_overlay: dims={}x{} placement={:?}",
+            prepared.dimensions.width_px, prepared.dimensions.height_px, placement
+        ));
         let displayed = DisplayedStaticImagePreview::from_request(&request, placement);
         if self.image_preview.displayed.as_ref() == Some(&displayed) {
+            preview_log("present_preview_visual_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
         }
-        self.clear_preview_overlay()?;
-        if place_terminal_image(backend, &prepared.display_path, placement).is_err() {
-            self.mark_static_image_failed(&request);
-            return Ok(OverlayPresentState::NotRequested);
+        out.extend(self.clear_preview_overlay()?);
+        match place_terminal_image(protocol, &prepared.display_path, placement) {
+            Ok(bytes) => {
+                preview_log(format_args!(
+                    "present_preview_visual_overlay: placed {} bytes via {protocol:?}",
+                    bytes.len()
+                ));
+                out.extend(bytes);
+            }
+            Err(e) => {
+                preview_log(format_args!(
+                    "present_preview_visual_overlay: place_terminal_image error: {e}"
+                ));
+                self.mark_static_image_failed(&request);
+                return Ok(OverlayPresentState::NotRequested);
+            }
         }
 
         self.image_preview.displayed = Some(displayed);

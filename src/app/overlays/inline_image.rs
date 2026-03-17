@@ -6,14 +6,27 @@ use ratatui::layout::Rect;
 use std::{
     env,
     fs::File,
-    io::{self, Read, Write},
+    io::{Read, Write as _},
     path::Path,
     process::Command,
 };
 
+/// Write a line to `/tmp/elio-preview.log` when `ELIO_DEBUG_PREVIEW` is set.
+/// Does nothing (and compiles to nothing meaningful) when the env var is absent.
+pub(in crate::app) fn preview_log(msg: impl std::fmt::Display) {
+    if env::var_os("ELIO_DEBUG_PREVIEW").is_none() {
+        return;
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("/tmp/elio-preview.log")
+        .and_then(|mut f| writeln!(f, "{msg}"));
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(in crate::app) struct TerminalImageState {
-    pub(super) backend: Option<TerminalImageBackend>,
+    pub(super) protocol: ImageProtocol,
     pub(super) window: Option<TerminalWindowSize>,
 }
 
@@ -25,9 +38,23 @@ pub(in crate::app) enum OverlayPresentState {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(in crate::app) enum TerminalImageBackend {
-    KittyProtocol,
-    Kitten,
+pub(in crate::app) enum TerminalIdentity {
+    Kitty,
+    Ghostty,
+    Warp,
+    WezTerm,
+    Alacritty,
+    Other,
+}
+
+/// The wire protocol used to render images in the terminal preview pane.
+/// Kept separate from `TerminalIdentity` so that multiple terminals can share
+/// the same protocol without coupling detection logic to rendering logic.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(in crate::app) enum ImageProtocol {
+    KittyGraphics,
+    #[default]
+    None,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -46,9 +73,23 @@ pub(in crate::app) struct RenderedImageDimensions {
 
 impl App {
     pub(crate) fn enable_terminal_image_previews(&mut self) {
-        self.terminal_images.backend = detect_terminal_image_backend();
+        let identity = detect_terminal_identity();
+        let image_previews_override = env::var_os("ELIO_IMAGE_PREVIEWS").is_some();
+        let protocol = select_image_protocol(identity, image_previews_override);
+        preview_log(format_args!(
+            "enable_terminal_image_previews:\n  TERM={}\n  TERM_PROGRAM={}\n  KITTY_WINDOW_ID={}\n  WARP_SESSION_ID={}\n  identity={identity:?}\n  override={image_previews_override}\n  protocol={protocol:?}",
+            env::var("TERM").unwrap_or_default(),
+            env::var("TERM_PROGRAM").unwrap_or_default(),
+            env::var_os("KITTY_WINDOW_ID").is_some(),
+            env::var_os("WARP_SESSION_ID").is_some(),
+        ));
+        self.terminal_images.protocol = protocol;
         self.pdf_preview.pdf_tools_available = pdf_preview_tools_available();
         self.refresh_terminal_image_window_size();
+        preview_log(format_args!(
+            "  window={:?}",
+            self.terminal_images.window
+        ));
         self.sync_pdf_preview_selection();
     }
 
@@ -58,61 +99,79 @@ impl App {
     }
 
     pub(in crate::app) fn terminal_image_overlay_available(&self) -> bool {
-        self.terminal_images.backend.is_some()
+        self.terminal_images.protocol != ImageProtocol::None
     }
 
     pub(in crate::app) fn cached_terminal_window(&self) -> Option<TerminalWindowSize> {
         self.terminal_images.window
     }
 
-    pub(crate) fn present_preview_overlay(&mut self) -> Result<()> {
+    pub(crate) fn present_preview_overlay(&mut self) -> Result<Vec<u8>> {
         if self.browser_wheel_burst_active() {
-            return Ok(());
+            return Ok(Vec::new());
         }
 
-        let Some(backend) = self.terminal_images.backend else {
-            self.clear_preview_overlay()?;
-            return Ok(());
-        };
+        let protocol = self.terminal_images.protocol;
+        if protocol == ImageProtocol::None {
+            preview_log("present_preview_overlay: no protocol → clear");
+            return self.clear_preview_overlay();
+        }
 
         let keep_stale_page_preview_overlay =
             self.keep_displayed_page_preview_overlay_while_pending();
+        let mut out = Vec::new();
         if (self.static_image_overlay_displayed()
             && !self.displayed_static_image_matches_active()
             && !keep_stale_page_preview_overlay)
             || self.pdf_overlay_displayed() && !self.displayed_pdf_overlay_matches_active()
         {
-            self.clear_preview_overlay()?;
+            out.extend(self.clear_preview_overlay()?);
         }
 
-        match self.present_static_image_overlay(backend)? {
-            OverlayPresentState::Displayed | OverlayPresentState::Waiting => return Ok(()),
+        let static_state = self.present_static_image_overlay(protocol, &mut out)?;
+        preview_log(format_args!(
+            "present_preview_overlay: protocol={protocol:?} static={static_state:?} out_len={}",
+            out.len()
+        ));
+        match static_state {
+            OverlayPresentState::Displayed | OverlayPresentState::Waiting => return Ok(out),
             OverlayPresentState::NotRequested => {}
         }
 
-        match self.present_pdf_overlay(backend)? {
-            OverlayPresentState::Displayed | OverlayPresentState::Waiting => return Ok(()),
+        let pdf_state = self.present_pdf_overlay(protocol, &mut out)?;
+        preview_log(format_args!(
+            "present_preview_overlay: pdf={pdf_state:?} out_len={}",
+            out.len()
+        ));
+        match pdf_state {
+            OverlayPresentState::Displayed | OverlayPresentState::Waiting => return Ok(out),
             OverlayPresentState::NotRequested => {}
         }
 
-        match self.present_preview_visual_overlay(backend)? {
-            OverlayPresentState::Displayed | OverlayPresentState::Waiting => Ok(()),
-            OverlayPresentState::NotRequested if keep_stale_page_preview_overlay => Ok(()),
-            OverlayPresentState::NotRequested => self.clear_preview_overlay(),
+        let visual_state = self.present_preview_visual_overlay(protocol, &mut out)?;
+        preview_log(format_args!(
+            "present_preview_overlay: visual={visual_state:?} out_len={}",
+            out.len()
+        ));
+        match visual_state {
+            OverlayPresentState::Displayed | OverlayPresentState::Waiting => Ok(out),
+            OverlayPresentState::NotRequested if keep_stale_page_preview_overlay => Ok(out),
+            OverlayPresentState::NotRequested => {
+                out.extend(self.clear_preview_overlay()?);
+                Ok(out)
+            }
         }
     }
 
-    pub(crate) fn clear_preview_overlay(&mut self) -> Result<()> {
+    pub(crate) fn clear_preview_overlay(&mut self) -> Result<Vec<u8>> {
         if !self.static_image_overlay_displayed() && !self.pdf_overlay_displayed() {
-            return Ok(());
+            return Ok(Vec::new());
         }
-
-        if let Some(backend) = self.terminal_images.backend {
-            clear_terminal_images(backend).context("failed to clear preview overlay")?;
-        }
+        let bytes = clear_terminal_images(self.terminal_images.protocol)
+            .context("failed to clear preview overlay")?;
         self.clear_displayed_static_image();
         self.clear_displayed_pdf_overlay();
-        Ok(())
+        Ok(bytes)
     }
 
     pub(crate) fn preview_uses_image_overlay(&self) -> bool {
@@ -125,10 +184,10 @@ impl App {
     }
 
     fn refresh_terminal_image_window_size(&mut self) {
-        self.terminal_images.window = self
-            .terminal_images
-            .backend
-            .and_then(|_| query_terminal_window_size());
+        self.terminal_images.window =
+            (self.terminal_images.protocol != ImageProtocol::None)
+                .then(query_terminal_window_size)
+                .flatten();
     }
 }
 
@@ -136,42 +195,41 @@ fn pdf_preview_tools_available() -> bool {
     command_exists("pdfinfo") && command_exists("pdftocairo")
 }
 
-pub(in crate::app) fn detect_terminal_image_backend() -> Option<TerminalImageBackend> {
-    let term = env::var("TERM").unwrap_or_default();
-    let term_program = env::var("TERM_PROGRAM").unwrap_or_default();
-    let kitten_available = command_exists("kitten");
-    let kitten_detected = kitten_available && detect_kitten_backend_support();
+pub(in crate::app) fn detect_terminal_identity() -> TerminalIdentity {
+    let term = env::var("TERM").unwrap_or_default().to_ascii_lowercase();
+    let term_program = env::var("TERM_PROGRAM")
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let kitty_window_id = env::var_os("KITTY_WINDOW_ID").is_some();
 
-    select_terminal_image_backend(
-        &term,
-        &term_program,
-        env::var_os("KITTY_WINDOW_ID").is_some(),
-        kitten_available,
-        kitten_detected,
-    )
+    if kitty_window_id || term.contains("xterm-kitty") || term_program == "kitty" {
+        TerminalIdentity::Kitty
+    } else if term.contains("ghostty") || term_program == "ghostty" {
+        TerminalIdentity::Ghostty
+    } else if term.contains("wezterm") || term_program == "wezterm" {
+        TerminalIdentity::WezTerm
+    } else if term_program.contains("warp") || env::var_os("WARP_SESSION_ID").is_some() {
+        TerminalIdentity::Warp
+    } else if term.contains("alacritty")
+        || term_program.contains("alacritty")
+        || env::var_os("ALACRITTY_SOCKET").is_some()
+    {
+        TerminalIdentity::Alacritty
+    } else {
+        TerminalIdentity::Other
+    }
 }
 
-pub(in crate::app) fn select_terminal_image_backend(
-    term: &str,
-    term_program: &str,
-    kitty_window_id_present: bool,
-    kitten_available: bool,
-    kitten_detected: bool,
-) -> Option<TerminalImageBackend> {
-    let term = term.to_ascii_lowercase();
-    let term_program = term_program.to_ascii_lowercase();
-    let supports_kitty_protocol = kitty_window_id_present
-        || term.contains("xterm-kitty")
-        || term.contains("ghostty")
-        || term.contains("wezterm")
-        || matches!(term_program.as_str(), "kitty" | "ghostty" | "wezterm");
-
-    if supports_kitty_protocol {
-        Some(TerminalImageBackend::KittyProtocol)
-    } else if kitten_available && kitten_detected {
-        Some(TerminalImageBackend::Kitten)
-    } else {
-        None
+pub(in crate::app) fn select_image_protocol(
+    identity: TerminalIdentity,
+    image_previews_override: bool,
+) -> ImageProtocol {
+    match identity {
+        TerminalIdentity::Kitty => ImageProtocol::KittyGraphics,
+        TerminalIdentity::Ghostty => ImageProtocol::KittyGraphics,
+        TerminalIdentity::Warp => ImageProtocol::KittyGraphics,
+        TerminalIdentity::WezTerm if image_previews_override => ImageProtocol::KittyGraphics,
+        _ => ImageProtocol::None,
     }
 }
 
@@ -188,7 +246,6 @@ pub(in crate::app) fn query_terminal_window_size() -> Option<TerminalWindowSize>
             let height = u32::from(size.height);
             (width > 0 && height > 0).then_some((width, height))
         })
-        .or_else(query_kitten_window_size)
         .unwrap_or_else(|| fallback_window_size_pixels(cells_width, cells_height));
     Some(TerminalWindowSize {
         cells_width,
@@ -198,6 +255,7 @@ pub(in crate::app) fn query_terminal_window_size() -> Option<TerminalWindowSize>
     })
 }
 
+#[cfg(test)]
 pub(in crate::app) fn parse_window_size(output: &str) -> Option<(u32, u32)> {
     let trimmed = output.trim();
     let (width, height) = trimmed.split_once('x')?;
@@ -273,20 +331,20 @@ pub(in crate::app) fn fit_image_area(
 }
 
 pub(in crate::app) fn place_terminal_image(
-    backend: TerminalImageBackend,
+    protocol: ImageProtocol,
     path: &Path,
     area: Rect,
-) -> Result<()> {
-    match backend {
-        TerminalImageBackend::Kitten => place_terminal_image_with_kitten(path, area),
-        TerminalImageBackend::KittyProtocol => place_terminal_image_with_kitty_protocol(path, area),
+) -> Result<Vec<u8>> {
+    match protocol {
+        ImageProtocol::KittyGraphics => place_terminal_image_with_kitty_protocol(path, area),
+        ImageProtocol::None => Ok(Vec::new()),
     }
 }
 
-pub(in crate::app) fn clear_terminal_images(backend: TerminalImageBackend) -> Result<()> {
-    match backend {
-        TerminalImageBackend::Kitten => clear_terminal_images_with_kitten(),
-        TerminalImageBackend::KittyProtocol => clear_terminal_images_with_kitty_protocol(),
+pub(in crate::app) fn clear_terminal_images(protocol: ImageProtocol) -> Result<Vec<u8>> {
+    match protocol {
+        ImageProtocol::KittyGraphics => clear_terminal_images_with_kitty_protocol(),
+        ImageProtocol::None => Ok(Vec::new()),
     }
 }
 
@@ -315,84 +373,10 @@ pub(in crate::app) fn command_exists(program: &str) -> bool {
         .is_ok_and(|status| status.success())
 }
 
-fn detect_kitten_backend_support() -> bool {
-    Command::new("kitten")
-        .arg("icat")
-        .arg("--stdin=no")
-        .arg("--detect-support")
-        .arg("--detection-timeout=1")
-        .status()
-        .is_ok_and(|status| status.success())
+fn place_terminal_image_with_kitty_protocol(path: &Path, area: Rect) -> Result<Vec<u8>> {
+    Ok(build_kitty_display_sequence(path, area).into_bytes())
 }
 
-fn query_kitten_window_size() -> Option<(u32, u32)> {
-    if !command_exists("kitten") {
-        return None;
-    }
-
-    let output = Command::new("kitten")
-        .arg("icat")
-        .arg("--print-window-size")
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    parse_window_size(&String::from_utf8_lossy(&output.stdout))
-}
-
-fn place_terminal_image_with_kitten(path: &Path, area: Rect) -> Result<()> {
-    let place = format!(
-        "{}x{}@{}x{}",
-        area.width.max(1),
-        area.height.max(1),
-        area.x,
-        area.y
-    );
-    let status = Command::new("kitten")
-        .arg("icat")
-        .arg("--stdin=no")
-        .arg("--transfer-mode=file")
-        .arg("--place")
-        .arg(place)
-        .arg("--scale-up")
-        .arg(path)
-        .status()
-        .context("failed to start kitten icat")?;
-    if status.success() {
-        Ok(())
-    } else {
-        anyhow::bail!("kitten icat exited with {status}");
-    }
-}
-
-fn place_terminal_image_with_kitty_protocol(path: &Path, area: Rect) -> Result<()> {
-    write_terminal_escape(&build_kitty_display_sequence(path, area))
-}
-
-fn clear_terminal_images_with_kitten() -> Result<()> {
-    let status = Command::new("kitten")
-        .arg("icat")
-        .arg("--stdin=no")
-        .arg("--clear")
-        .status()
-        .context("failed to start kitten icat")?;
-    if status.success() {
-        Ok(())
-    } else {
-        anyhow::bail!("kitten icat exited with {status}");
-    }
-}
-
-fn clear_terminal_images_with_kitty_protocol() -> Result<()> {
-    write_terminal_escape(build_kitty_clear_sequence())
-}
-
-fn write_terminal_escape(sequence: &str) -> Result<()> {
-    let mut stdout = io::stdout();
-    stdout
-        .write_all(sequence.as_bytes())
-        .context("failed to write terminal escape")?;
-    stdout.flush().context("failed to flush terminal escape")?;
-    Ok(())
+fn clear_terminal_images_with_kitty_protocol() -> Result<Vec<u8>> {
+    Ok(build_kitty_clear_sequence().as_bytes().to_vec())
 }
