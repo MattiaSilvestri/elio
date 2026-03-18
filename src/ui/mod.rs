@@ -20,10 +20,14 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
     state.trash_panel = None;
     state.trash_confirm_btn = None;
     state.trash_cancel_btn = None;
+    state.restore_panel = None;
+    state.restore_confirm_btn = None;
+    state.restore_cancel_btn = None;
     state.create_panel = None;
     state.create_list_area = None;
     state.create_scroll_top = 0;
     state.search_panel = None;
+    state.help_panel = None;
     state.preview_panel = None;
     state.preview_media_area = None;
     state.back_button = None;
@@ -72,11 +76,13 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
 
     if app.trash_is_open() {
         overlay_manager::render_trash_overlay(frame, area, app, state, palette);
+    } else if app.restore_is_open() {
+        overlay_manager::render_restore_overlay(frame, area, app, state, palette);
     } else if app.create_is_open() {
         overlay_manager::render_create_overlay(frame, area, app, state, palette);
     } else if app.search_is_open() {
         overlay_manager::render_search_overlay(frame, area, app, state, palette);
     } else if app.help_open {
-        overlay_manager::render_help(frame, area, palette);
+        overlay_manager::render_help(frame, area, state, palette);
     }
 }

@@ -35,6 +35,7 @@ pub(in crate::app) struct ImagePreviewState {
     pub(super) failed_images: HashSet<StaticImageKey>,
     pub(super) pending_prepares: HashSet<StaticImageKey>,
     displayed: Option<DisplayedStaticImagePreview>,
+    displayed_excluded: Vec<Rect>,
     activation_ready_at: Option<Instant>,
     ffmpeg_available: Option<bool>,
     magick_available: Option<bool>,
@@ -188,6 +189,7 @@ impl App {
     pub(in crate::app) fn present_static_image_overlay(
         &mut self,
         protocol: ImageProtocol,
+        excluded: &[Rect],
         out: &mut Vec<u8>,
     ) -> Result<OverlayPresentState> {
         let Some(request) = self.active_static_image_overlay_request() else {
@@ -232,12 +234,19 @@ impl App {
             prepared.dimensions.width_px, prepared.dimensions.height_px, placement
         ));
         let displayed = DisplayedStaticImagePreview::from_request(&request, placement);
-        if self.image_preview.displayed.as_ref() == Some(&displayed) {
+        let image_changed = self.image_preview.displayed.as_ref() != Some(&displayed);
+        let excluded_changed = excluded != self.image_preview.displayed_excluded.as_slice();
+        if !image_changed && !excluded_changed {
             preview_log("present_static_image_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
         }
-        out.extend(self.clear_preview_overlay()?);
-        match place_terminal_image(protocol, &prepared.display_path, placement) {
+        // Only clear the old image when the image itself changed, not when only the
+        // excluded rects changed, to avoid a visible flash as the image disappears
+        // and then immediately reappears.
+        if image_changed {
+            out.extend(self.clear_preview_overlay()?);
+        }
+        match place_terminal_image(protocol, &prepared.display_path, placement, excluded) {
             Ok(bytes) => {
                 preview_log(format_args!(
                     "present_static_image_overlay: placed {} bytes via {protocol:?}",
@@ -256,12 +265,14 @@ impl App {
         }
 
         self.image_preview.displayed = Some(displayed);
+        self.image_preview.displayed_excluded = excluded.to_vec();
         Ok(OverlayPresentState::Displayed)
     }
 
     pub(in crate::app) fn present_preview_visual_overlay(
         &mut self,
         protocol: ImageProtocol,
+        excluded: &[Rect],
         out: &mut Vec<u8>,
     ) -> Result<OverlayPresentState> {
         let Some(request) = self.active_preview_visual_overlay_request() else {
@@ -304,12 +315,16 @@ impl App {
             prepared.dimensions.width_px, prepared.dimensions.height_px, placement
         ));
         let displayed = DisplayedStaticImagePreview::from_request(&request, placement);
-        if self.image_preview.displayed.as_ref() == Some(&displayed) {
+        let image_changed = self.image_preview.displayed.as_ref() != Some(&displayed);
+        let excluded_changed = excluded != self.image_preview.displayed_excluded.as_slice();
+        if !image_changed && !excluded_changed {
             preview_log("present_preview_visual_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
         }
-        out.extend(self.clear_preview_overlay()?);
-        match place_terminal_image(protocol, &prepared.display_path, placement) {
+        if image_changed {
+            out.extend(self.clear_preview_overlay()?);
+        }
+        match place_terminal_image(protocol, &prepared.display_path, placement, excluded) {
             Ok(bytes) => {
                 preview_log(format_args!(
                     "present_preview_visual_overlay: placed {} bytes via {protocol:?}",
@@ -327,6 +342,7 @@ impl App {
         }
 
         self.image_preview.displayed = Some(displayed);
+        self.image_preview.displayed_excluded = excluded.to_vec();
         Ok(OverlayPresentState::Displayed)
     }
 

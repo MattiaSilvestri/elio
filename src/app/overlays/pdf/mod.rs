@@ -15,7 +15,7 @@ use super::inline_image::{
 };
 #[cfg(test)]
 use super::inline_image::{
-    TerminalIdentity, build_kitty_clear_sequence, build_kitty_display_sequence,
+    TerminalIdentity, build_kitty_clear_sequence, build_kitty_upload_sequence,
     fallback_window_size_pixels, parse_window_size, select_image_protocol,
 };
 use crate::file_info::{self, DocumentFormat};
@@ -59,6 +59,7 @@ pub(in crate::app) struct PdfPreviewState {
     pending_renders: HashSet<PdfRenderKey>,
     failed_renders: HashSet<PdfRenderKey>,
     displayed: Option<DisplayedPdfPreview>,
+    displayed_excluded: Vec<Rect>,
     activation_ready_at: Option<Instant>,
     last_navigation_direction: isize,
 }
@@ -166,6 +167,7 @@ impl App {
     pub(in crate::app) fn present_pdf_overlay(
         &mut self,
         protocol: ImageProtocol,
+        excluded: &[Rect],
         out: &mut Vec<u8>,
     ) -> Result<OverlayPresentState> {
         let Some(request) = self.active_pdf_overlay_request() else {
@@ -203,13 +205,17 @@ impl App {
             placement.image_area
         ));
         let displayed = DisplayedPdfPreview::from_request(&request, placement);
-        if self.pdf_preview.displayed.as_ref() == Some(&displayed) {
+        let image_changed = self.pdf_preview.displayed.as_ref() != Some(&displayed);
+        let excluded_changed = excluded != self.pdf_preview.displayed_excluded.as_slice();
+        if !image_changed && !excluded_changed {
             preview_log("present_pdf_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
         }
-        out.extend(self.clear_preview_overlay()?);
+        if image_changed {
+            out.extend(self.clear_preview_overlay()?);
+        }
         let bytes =
-            place_terminal_image(protocol, &rendered, placement.image_area)
+            place_terminal_image(protocol, &rendered, placement.image_area, excluded)
                 .context("failed to display PDF page")?;
         preview_log(format_args!(
             "present_pdf_overlay: placed {} bytes via {protocol:?}",
@@ -217,6 +223,7 @@ impl App {
         ));
         out.extend(bytes);
         self.pdf_preview.displayed = Some(displayed);
+        self.pdf_preview.displayed_excluded = excluded.to_vec();
         Ok(OverlayPresentState::Displayed)
     }
 

@@ -986,24 +986,21 @@ fn fallback_window_size_pixels_uses_reasonable_cell_defaults() {
 }
 
 #[test]
-fn build_kitty_display_sequence_positions_png_without_cursor_motion() {
+fn build_kitty_upload_sequence_uses_unicode_placeholder_mode() {
     let path = Path::new("/tmp/demo.pdf-preview.png");
-    let area = Rect {
-        x: 7,
-        y: 4,
-        width: 30,
-        height: 12,
-    };
+    let id = 42_u32;
 
-    let sequence = build_kitty_display_sequence(path, area);
+    let sequence = build_kitty_upload_sequence(path, id);
 
-    assert!(sequence.starts_with("\u{1b}[5;8H\u{1b}_G"));
+    assert!(sequence.starts_with("\u{1b}_G"));
     assert!(sequence.contains("a=T"));
     assert!(sequence.contains("q=2"));
     assert!(sequence.contains("t=f"));
-    assert!(sequence.contains("c=30"));
-    assert!(sequence.contains("r=12"));
+    assert!(sequence.contains("U=1"));
+    assert!(sequence.contains(&format!("i={id}")));
     assert!(sequence.contains("C=1"));
+    assert!(!sequence.contains("c="));
+    assert!(!sequence.contains("r="));
     assert!(sequence.contains(&BASE64_STANDARD.encode(path.as_os_str().as_encoded_bytes())));
     assert!(sequence.ends_with("\u{1b}\\"));
 }

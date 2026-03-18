@@ -152,13 +152,17 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         }
 
         if dirty {
-            // iTerm2 has no clear primitive, so we erase image cells with blank
-            // spaces before terminal.draw(). ratatui then overpaints those cells
-            // with the correct panel background in the same render pass, avoiding
-            // the black-background artifact that occurs when erasing after draw.
+            // Erase stale image cells before terminal.draw() so ratatui can
+            // overpaint them with the correct panel background in the same pass.
+            // - iTerm2: images are drawn at pixel level; erasing prevents ghost pixels.
+            // - Kitty unicode placeholder: placeholder chars are terminal cells;
+            //   ratatui's differential renderer skips "unchanged" cells leaving
+            //   stale image content visible after navigation or resize.
             let pre_erase = app.iterm_pre_draw_erase();
-            if !pre_erase.is_empty() {
+            let kitty_erase = app.kitty_pre_draw_erase();
+            if !pre_erase.is_empty() || !kitty_erase.is_empty() {
                 terminal.backend_mut().write_all(&pre_erase)?;
+                terminal.backend_mut().write_all(&kitty_erase)?;
             }
             let mut frame_state = app::FrameState::default();
             terminal.draw(|frame| ui::render(frame, &app, &mut frame_state))?;
