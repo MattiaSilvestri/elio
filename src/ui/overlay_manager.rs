@@ -863,7 +863,7 @@ pub(super) fn render_help(
         },
         HelpEntry {
             key: "d",
-            action: "trash selected",
+            action: "trash (delete if in trash)",
         },
         HelpEntry {
             key: "r",
