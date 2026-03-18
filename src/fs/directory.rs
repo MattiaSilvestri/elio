@@ -75,6 +75,12 @@ pub(crate) fn build_sidebar_items() -> Vec<SidebarItem> {
         }
     }
 
+    items.push(SidebarItem {
+        title: "Root".to_string(),
+        icon: "󰋊",
+        path: PathBuf::from("/"),
+    });
+
     if let Some(trash) = trash_dir(&home) {
         items.push(SidebarItem {
             title: "Trash".to_string(),
@@ -82,12 +88,6 @@ pub(crate) fn build_sidebar_items() -> Vec<SidebarItem> {
             path: trash,
         });
     }
-
-    items.push(SidebarItem {
-        title: "Root".to_string(),
-        icon: "󰋊",
-        path: PathBuf::from("/"),
-    });
 
     items
 }
