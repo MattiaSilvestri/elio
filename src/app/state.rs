@@ -94,6 +94,13 @@ pub(super) struct TrashOverlay {
     pub(super) permanent: bool,
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct RestoreOverlay {
+    pub(super) targets: Vec<TrashTarget>,
+    pub(super) scroll: usize,
+    pub(super) confirmed: bool,
+}
+
 pub(super) struct CreateOverlay {
     /// One entry per line; always at least one element.
     pub(super) lines: Vec<String>,
@@ -302,6 +309,7 @@ pub struct App {
     pub(super) frame_state: FrameState,
     pub(super) selected_paths: HashSet<PathBuf>,
     pub(super) trash: Option<TrashOverlay>,
+    pub(super) restore: Option<RestoreOverlay>,
     pub(super) create: Option<CreateOverlay>,
     pub(super) search: Option<SearchOverlay>,
     pub(super) search_cache: Option<SearchCache>,
@@ -374,6 +382,7 @@ impl App {
             frame_state: FrameState::default(),
             selected_paths: HashSet::new(),
             trash: None,
+            restore: None,
             create: None,
             search: None,
             search_cache: None,

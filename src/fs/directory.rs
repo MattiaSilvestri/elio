@@ -638,3 +638,90 @@ mod tests {
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Restore from trash
+// ---------------------------------------------------------------------------
+
+/// Restores a trashed item to its original location.
+///
+/// `entry_path` must be a file inside a FreeDesktop `Trash/files/` directory.
+/// The corresponding `.trashinfo` is used to find the original path. Returns
+/// the restored destination path on success.
+pub(crate) fn restore_trash_item(entry_path: &Path) -> anyhow::Result<PathBuf> {
+    let name = entry_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| anyhow::anyhow!("cannot determine file name for {:?}", entry_path))?;
+
+    // Derive the `info/` dir: Trash/files/../info == Trash/info
+    let info_dir = entry_path
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|trash_root| trash_root.join("info"))
+        .ok_or_else(|| anyhow::anyhow!("cannot determine trash info dir for {:?}", entry_path))?;
+
+    let info_path = info_dir.join(format!("{name}.trashinfo"));
+    let content = fs::read_to_string(&info_path)
+        .with_context(|| format!("cannot read {:?}", info_path))?;
+
+    let original = parse_trashinfo_original_path(&content)
+        .ok_or_else(|| anyhow::anyhow!("cannot parse original path from {:?}", info_path))?;
+
+    if original.exists() {
+        anyhow::bail!(
+            "destination already exists: {:?}",
+            original
+        );
+    }
+
+    if let Some(parent) = original.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("cannot create parent dir {:?}", parent))?;
+        }
+    }
+
+    fs::rename(entry_path, &original)
+        .with_context(|| format!("cannot move {:?} to {:?}", entry_path, original))?;
+
+    let _ = fs::remove_file(&info_path);
+
+    Ok(original)
+}
+
+fn parse_trashinfo_original_path(content: &str) -> Option<PathBuf> {
+    for line in content.lines() {
+        if let Some(encoded) = line.trim().strip_prefix("Path=") {
+            return Some(PathBuf::from(percent_decode(encoded)));
+        }
+    }
+    None
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (hex_nibble(bytes[i + 1]), hex_nibble(bytes[i + 2])) {
+                out.push(hi << 4 | lo);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(out).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+}
+
+fn hex_nibble(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}

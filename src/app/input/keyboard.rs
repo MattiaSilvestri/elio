@@ -20,6 +20,10 @@ impl App {
             return self.handle_trash_key(key);
         }
 
+        if self.restore.is_some() {
+            return self.handle_restore_key(key);
+        }
+
         if self.create.is_some() {
             return self.handle_create_key(key);
         }
@@ -176,6 +180,7 @@ impl App {
             KeyCode::Char(' ') => self.toggle_selection(),
             KeyCode::Char('a') => self.open_create_prompt(),
             KeyCode::Char('d') => self.open_trash_prompt(),
+            KeyCode::Char('r') => self.open_restore_prompt(),
             KeyCode::Char('f') => self.open_search_with_status(SearchScope::Folders),
             KeyCode::Char('o') => self.open_in_system()?,
             _ => {}

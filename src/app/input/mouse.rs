@@ -6,6 +6,10 @@ impl App {
             return self.handle_trash_mouse(mouse);
         }
 
+        if self.restore.is_some() {
+            return self.handle_restore_mouse(mouse);
+        }
+
         if self.create.is_some() {
             return self.handle_create_mouse(mouse);
         }
