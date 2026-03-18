@@ -164,19 +164,25 @@ fn render_grid(
     state: &mut FrameState,
     palette: Palette,
 ) {
-    helpers::fill_area(frame, area, palette.panel_alt, palette.text);
+    let (content_area, scrollbar_area) = split_scrollbar_area(area);
+
+    helpers::fill_area(frame, content_area, palette.panel_alt, palette.text);
+    if let Some(sb) = scrollbar_area {
+        helpers::fill_area(frame, sb, palette.panel_alt, palette.border);
+    }
+
     let spec = helpers::grid_zoom_spec(app.zoom_level);
     let gap_x = spec.gap_x;
     let gap_y = spec.gap_y;
-    let cols = ((area.width + gap_x) / (spec.tile_width_hint + gap_x)).max(1) as usize;
+    let cols = ((content_area.width + gap_x) / (spec.tile_width_hint + gap_x)).max(1) as usize;
     let total_gap_x = gap_x.saturating_mul(cols.saturating_sub(1) as u16);
     let tile_width =
-        (area.width.saturating_sub(total_gap_x) / cols as u16).max(spec.min_tile_width);
-    let rows_visible = ((area.height + gap_y) / (spec.tile_height + gap_y)).max(1) as usize;
+        (content_area.width.saturating_sub(total_gap_x) / cols as u16).max(spec.min_tile_width);
+    let rows_visible = ((content_area.height + gap_y) / (spec.tile_height + gap_y)).max(1) as usize;
     state.metrics = ViewMetrics { cols, rows_visible };
 
     if app.entries.is_empty() {
-        helpers::render_empty_state(frame, area, "This folder is empty", palette);
+        helpers::render_empty_state(frame, content_area, "This folder is empty", palette);
         return;
     }
 
@@ -187,8 +193,8 @@ fn render_grid(
         let row = visible_index / cols;
         let col = visible_index % cols;
         let rect = Rect {
-            x: area.x + col as u16 * (tile_width + gap_x),
-            y: area.y + row as u16 * (spec.tile_height + gap_y),
+            x: content_area.x + col as u16 * (tile_width + gap_x),
+            y: content_area.y + row as u16 * (spec.tile_height + gap_y),
             width: tile_width,
             height: spec.tile_height,
         };
@@ -206,6 +212,11 @@ fn render_grid(
             rect,
             index: entry_index,
         });
+    }
+
+    if let Some(sb) = scrollbar_area {
+        let total_rows = app.entries.len().div_ceil(cols);
+        render_browser_scrollbar(frame, sb, total_rows, rows_visible, app.scroll_row, palette);
     }
 }
 
@@ -328,15 +339,21 @@ fn render_list(
     state: &mut FrameState,
     palette: Palette,
 ) {
-    helpers::fill_area(frame, area, palette.panel_alt, palette.text);
+    let (content_area, scrollbar_area) = split_scrollbar_area(area);
+
+    helpers::fill_area(frame, content_area, palette.panel_alt, palette.text);
+    if let Some(sb) = scrollbar_area {
+        helpers::fill_area(frame, sb, palette.panel_alt, palette.border);
+    }
+
     let row_height = helpers::list_row_height(app.zoom_level);
     state.metrics = ViewMetrics {
         cols: 1,
-        rows_visible: (area.height / row_height.max(1)).max(1) as usize,
+        rows_visible: (content_area.height / row_height.max(1)).max(1) as usize,
     };
 
     if app.entries.is_empty() {
-        helpers::render_empty_state(frame, area, "This folder is empty", palette);
+        helpers::render_empty_state(frame, content_area, "This folder is empty", palette);
         return;
     }
 
@@ -346,9 +363,9 @@ fn render_list(
     {
         let entry = &app.entries[entry_index];
         let row = Rect {
-            x: area.x,
-            y: area.y + visible_index as u16 * row_height,
-            width: area.width,
+            x: content_area.x,
+            y: content_area.y + visible_index as u16 * row_height,
+            width: content_area.width,
             height: row_height,
         };
         let selected = entry_index == app.selected;
@@ -424,6 +441,17 @@ fn render_list(
             rect: row,
             index: entry_index,
         });
+    }
+
+    if let Some(sb) = scrollbar_area {
+        render_browser_scrollbar(
+            frame,
+            sb,
+            app.entries.len(),
+            state.metrics.rows_visible,
+            app.scroll_row,
+            palette,
+        );
     }
 }
 
@@ -762,6 +790,75 @@ fn render_preview_scrollbar(
             thumb.height as usize
         ])
         .style(Style::default().bg(palette.panel)),
+        thumb,
+    );
+}
+
+fn split_scrollbar_area(area: Rect) -> (Rect, Option<Rect>) {
+    if area.width >= 6 {
+        let parts = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(1)])
+            .split(area);
+        (parts[0], Some(parts[1]))
+    } else {
+        (area, None)
+    }
+}
+
+fn render_browser_scrollbar(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    total_rows: usize,
+    visible_rows: usize,
+    scroll_row: usize,
+    palette: Palette,
+) {
+    if area.height == 0 || total_rows <= visible_rows.max(1) {
+        frame.render_widget(
+            Paragraph::new(" ").style(Style::default().bg(palette.panel_alt).fg(palette.border)),
+            area,
+        );
+        return;
+    }
+
+    let track = vec![
+        Line::from(Span::styled("│", Style::default().fg(palette.border)));
+        area.height as usize
+    ];
+    frame.render_widget(
+        Paragraph::new(track).style(Style::default().bg(palette.panel_alt)),
+        area,
+    );
+
+    let thumb_height = ((visible_rows.max(1) * area.height as usize) / total_rows)
+        .max(1)
+        .min(area.height as usize);
+    let max_scroll = total_rows.saturating_sub(visible_rows.max(1));
+    let thumb_max_top = area.height as usize - thumb_height;
+    let thumb_top = if max_scroll == 0 {
+        0
+    } else {
+        (scroll_row * thumb_max_top) / max_scroll
+    };
+
+    let thumb = Rect {
+        x: area.x,
+        y: area.y + thumb_top as u16,
+        width: area.width,
+        height: thumb_height as u16,
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                "┃",
+                Style::default()
+                    .fg(palette.accent)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            thumb.height as usize
+        ])
+        .style(Style::default().bg(palette.panel_alt)),
         thumb,
     );
 }
