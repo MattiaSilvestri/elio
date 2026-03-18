@@ -197,6 +197,15 @@ impl App {
                     self.open_rename_prompt();
                 }
             }
+            KeyCode::F(2) => {
+                if !self.in_trash {
+                    if !self.selected_paths.is_empty() {
+                        self.open_bulk_rename_prompt();
+                    } else {
+                        self.open_rename_prompt();
+                    }
+                }
+            }
             KeyCode::Char('f') => self.open_search_with_status(SearchScope::Folders),
             KeyCode::Char('o') => self.open_in_system()?,
             _ => {}

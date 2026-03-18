@@ -1050,8 +1050,12 @@ pub(super) fn render_help(
             action: "trash (delete if in trash)",
         },
         HelpEntry {
-            key: "r",
-            action: "rename (restore in trash)",
+            key: "r / F2",
+            action: "rename",
+        },
+        HelpEntry {
+            key: "r (in trash)",
+            action: "restore from trash",
         },
     ];
     const LEFT_SECTIONS: &[HelpSection<'_>] = &[
