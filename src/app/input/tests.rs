@@ -732,6 +732,7 @@ fn high_frequency_preview_wheel_scrolls_preview_after_entries_scroll() {
         metrics: ViewMetrics { cols: 1, rows_visible: 8 },
         ..FrameState::default()
     });
+    wait_for_background_preview(&mut app);
 
     // Step 1: scroll entries (cursor in entries area)
     app.handle_event(Event::Mouse(MouseEvent {
@@ -802,6 +803,7 @@ fn high_frequency_preview_wheel_scrolls_preview_without_prior_moved_event() {
         metrics: ViewMetrics { cols: 1, rows_visible: 8 },
         ..FrameState::default()
     });
+    wait_for_background_preview(&mut app);
 
     let before_scroll = app.preview_state.scroll;
     let before_selected = app.selected;
@@ -853,6 +855,7 @@ fn hover_panel_routes_scroll_when_event_coords_are_outside_panels() {
         metrics: ViewMetrics { cols: 1, rows_visible: 8 },
         ..FrameState::default()
     });
+    wait_for_background_preview(&mut app);
 
     // Moved event puts cursor in preview — hover_panel = Preview
     app.handle_event(Event::Mouse(MouseEvent {
@@ -1101,6 +1104,7 @@ fn preview_wheel_uses_last_focused_panel_when_coordinates_miss() {
         preview_cols_visible: 20,
         ..FrameState::default()
     });
+    wait_for_background_preview(&mut app);
 
     app.handle_event(Event::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
@@ -1154,6 +1158,7 @@ fn preview_wheel_follows_hovered_panel_without_click() {
         preview_cols_visible: 20,
         ..FrameState::default()
     });
+    wait_for_background_preview(&mut app);
 
     app.handle_event(Event::Mouse(MouseEvent {
         kind: MouseEventKind::Moved,
@@ -1207,6 +1212,7 @@ fn preview_wheel_uses_preview_column_when_row_is_unreliable() {
         preview_cols_visible: 20,
         ..FrameState::default()
     });
+    wait_for_background_preview(&mut app);
 
     app.handle_event(Event::Mouse(MouseEvent {
         kind: MouseEventKind::ScrollDown,
@@ -1663,6 +1669,7 @@ fn preview_scroll_resets_when_reselecting_a_file() {
         preview_cols_visible: 40,
         ..FrameState::default()
     });
+    wait_for_background_preview(&mut app);
 
     app.preview_state.scroll = 5;
     app.sync_preview_scroll();

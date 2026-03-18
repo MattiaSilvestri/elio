@@ -972,6 +972,16 @@ mod tests {
         panic!("timed out waiting for directory counts");
     }
 
+    fn wait_for_background_preview(app: &mut App) {
+        for _ in 0..200 {
+            if app.process_background_jobs() {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        panic!("timed out waiting for background preview");
+    }
+
     fn row_text(buffer: &Buffer, y: u16) -> String {
         (0..buffer.area.width)
             .map(|x| buffer[(x, y)].symbol())
@@ -1157,6 +1167,7 @@ mod tests {
 
         let mut app = App::new_at(root.clone()).expect("app should load temp directory");
         let mut terminal = Terminal::new(TestBackend::new(60, 24)).expect("terminal should init");
+        wait_for_background_preview(&mut app);
 
         let state = draw_ui(&mut terminal, &mut app);
         let preview_panel = state

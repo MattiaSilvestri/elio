@@ -9,11 +9,8 @@ use ratatui::{
 };
 
 pub(crate) fn should_build_preview_in_background(entry: &Entry) -> bool {
-    if entry.is_dir() {
-        return true;
-    }
-    let facts = file_info::inspect_path_cached(&entry.path, entry.kind, entry.size, entry.modified);
-    facts.builtin_class == FileClass::Archive || facts.preview.document_format.is_some()
+    let _ = entry;
+    true
 }
 
 pub(crate) fn loading_preview_for(
@@ -42,6 +39,13 @@ pub(crate) fn loading_preview_for(
         (facts.preview.document_format, options.epub_section_index()),
         (Some(file_info::DocumentFormat::Epub), Some(_))
     );
+    let kind = if is_comic_page_preview {
+        PreviewKind::Comic
+    } else if is_epub_section_preview {
+        PreviewKind::Document
+    } else {
+        loading_preview_kind(&facts)
+    };
     let lines = if is_comic_page_preview {
         Vec::new()
     } else if is_epub_section_preview {
@@ -62,17 +66,28 @@ pub(crate) fn loading_preview_for(
             Line::from("Preparing file preview in background"),
         ]
     };
-    PreviewContent::new(
-        if is_comic_page_preview {
-            PreviewKind::Comic
-        } else if is_epub_section_preview {
-            PreviewKind::Document
-        } else {
-            PreviewKind::Unavailable
-        },
-        lines,
-    )
-    .with_detail(detail)
+    PreviewContent::new(kind, lines).with_detail(detail)
+}
+
+fn loading_preview_kind(facts: &file_info::FileFacts) -> PreviewKind {
+    if facts.builtin_class == FileClass::Archive {
+        return PreviewKind::Archive;
+    }
+    if facts.preview.document_format.is_some() {
+        return PreviewKind::Document;
+    }
+    if facts.builtin_class == FileClass::Image
+        && facts.preview.kind != file_info::PreviewKind::Source
+    {
+        return PreviewKind::Image;
+    }
+
+    match facts.preview.kind {
+        file_info::PreviewKind::Markdown => PreviewKind::Markdown,
+        file_info::PreviewKind::Source => PreviewKind::Code,
+        file_info::PreviewKind::PlainText | file_info::PreviewKind::Torrent => PreviewKind::Text,
+        file_info::PreviewKind::Iso => PreviewKind::Archive,
+    }
 }
 
 #[cfg(test)]

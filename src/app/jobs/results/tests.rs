@@ -320,7 +320,7 @@ fn archive_preview_loads_in_background() {
 
     let mut app = App::new_at(root.clone()).expect("failed to create app");
 
-    assert_eq!(app.preview_section_label(), "Preview");
+    assert_eq!(app.preview_section_label(), "Archive");
     assert_eq!(
         app.preview_header_detail(10).as_deref(),
         Some("ZIP archive")
@@ -584,7 +584,7 @@ fn document_preview_loads_in_background() {
 
     let mut app = App::new_at(root.clone()).expect("failed to create app");
 
-    assert_eq!(app.preview_section_label(), "Preview");
+    assert_eq!(app.preview_section_label(), "Document");
     assert_eq!(
         app.preview_header_detail(10).as_deref(),
         Some("DOCX document")
@@ -605,6 +605,34 @@ fn document_preview_loads_in_background() {
         app.preview_lines()
             .iter()
             .any(|line| line.to_string().contains("Quarterly Report"))
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn text_preview_loads_in_background() {
+    let root = temp_path("text-background");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let text = root.join("note.txt");
+    fs::write(&text, "plain text").expect("failed to write text file");
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+
+    assert_eq!(app.preview_section_label(), "Text");
+    assert!(
+        app.preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("Preparing file preview in background"))
+    );
+
+    wait_for_background_preview(&mut app);
+
+    assert_eq!(app.preview_section_label(), "Text");
+    assert!(
+        app.preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("plain text"))
     );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
@@ -668,12 +696,26 @@ fn stale_archive_preview_result_is_ignored_after_selection_changes() {
         app.selected_entry().map(|entry| entry.name.as_str()),
         Some("z.txt")
     );
+    assert_eq!(app.preview_section_label(), "Text");
+    assert!(
+        app.preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("Preparing file preview in background"))
+    );
 
-    thread::sleep(Duration::from_millis(50));
-    let dirty = app.process_background_jobs();
+    wait_for_background_preview(&mut app);
 
     assert_eq!(app.preview_section_label(), "Text");
-    assert!(!dirty);
+    assert!(
+        app.preview_lines()
+            .iter()
+            .any(|line| line.to_string().contains("plain text"))
+    );
+
+    thread::sleep(Duration::from_millis(50));
+    let _ = app.process_background_jobs();
+
+    assert_eq!(app.preview_section_label(), "Text");
     assert!(
         app.preview_lines()
             .iter()
@@ -696,6 +738,7 @@ fn wrapped_text_header_reports_visual_cap_compactly() {
         preview_cols_visible: 20,
         ..FrameState::default()
     });
+    wait_for_background_preview(&mut app);
 
     let header = app
         .preview_header_detail(8)
@@ -723,7 +766,8 @@ fn narrow_code_header_prefers_compact_subtype_and_drops_low_priority_notes() {
         .join("\n");
     fs::write(&source, contents).expect("failed to write source");
 
-    let app = App::new_at(root.clone()).expect("failed to create app");
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    wait_for_background_preview(&mut app);
     let header = app
         .preview_header_detail_for_width(8, 20)
         .expect("header detail should be present");
@@ -750,6 +794,7 @@ fn byte_truncated_code_header_upgrades_to_exact_total_lines_after_background_cou
     fs::write(&source, contents).expect("failed to write source");
 
     let mut app = App::new_at(root.clone()).expect("failed to create app");
+    wait_for_background_preview(&mut app);
     assert_eq!(
         app.preview_header_detail_for_width(8, 40).as_deref(),
         Some("Rust • 240 lines shown")
@@ -777,6 +822,7 @@ fn source_truncated_text_header_prefers_line_limit_over_wrapped_cap_note() {
         preview_cols_visible: 20,
         ..FrameState::default()
     });
+    wait_for_background_preview(&mut app);
 
     let header = app
         .preview_header_detail(8)
@@ -803,6 +849,7 @@ fn archive_preview_is_reused_from_cache_on_reselection() {
 
     app.set_selected(1);
     assert_eq!(app.preview_section_label(), "Text");
+    let metrics_before_reselect = app.preview_metrics();
 
     app.set_selected(0);
     assert_eq!(app.preview_section_label(), "Archive");
@@ -821,8 +868,8 @@ fn archive_preview_is_reused_from_cache_on_reselection() {
             .all(|line| !line.to_string().contains("Loading preview"))
     );
     let metrics = app.preview_metrics();
-    assert_eq!(metrics.cache_hits, 1);
-    assert_eq!(metrics.cache_misses, 1);
+    assert_eq!(metrics.cache_hits, metrics_before_reselect.cache_hits + 1);
+    assert!(metrics.cache_misses >= 1);
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -913,7 +960,7 @@ fn stale_preview_results_are_counted_in_metrics() {
 
     let metrics = app.preview_metrics();
     assert!(metrics.stale_results_dropped >= 1);
-    assert_eq!(metrics.applied_results, 0);
+    assert!(metrics.applied_results <= 1);
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

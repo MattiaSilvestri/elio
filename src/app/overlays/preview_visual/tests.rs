@@ -150,6 +150,8 @@ fn oversized_page_overlay_request_forces_rendered_cache() {
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
     app.set_ffmpeg_available_for_tests(true);
+    app.entries.clear();
+    app.selected = 0;
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
@@ -328,6 +330,8 @@ fn comic_jpeg_page_renders_inline_without_waiting_for_background_prepare() {
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
     app.set_ffmpeg_available_for_tests(true);
+    app.entries.clear();
+    app.selected = 0;
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
@@ -372,6 +376,8 @@ fn document_page_image_renders_inline_without_waiting_for_background_prepare() {
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
     app.set_ffmpeg_available_for_tests(true);
+    app.entries.clear();
+    app.selected = 0;
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
@@ -473,6 +479,8 @@ fn document_overlay_keeps_previous_page_visible_while_next_page_waits() {
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
     app.set_ffmpeg_available_for_tests(true);
+    app.entries.clear();
+    app.selected = 0;
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
@@ -530,6 +538,8 @@ fn current_comic_prepare_build_marks_preview_dirty() {
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
     app.set_ffmpeg_available_for_tests(true);
+    app.entries.clear();
+    app.selected = 0;
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
@@ -798,6 +808,8 @@ fn comic_overlay_keeps_previous_page_visible_while_next_page_waits() {
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
     app.set_ffmpeg_available_for_tests(true);
+    app.entries.clear();
+    app.selected = 0;
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
@@ -857,6 +869,8 @@ fn comic_overlay_keeps_previous_page_visible_while_next_page_preview_loads() {
 
     let mut app = App::new_at(root.clone()).expect("app should initialize");
     configure_terminal_image_support(&mut app);
+    app.entries.clear();
+    app.selected = 0;
     app.frame_state.preview_media_area = Some(Rect {
         x: 2,
         y: 3,
