@@ -18,6 +18,8 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
     state.entry_hits.clear();
     state.search_hits.clear();
     state.trash_panel = None;
+    state.trash_confirm_btn = None;
+    state.trash_cancel_btn = None;
     state.create_panel = None;
     state.create_list_area = None;
     state.create_scroll_top = 0;

@@ -101,6 +101,8 @@ pub struct FrameState {
     pub entry_hits: Vec<EntryHit>,
     pub search_hits: Vec<SearchHit>,
     pub trash_panel: Option<Rect>,
+    pub trash_confirm_btn: Option<Rect>,
+    pub trash_cancel_btn: Option<Rect>,
     pub create_panel: Option<Rect>,
     pub create_list_area: Option<Rect>,
     pub create_scroll_top: usize,

@@ -20,8 +20,8 @@ pub(super) fn render_trash_overlay(
     let block_title = format!(" {} ", app.trash_title());
     let count = app.trash_target_count();
     let list_rows = app.trash_visible_rows().max(1) as u16;
-    // inner = list + 1 spacer + 1 buttons; border(2) + padding top+bottom(2) = 4 overhead
-    let popup_height = list_rows + 2 + 4;
+    // list box (border + rows + border) + buttons + inner_with_padding overhead
+    let popup_height = (list_rows + 2) + 1 + 2;
     let popup_width = area.width.saturating_sub(8).clamp(40, 60);
     let popup = helpers::centered_rect(area, popup_width, popup_height);
     state.trash_panel = Some(popup);
@@ -36,90 +36,83 @@ pub(super) fn render_trash_overlay(
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(list_rows), // name(s)
-            Constraint::Length(1),         // spacer
-            Constraint::Length(1),         // buttons
+            Constraint::Length(list_rows + 2), // list box (border + rows + border)
+            Constraint::Length(1),             // buttons
         ])
         .split(inner);
 
-    // Names list
-    let list_area = rows[0];
+    // Names list inside a rounded box
+    frame.render_widget(
+        helpers::rounded_block(palette.path_bg, palette.border),
+        rows[0],
+    );
+    let list_area = rows[0].inner(Margin { horizontal: 1, vertical: 1 });
     let visible = app.trash_visible_rows().max(1);
     let scroll = app.trash_scroll();
-    let max_name_width = list_area.width.saturating_sub(3) as usize; // leave room for scroll bar
 
-    if count <= 1 {
-        // Single item — plain name
-        let name = app.trash_target_name_at(0).unwrap_or("");
+    let show_scrollbar = count > visible;
+    let thumb_size = if show_scrollbar { (visible * visible / count).max(1) } else { 0 };
+    let max_scroll = count.saturating_sub(visible);
+    let thumb_pos = if max_scroll == 0 { 0 } else { scroll * (visible - thumb_size) / max_scroll };
+    let bar_x = list_area.x + list_area.width.saturating_sub(1);
+
+    for row_offset in 0..visible {
+        let item_index = scroll + row_offset;
+        let Some(name) = app.trash_target_name_at(item_index) else { break };
+        let y = list_area.y + row_offset as u16;
+        let name_width = list_area.width.saturating_sub(if show_scrollbar { 2 } else { 0 });
+        let name_rect = Rect { x: list_area.x, y, width: name_width, height: 1 };
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(
-                helpers::clamp_label(name, max_name_width.max(4)),
+                helpers::clamp_label(name, name_rect.width as usize),
                 Style::default().fg(palette.muted),
             )))
-            .style(Style::default().bg(palette.chrome_alt)),
-            list_area,
+            .style(Style::default().bg(palette.path_bg)),
+            name_rect,
         );
-    } else {
-        // Multiple items — scrollable list with scroll indicator
-        let show_scrollbar = count > visible;
-        // Fixed thumb size + sliding position — size never changes while scrolling
-        let thumb_size = (visible * visible / count).max(1);
-        let max_scroll = count.saturating_sub(visible);
-        let thumb_pos = if max_scroll == 0 { 0 } else { scroll * (visible - thumb_size) / max_scroll };
-        let bar_x = list_area.x + list_area.width.saturating_sub(1);
 
-        for row_offset in 0..visible {
-            let item_index = scroll + row_offset;
-            let Some(name) = app.trash_target_name_at(item_index) else {
-                break;
-            };
-            let y = list_area.y + row_offset as u16;
-            let name_rect = Rect { x: list_area.x, y, width: list_area.width.saturating_sub(if show_scrollbar { 2 } else { 0 }), height: 1 };
-            frame.render_widget(
-                Paragraph::new(Line::from(Span::styled(
-                    helpers::clamp_label(name, name_rect.width as usize),
-                    Style::default().fg(palette.muted),
-                )))
-                .style(Style::default().bg(palette.chrome_alt)),
-                name_rect,
-            );
-
-            if show_scrollbar {
-                let in_thumb = row_offset >= thumb_pos && row_offset < thumb_pos + thumb_size;
-                let bar_char = if in_thumb { "▐" } else { " " };
-                let bar_color = if in_thumb { palette.muted } else { palette.chrome_alt };
-                frame.buffer_mut()[(bar_x, y)].set_symbol(bar_char);
-                frame.buffer_mut()[(bar_x, y)].set_style(
-                    Style::default().bg(palette.chrome_alt).fg(bar_color),
-                );
-            }
+        if show_scrollbar {
+            let in_thumb = row_offset >= thumb_pos && row_offset < thumb_pos + thumb_size;
+            let bar_char = if in_thumb { "▐" } else { " " };
+            let bar_color = if in_thumb { palette.muted } else { palette.path_bg };
+            frame.buffer_mut()[(bar_x, y)].set_symbol(bar_char);
+            frame.buffer_mut()[(bar_x, y)]
+                .set_style(Style::default().bg(palette.path_bg).fg(bar_color));
         }
     }
 
-    // Centered buttons: [ Cancel ]  [ Confirm ]
+    // Buttons: [ Confirm ]  [ Cancel ] — confirm left, cancel right
     let confirmed = app.trash_confirmed();
+    let confirm_style = if confirmed {
+        Style::default().bg(palette.selected_bg).fg(palette.text).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().bg(palette.chrome_alt).fg(palette.muted)
+    };
     let cancel_style = if !confirmed {
         Style::default().bg(palette.selected_bg).fg(palette.text).add_modifier(Modifier::BOLD)
     } else {
         Style::default().bg(palette.chrome_alt).fg(palette.muted)
     };
-    let confirm_style = if confirmed {
-        Style::default().bg(palette.accent).fg(palette.accent_text).add_modifier(Modifier::BOLD)
-    } else {
-        Style::default().bg(palette.chrome_alt).fg(palette.muted)
-    };
-    let total_btn_width = 24u16;
-    let left_pad = rows[2].width.saturating_sub(total_btn_width) / 2;
+    let confirm_w = 11u16; // "  Confirm  "
+    let cancel_w = 10u16;  // "  Cancel  "
+    let gap = 3u16;
+    let total_btn_width = confirm_w + gap + cancel_w;
+    let left_pad = rows[1].width.saturating_sub(total_btn_width) / 2;
+    let btn_y = rows[1].y;
+    let confirm_x = rows[1].x + left_pad;
+    let cancel_x = confirm_x + confirm_w + gap;
+    state.trash_confirm_btn = Some(Rect { x: confirm_x, y: btn_y, width: confirm_w, height: 1 });
+    state.trash_cancel_btn  = Some(Rect { x: cancel_x,  y: btn_y, width: cancel_w,  height: 1 });
     let pad = " ".repeat(left_pad as usize);
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(pad, Style::default().bg(palette.chrome_alt)),
-            Span::styled("  Cancel  ", cancel_style),
-            Span::styled("   ", Style::default().bg(palette.chrome_alt)),
             Span::styled("  Confirm  ", confirm_style),
+            Span::styled("   ", Style::default().bg(palette.chrome_alt)),
+            Span::styled("  Cancel  ", cancel_style),
         ]))
         .style(Style::default().bg(palette.chrome_alt)),
-        rows[2],
+        rows[1],
     );
 }
 

@@ -674,12 +674,12 @@ impl App {
             }
             KeyCode::Left | KeyCode::Char('h') => {
                 if let Some(t) = &mut self.trash {
-                    t.confirmed = false;
+                    t.confirmed = true;
                 }
             }
             KeyCode::Right | KeyCode::Char('l') => {
                 if let Some(t) = &mut self.trash {
-                    t.confirmed = true;
+                    t.confirmed = false;
                 }
             }
             KeyCode::Tab => {
@@ -707,6 +707,16 @@ impl App {
                     .trash_panel
                     .is_some_and(|panel| rect_contains(panel, mouse.column, mouse.row));
                 if !inside {
+                    self.trash = None;
+                    return Ok(());
+                }
+                if self.frame_state.trash_confirm_btn
+                    .is_some_and(|r| rect_contains(r, mouse.column, mouse.row))
+                {
+                    self.confirm_trash()?;
+                } else if self.frame_state.trash_cancel_btn
+                    .is_some_and(|r| rect_contains(r, mouse.column, mouse.row))
+                {
                     self.trash = None;
                 }
             }
