@@ -29,6 +29,17 @@ fn wait_for_directory_load(app: &mut App) {
     panic!("timed out waiting for directory load");
 }
 
+fn wait_for_directory_reload_to_queue(app: &mut App) {
+    for _ in 0..100 {
+        let _ = app.process_background_jobs();
+        if app.directory_runtime.pending_load.is_some() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("timed out waiting for directory reload to queue");
+}
+
 #[test]
 fn watcher_reload_detects_new_visible_entries() {
     let root = temp_path("auto-reload-visible");
@@ -54,10 +65,11 @@ fn watcher_reload_detects_new_visible_entries() {
     app.directory_runtime.pending_reload_at = Some(Instant::now() - Duration::from_millis(1));
 
     assert!(
-        app.process_auto_reload()
+        !app.process_auto_reload()
             .expect("auto reload should succeed"),
-        "watch-driven reload should report a change",
+        "watch-driven reload should schedule an async fingerprint scan first",
     );
+    wait_for_directory_reload_to_queue(&mut app);
     wait_for_directory_load(&mut app);
     assert_eq!(app.entries.len(), 2);
     assert!(app.entries.iter().any(|entry| entry.name == "two.txt"));
@@ -89,10 +101,11 @@ fn watcher_rescan_event_triggers_reload() {
     app.directory_runtime.pending_reload_at = Some(Instant::now() - Duration::from_millis(1));
 
     assert!(
-        app.process_auto_reload()
+        !app.process_auto_reload()
             .expect("auto reload should succeed"),
-        "rescan-driven reload should report a change",
+        "rescan-driven reload should schedule an async fingerprint scan first",
     );
+    wait_for_directory_reload_to_queue(&mut app);
     wait_for_directory_load(&mut app);
     assert_eq!(app.entries.len(), 2);
     assert!(app.entries.iter().any(|entry| entry.name == "two.txt"));
@@ -150,10 +163,11 @@ fn polling_fallback_respects_its_throttle_window() {
 
     make_auto_reload_ready(&mut app);
     assert!(
-        app.process_auto_reload()
+        !app.process_auto_reload()
             .expect("auto reload should succeed"),
-        "reload should run once the throttle window has elapsed",
+        "reload should schedule an async fingerprint scan once the throttle window has elapsed",
     );
+    wait_for_directory_reload_to_queue(&mut app);
     wait_for_directory_load(&mut app);
     assert_eq!(app.entries.len(), 2);
 

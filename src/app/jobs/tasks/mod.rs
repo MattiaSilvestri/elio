@@ -1,6 +1,7 @@
 pub(super) use super::*;
 
 pub(super) mod directory;
+pub(super) mod directory_fingerprint;
 pub(super) mod image;
 pub(super) mod item_count;
 pub(super) mod line_count;

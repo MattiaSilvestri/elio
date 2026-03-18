@@ -38,6 +38,32 @@ impl App {
                         }
                     }
                 }
+                JobResult::DirectoryFingerprint(build) => {
+                    let Some(scan) = self.directory_runtime.pending_fingerprint_scan.clone() else {
+                        continue;
+                    };
+                    if build.token != self.directory_fingerprint_token
+                        || build.token != scan.token
+                        || build.cwd != scan.cwd
+                        || build.show_hidden != scan.show_hidden
+                    {
+                        continue;
+                    }
+
+                    self.directory_runtime.pending_fingerprint_scan = None;
+
+                    let Ok(fingerprint) = build.result else {
+                        continue;
+                    };
+                    if self.directory_runtime.pending_load.is_some()
+                        || fingerprint == self.directory_runtime.fingerprint
+                    {
+                        continue;
+                    }
+                    if self.queue_directory_reload(true).is_ok() {
+                        dirty = true;
+                    }
+                }
                 JobResult::DirectoryItemCount(build) => {
                     self.cache_directory_item_count(
                         build.path.clone(),

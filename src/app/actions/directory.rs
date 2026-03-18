@@ -29,17 +29,22 @@ impl App {
             return Ok(false);
         }
 
+        if self.directory_runtime.pending_fingerprint_scan.is_some() {
+            return Ok(false);
+        }
+
         if self.directory_runtime.last_auto_reload_at.elapsed() < AUTO_RELOAD_INTERVAL {
             return Ok(false);
         }
         self.directory_runtime.last_auto_reload_at = Instant::now();
-        self.reload_if_directory_changed()
+        self.queue_directory_fingerprint_scan()
     }
 
     pub(in crate::app) fn queue_directory_load(
         &mut self,
         mut load: PendingDirectoryLoad,
     ) -> Result<()> {
+        self.directory_runtime.pending_fingerprint_scan = None;
         self.directory_token = self.directory_token.wrapping_add(1);
         load.token = self.directory_token;
         let request = jobs::DirectoryRequest {
@@ -55,7 +60,7 @@ impl App {
         Ok(())
     }
 
-    fn queue_directory_reload(&mut self, refresh_search: bool) -> Result<()> {
+    pub(in crate::app) fn queue_directory_reload(&mut self, refresh_search: bool) -> Result<()> {
         self.queue_directory_load(PendingDirectoryLoad {
             token: 0,
             target_cwd: self.cwd.clone(),
@@ -74,6 +79,7 @@ impl App {
         load: PendingDirectoryLoad,
         snapshot: crate::fs::DirectorySnapshot,
     ) {
+        self.directory_runtime.pending_fingerprint_scan = None;
         let cwd_changed = load.target_cwd != self.cwd;
         let remembered_view = self.remembered_view_for(&load.target_cwd);
         self.cwd = load.target_cwd.clone();
@@ -276,6 +282,7 @@ impl App {
     pub(in crate::app) fn reset_directory_watch(&mut self) {
         self.directory_runtime.watch = None;
         self.directory_runtime.pending_reload_at = None;
+        self.directory_runtime.pending_fingerprint_scan = None;
         while self.directory_runtime.watch_rx.try_recv().is_ok() {}
 
         match crate::fs::start_directory_watcher(&self.cwd, &self.directory_runtime.watch_tx) {
@@ -290,19 +297,35 @@ impl App {
     }
 
     fn reload_if_directory_changed(&mut self) -> Result<bool> {
-        if self.directory_runtime.pending_load.is_some() {
+        if self.directory_runtime.pending_load.is_some()
+            || self.directory_runtime.pending_fingerprint_scan.is_some()
+        {
             return Ok(false);
         }
-        let fingerprint = match crate::fs::scan_directory_fingerprint(&self.cwd, self.effective_show_hidden()) {
-            Ok(fingerprint) => fingerprint,
-            Err(_) => return Ok(false),
-        };
-        if fingerprint == self.directory_runtime.fingerprint {
+        let show_hidden = self.effective_show_hidden();
+        self.directory_fingerprint_token = self.directory_fingerprint_token.wrapping_add(1);
+        let token = self.directory_fingerprint_token;
+        let cwd = self.cwd.clone();
+        if !self
+            .scheduler
+            .submit_directory_fingerprint(jobs::DirectoryFingerprintRequest {
+                token,
+                cwd: cwd.clone(),
+                show_hidden,
+            })
+        {
             return Ok(false);
         }
+        self.directory_runtime.pending_fingerprint_scan = Some(PendingDirectoryFingerprintScan {
+            token,
+            cwd,
+            show_hidden,
+        });
+        Ok(false)
+    }
 
-        self.queue_directory_reload(true)?;
-        Ok(true)
+    fn queue_directory_fingerprint_scan(&mut self) -> Result<bool> {
+        self.reload_if_directory_changed()
     }
 
     fn refresh_search_after_directory_reload(&mut self) {

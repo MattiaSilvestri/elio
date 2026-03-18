@@ -10,7 +10,8 @@ use self::{
 use self::{
     pool::{preview::PreviewPool, search::SearchPool},
     tasks::{
-        directory::DirectoryPool, image::ImagePreparePool, item_count::DirectoryItemCountPool,
+        directory::DirectoryPool, directory_fingerprint::DirectoryFingerprintPool,
+        image::ImagePreparePool, item_count::DirectoryItemCountPool,
         line_count::PreviewLineCountPool, pdf_probe::PdfProbePool, pdf_render::PdfRenderPool,
     },
 };
@@ -27,6 +28,7 @@ use std::{
 const PREVIEW_WORKER_COUNT: usize = 2;
 const SEARCH_WORKER_COUNT: usize = 1;
 const DIRECTORY_ITEM_COUNT_WORKER_COUNT: usize = 1;
+const DIRECTORY_FINGERPRINT_WORKER_COUNT: usize = 1;
 const PREVIEW_LINE_COUNT_WORKER_COUNT: usize = 1;
 const IMAGE_PREPARE_WORKER_COUNT: usize = 2;
 const PDF_PROBE_WORKER_COUNT: usize = 2;
@@ -45,6 +47,7 @@ struct SchedulerConfig {
     preview_queue_limit: usize,
     directory_item_count_worker_count: usize,
     directory_item_count_queue_limit: usize,
+    directory_fingerprint_worker_count: usize,
     preview_line_count_worker_count: usize,
     preview_line_count_queue_limit: usize,
     image_prepare_worker_count: usize,
@@ -63,6 +66,7 @@ impl SchedulerConfig {
             preview_queue_limit: PREVIEW_QUEUE_LIMIT,
             directory_item_count_worker_count: DIRECTORY_ITEM_COUNT_WORKER_COUNT,
             directory_item_count_queue_limit: DIRECTORY_ITEM_COUNT_QUEUE_LIMIT,
+            directory_fingerprint_worker_count: DIRECTORY_FINGERPRINT_WORKER_COUNT,
             preview_line_count_worker_count: PREVIEW_LINE_COUNT_WORKER_COUNT,
             preview_line_count_queue_limit: PREVIEW_LINE_COUNT_QUEUE_LIMIT,
             image_prepare_worker_count: IMAGE_PREPARE_WORKER_COUNT,
@@ -86,6 +90,7 @@ impl SchedulerConfig {
             preview_queue_limit,
             directory_item_count_worker_count: DIRECTORY_ITEM_COUNT_WORKER_COUNT,
             directory_item_count_queue_limit: DIRECTORY_ITEM_COUNT_QUEUE_LIMIT,
+            directory_fingerprint_worker_count: 0,
             preview_line_count_worker_count: 0,
             preview_line_count_queue_limit: PREVIEW_LINE_COUNT_QUEUE_LIMIT,
             image_prepare_worker_count: 0,
@@ -154,6 +159,21 @@ pub(super) struct DirectoryItemCountBuild {
     pub modified: Option<SystemTime>,
     pub show_hidden: bool,
     pub item_count: Option<usize>,
+}
+
+#[derive(Debug)]
+pub(super) struct DirectoryFingerprintBuild {
+    pub token: u64,
+    pub cwd: PathBuf,
+    pub show_hidden: bool,
+    pub result: Result<crate::fs::DirectoryFingerprint, String>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct DirectoryFingerprintRequest {
+    pub token: u64,
+    pub cwd: PathBuf,
+    pub show_hidden: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -259,6 +279,7 @@ pub(super) struct PreviewRequest {
 #[derive(Debug)]
 pub(super) enum JobResult {
     Directory(DirectoryBuild),
+    DirectoryFingerprint(DirectoryFingerprintBuild),
     DirectoryItemCount(DirectoryItemCountBuild),
     PreviewLineCount(PreviewLineCountBuild),
     ImagePrepare(ImagePrepareBuild),
@@ -289,6 +310,7 @@ pub struct SchedulerMetricsSnapshot {
 
 pub(super) struct JobScheduler {
     directory: DirectoryPool,
+    directory_fingerprint: DirectoryFingerprintPool,
     directory_item_count: DirectoryItemCountPool,
     preview_line_count: PreviewLineCountPool,
     image_prepare: ImagePreparePool,
@@ -311,6 +333,10 @@ impl JobScheduler {
         let metrics = Arc::new(Mutex::new(SchedulerMetrics::default()));
         Self {
             directory: DirectoryPool::new(1, result_tx.clone(), Arc::clone(&metrics)),
+            directory_fingerprint: DirectoryFingerprintPool::new(
+                config.directory_fingerprint_worker_count,
+                result_tx.clone(),
+            ),
             directory_item_count: DirectoryItemCountPool::new(
                 config.directory_item_count_worker_count,
                 config.directory_item_count_queue_limit,
@@ -355,6 +381,10 @@ impl JobScheduler {
 
     pub(super) fn submit_directory(&self, request: DirectoryRequest) -> bool {
         self.directory.submit(request)
+    }
+
+    pub(super) fn submit_directory_fingerprint(&self, request: DirectoryFingerprintRequest) -> bool {
+        self.directory_fingerprint.submit(request)
     }
 
     pub(super) fn submit_directory_item_count(&self, request: DirectoryItemCountRequest) -> bool {
@@ -439,6 +469,7 @@ impl JobScheduler {
 
     pub(super) fn has_pending_work(&self) -> bool {
         self.directory.has_pending_work()
+            || self.directory_fingerprint.has_pending_work()
             || self.directory_item_count.has_pending_work()
             || self.preview_line_count.has_pending_work()
             || self.image_prepare.has_pending_work()

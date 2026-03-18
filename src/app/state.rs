@@ -299,12 +299,20 @@ pub(super) struct PendingDirectoryLoad {
     pub(super) completion: DirectoryLoadCompletion,
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct PendingDirectoryFingerprintScan {
+    pub(super) token: u64,
+    pub(super) cwd: PathBuf,
+    pub(super) show_hidden: bool,
+}
+
 pub(super) struct DirectoryRuntime {
     pub(super) fingerprint: crate::fs::DirectoryFingerprint,
     pub(super) watch_tx: std::sync::mpsc::Sender<crate::fs::DirectoryWatchEvent>,
     pub(super) watch_rx: std::sync::mpsc::Receiver<crate::fs::DirectoryWatchEvent>,
     pub(super) watch: Option<crate::fs::DirectoryWatcher>,
     pub(super) pending_reload_at: Option<Instant>,
+    pub(super) pending_fingerprint_scan: Option<PendingDirectoryFingerprintScan>,
     pub(super) pending_load: Option<PendingDirectoryLoad>,
     pub(super) use_polling_reload: bool,
     pub(super) last_auto_reload_at: Instant,
@@ -345,6 +353,7 @@ pub struct App {
     pub(super) search_loading: bool,
     pub(super) search_token: u64,
     pub(super) directory_token: u64,
+    pub(super) directory_fingerprint_token: u64,
     pub(super) scheduler: JobScheduler,
     pub(super) directory_item_count_cache: HashMap<DirectoryItemCountKey, Option<usize>>,
     pub(super) directory_item_count_order: VecDeque<DirectoryItemCountKey>,
@@ -420,6 +429,7 @@ impl App {
             search_loading: false,
             search_token: 0,
             directory_token: 0,
+            directory_fingerprint_token: 0,
             scheduler,
             directory_item_count_cache: HashMap::new(),
             directory_item_count_order: VecDeque::new(),
@@ -431,6 +441,7 @@ impl App {
                 watch_rx: directory_watch_rx,
                 watch: None,
                 pending_reload_at: None,
+                pending_fingerprint_scan: None,
                 pending_load: None,
                 use_polling_reload: true,
                 last_auto_reload_at: Instant::now(),
