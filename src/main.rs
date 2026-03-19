@@ -270,7 +270,9 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
         }
     }
 
-    let overlay_bytes = app.clear_preview_overlay()?;
+    app.queue_forced_iterm_preview_erase();
+    let mut overlay_bytes = app.clear_preview_overlay()?;
+    overlay_bytes.extend(app.iterm_pre_draw_erase());
     if !overlay_bytes.is_empty() {
         terminal.backend_mut().write_all(&overlay_bytes)?;
         terminal.backend_mut().flush()?;

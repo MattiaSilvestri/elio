@@ -12,6 +12,7 @@ fn image_prepare_request(name: &str) -> ImagePrepareRequest {
         ffmpeg_available: true,
         magick_available: true,
         force_render_to_cache: false,
+        prepare_inline_payload: false,
     }
 }
 
@@ -290,6 +291,7 @@ fn current_image_prepare_priority_outranks_nearby_requests() {
                 target_width_px: 640,
                 target_height_px: 480,
                 force_render_to_cache: false,
+                prepare_inline_payload: false,
             },
             ImagePrepareJobKey {
                 path: PathBuf::from("nearby.png"),
@@ -298,6 +300,7 @@ fn current_image_prepare_priority_outranks_nearby_requests() {
                 target_width_px: 640,
                 target_height_px: 480,
                 force_render_to_cache: false,
+                prepare_inline_payload: false,
             },
         ]
     );
@@ -326,6 +329,7 @@ fn retain_image_prepares_discards_stale_nearby_requests() {
                 target_width_px: 640,
                 target_height_px: 480,
                 force_render_to_cache: false,
+                prepare_inline_payload: false,
             },
             ImagePrepareJobKey {
                 path: PathBuf::from("keep.png"),
@@ -334,6 +338,7 @@ fn retain_image_prepares_discards_stale_nearby_requests() {
                 target_width_px: 640,
                 target_height_px: 480,
                 force_render_to_cache: false,
+                prepare_inline_payload: false,
             },
         ]
     );

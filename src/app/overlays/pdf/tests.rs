@@ -28,6 +28,17 @@ fn configure_terminal_image_support(app: &mut App) {
     });
 }
 
+fn configure_iterm_image_support(app: &mut App) {
+    let (cells_width, cells_height) = crossterm::terminal::size().unwrap_or((120, 40));
+    app.terminal_images.protocol = ImageProtocol::ItermInline;
+    app.terminal_images.window = Some(TerminalWindowSize {
+        cells_width,
+        cells_height,
+        pixels_width: 1920,
+        pixels_height: 1080,
+    });
+}
+
 fn build_pdf_overlay_test_app(label: &str) -> (App, PathBuf) {
     let root = temp_root(label);
     fs::create_dir_all(&root).expect("failed to create temp root");
@@ -510,6 +521,7 @@ fn prepared_full_pane_image_uses_full_pane_kitty_placement() {
         target_width_px: request.target_width_px,
         target_height_px: request.target_height_px,
         force_render_to_cache: false,
+        prepare_inline_payload: false,
         canceled: false,
         result: Some(crate::app::overlays::images::PreparedStaticImageAsset {
             display_path: rendered,
@@ -517,6 +529,7 @@ fn prepared_full_pane_image_uses_full_pane_kitty_placement() {
                 width_px: 250,
                 height_px: 540,
             },
+            inline_payload: None,
         }),
     });
 
@@ -565,6 +578,7 @@ fn oriented_jpeg_fallback_preview_uses_exif_corrected_dimensions() {
             ffmpeg_available: false,
             magick_available: true,
             force_render_to_cache: false,
+            prepare_inline_payload: false,
         },
         || false,
     )
@@ -612,6 +626,7 @@ fn oriented_jpeg_ffmpeg_preview_uses_exif_corrected_dimensions() {
             ffmpeg_available: true,
             magick_available: true,
             force_render_to_cache: false,
+            prepare_inline_payload: false,
         },
         || false,
     )
@@ -652,6 +667,7 @@ fn extensionless_png_static_image_preparation_succeeds() {
             ffmpeg_available: true,
             magick_available: true,
             force_render_to_cache: false,
+            prepare_inline_payload: false,
         },
         || false,
     )
@@ -714,6 +730,7 @@ fn raster_static_images_use_png_display_paths() {
                 ffmpeg_available: true,
                 magick_available: true,
                 force_render_to_cache: false,
+                prepare_inline_payload: false,
             },
             || false,
         )
@@ -751,6 +768,7 @@ fn svg_static_images_are_normalized_to_cached_png_overlays() {
             ffmpeg_available: true,
             magick_available: true,
             force_render_to_cache: false,
+            prepare_inline_payload: false,
         },
         || false,
     )
@@ -793,6 +811,7 @@ fn extensionless_svg_static_image_preparation_succeeds() {
             ffmpeg_available: true,
             magick_available: true,
             force_render_to_cache: false,
+            prepare_inline_payload: false,
         },
         || false,
     )
@@ -835,6 +854,7 @@ fn oversized_png_static_images_are_normalized_to_cached_overlays() {
             ffmpeg_available: true,
             magick_available: true,
             force_render_to_cache: false,
+            prepare_inline_payload: false,
         },
         || false,
     )
@@ -886,6 +906,7 @@ fn forced_png_preview_renders_a_cached_overlay_asset() {
             ffmpeg_available: true,
             magick_available: true,
             force_render_to_cache: true,
+            prepare_inline_payload: false,
         },
         || false,
     )
@@ -937,6 +958,7 @@ fn oversized_extensionless_png_static_images_are_normalized_to_cached_overlays()
             ffmpeg_available: true,
             magick_available: true,
             force_render_to_cache: false,
+            prepare_inline_payload: false,
         },
         || false,
     )
@@ -1006,6 +1028,7 @@ fn refresh_preview_preloads_current_and_visible_nearby_static_images() {
                 entry.modified,
                 target_width_px,
                 target_height_px,
+                false,
                 false,
             )
         })
@@ -1163,6 +1186,7 @@ fn png_static_image_preparation_preserves_alpha_channel() {
             ffmpeg_available: true,
             magick_available: true,
             force_render_to_cache: false,
+            prepare_inline_payload: false,
         },
         || false,
     )
@@ -1178,6 +1202,85 @@ fn png_static_image_preparation_preserves_alpha_channel() {
 
     assert_eq!(pixels.get_pixel(1, 0).0[3], 0);
     assert_eq!(pixels.get_pixel(0, 0).0[3], 255);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn iterm_png_and_jpeg_static_images_use_direct_source_payloads() {
+    for (file_name, format) in [
+        ("direct.png", ImageFormat::Png),
+        ("direct.jpg", ImageFormat::Jpeg),
+    ] {
+        let root = temp_root("iterm-direct-static-image");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let path = root.join(file_name);
+        write_test_raster_image(&path, format, 600, 300);
+        let metadata = fs::metadata(&path).expect("image metadata should exist");
+
+        let prepared = crate::app::overlays::images::prepare_static_image_asset(
+            &jobs::ImagePrepareRequest {
+                path: path.clone(),
+                size: metadata.len(),
+                modified: None,
+                target_width_px: 768,
+                target_height_px: 540,
+                ffmpeg_available: true,
+                magick_available: true,
+                force_render_to_cache: false,
+                prepare_inline_payload: true,
+            },
+            || false,
+        )
+        .expect("iterm direct static image should prepare successfully");
+
+        assert_eq!(prepared.display_path, path);
+        assert_eq!(
+            prepared.dimensions,
+            RenderedImageDimensions {
+                width_px: 600,
+                height_px: 300,
+            }
+        );
+        assert!(prepared.inline_payload.is_some());
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+}
+
+#[test]
+fn iterm_inline_protocol_uses_preencoded_payload_without_reading_source() {
+    let output = String::from_utf8(
+        crate::app::overlays::inline_image::place_terminal_image(
+            ImageProtocol::ItermInline,
+            Path::new("/definitely/missing.png"),
+            Rect {
+                x: 2,
+                y: 3,
+                width: 10,
+                height: 4,
+            },
+            &[],
+            Some("YWJj"),
+        )
+        .expect("preencoded iterm payload should not require source file"),
+    )
+    .expect("iterm payload should be utf8");
+
+    assert!(output.contains("]1337;File=inline=1;"));
+    assert!(output.contains("YWJj"));
+}
+
+#[test]
+fn iterm_static_image_requests_prepare_inline_payloads() {
+    let (mut app, root) = build_selected_static_image_app("iterm-request", "demo.png");
+    configure_iterm_image_support(&mut app);
+    app.refresh_preview();
+
+    let request = app
+        .active_static_image_overlay_request()
+        .expect("iterm static image request should exist");
+    assert!(request.prepare_inline_payload);
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

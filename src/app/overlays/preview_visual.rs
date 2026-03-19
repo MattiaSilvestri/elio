@@ -1,4 +1,5 @@
 use super::super::*;
+use super::inline_image::ImageProtocol;
 use super::images;
 use ratatui::layout::Rect;
 
@@ -150,6 +151,7 @@ impl App {
             target_height_px: images::image_target_height_px(area, self.cached_terminal_window()),
             mode: images::StaticImageOverlayMode::Inline,
             force_render_to_cache: self.preview_visual_force_render_to_cache(visual),
+            prepare_inline_payload: self.terminal_images.protocol == ImageProtocol::ItermInline,
         }
     }
 }

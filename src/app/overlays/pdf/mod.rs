@@ -16,8 +16,8 @@ use super::inline_image::{
 #[cfg(test)]
 use super::inline_image::{
     TerminalIdentity, build_kitty_clear_sequence, build_kitty_placeholder_sequence,
-    build_kitty_upload_sequence,
-    fallback_window_size_pixels, parse_window_size, select_image_protocol,
+    build_kitty_upload_sequence, fallback_window_size_pixels, parse_window_size,
+    select_image_protocol,
 };
 use crate::file_info::{self, DocumentFormat};
 use anyhow::{Context, Result};
@@ -215,9 +215,8 @@ impl App {
         if image_changed {
             out.extend(self.clear_preview_overlay()?);
         }
-        let bytes =
-            place_terminal_image(protocol, &rendered, placement.image_area, excluded)
-                .context("failed to display PDF page")?;
+        let bytes = place_terminal_image(protocol, &rendered, placement.image_area, excluded, None)
+            .context("failed to display PDF page")?;
         preview_log(format_args!(
             "present_pdf_overlay: placed {} bytes via {protocol:?}",
             bytes.len()

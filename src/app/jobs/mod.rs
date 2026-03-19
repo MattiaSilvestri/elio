@@ -207,6 +207,7 @@ pub(super) struct ImagePrepareBuild {
     pub target_width_px: u32,
     pub target_height_px: u32,
     pub force_render_to_cache: bool,
+    pub prepare_inline_payload: bool,
     pub canceled: bool,
     pub result: Option<PreparedStaticImageAsset>,
 }
@@ -221,6 +222,7 @@ pub(super) struct ImagePrepareRequest {
     pub ffmpeg_available: bool,
     pub magick_available: bool,
     pub force_render_to_cache: bool,
+    pub prepare_inline_payload: bool,
 }
 
 #[derive(Debug)]

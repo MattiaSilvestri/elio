@@ -39,6 +39,17 @@ fn configure_terminal_image_support(app: &mut App) {
     });
 }
 
+fn configure_iterm_image_support(app: &mut App) {
+    let (cells_width, cells_height) = crossterm::terminal::size().unwrap_or((120, 40));
+    app.terminal_images.protocol = ImageProtocol::ItermInline;
+    app.terminal_images.window = Some(TerminalWindowSize {
+        cells_width,
+        cells_height,
+        pixels_width: 1920,
+        pixels_height: 1080,
+    });
+}
+
 fn write_test_raster_image(path: &Path, format: ImageFormat, width_px: u32, height_px: u32) {
     let mut image = RgbaImage::new(width_px, height_px);
     for pixel in image.pixels_mut() {
@@ -262,6 +273,7 @@ fn failed_full_height_page_image_falls_back_to_text_layout() {
         target_height_px: image_target_height_px(area, app.cached_terminal_window()),
         mode: StaticImageOverlayMode::Inline,
         force_render_to_cache: false,
+        prepare_inline_payload: false,
     };
     app.image_preview
         .failed_images
@@ -424,6 +436,63 @@ fn document_page_image_prepares_in_background_before_display() {
 }
 
 #[test]
+fn iterm_inline_page_image_clear_area_covers_full_preview_body() {
+    let root = temp_root("iterm-inline-clear-area");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let page = root.join("page.png");
+    write_test_raster_image(&page, ImageFormat::Png, 900, 1400);
+    let page_size = fs::metadata(&page)
+        .expect("page image metadata should exist")
+        .len();
+
+    let mut app = App::new_at(root.clone()).expect("app should initialize");
+    configure_iterm_image_support(&mut app);
+    app.entries.clear();
+    app.selected = 0;
+    app.frame_state.preview_panel = Some(Rect {
+        x: 1,
+        y: 1,
+        width: 50,
+        height: 24,
+    });
+    app.frame_state.preview_media_area = Some(Rect {
+        x: 2,
+        y: 3,
+        width: 48,
+        height: 12,
+    });
+    app.frame_state.preview_content_area = Some(Rect {
+        x: 2,
+        y: 15,
+        width: 48,
+        height: 8,
+    });
+    app.preview_state.content = PreviewContent::new(PreviewKind::Comic, Vec::new())
+        .with_preview_visual(PreviewVisual {
+            kind: PreviewVisualKind::PageImage,
+            layout: PreviewVisualLayout::Inline,
+            path: page,
+            size: page_size,
+            modified: None,
+        });
+
+    app.refresh_static_image_preloads();
+    wait_for_displayed_preview_overlay(&mut app);
+
+    assert_eq!(
+        app.displayed_static_image_clear_area(),
+        Some(Rect {
+            x: 1,
+            y: 1,
+            width: 50,
+            height: 24,
+        })
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn concurrent_inline_raster_prepares_keep_shared_render_cache_readable() {
     let root = temp_root("concurrent-inline-render");
     fs::create_dir_all(&root).expect("failed to create temp root");
@@ -439,6 +508,7 @@ fn concurrent_inline_raster_prepares_keep_shared_render_cache_readable() {
         ffmpeg_available: false,
         magick_available: false,
         force_render_to_cache: false,
+        prepare_inline_payload: false,
     });
     let barrier = Arc::new(Barrier::new(7));
     let mut handles = Vec::new();
@@ -586,6 +656,7 @@ fn current_comic_prepare_build_marks_preview_dirty() {
             app.cached_terminal_window(),
         ),
         force_render_to_cache: false,
+        prepare_inline_payload: false,
         canceled: false,
         result: Some(crate::app::overlays::images::PreparedStaticImageAsset {
             display_path: rendered,
@@ -593,6 +664,7 @@ fn current_comic_prepare_build_marks_preview_dirty() {
                 width_px: 768,
                 height_px: 432,
             },
+            inline_payload: None,
         }),
     });
 
@@ -924,6 +996,64 @@ fn comic_overlay_keeps_previous_page_visible_while_next_page_preview_loads() {
         .expect("comic preview loading transition should not clear the overlay");
 
     assert!(app.static_image_overlay_displayed());
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn iterm_popup_clear_defers_page_image_erase_until_next_draw() {
+    let root = temp_root("iterm-popup-deferred-erase");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let page = root.join("page.png");
+    write_test_raster_image(&page, ImageFormat::Png, 600, 300);
+    let page_size = fs::metadata(&page)
+        .expect("page image metadata should exist")
+        .len();
+
+    let mut app = App::new_at(root.clone()).expect("app should initialize");
+    configure_iterm_image_support(&mut app);
+    app.entries.clear();
+    app.selected = 0;
+    app.frame_state.preview_panel = Some(Rect {
+        x: 1,
+        y: 1,
+        width: 50,
+        height: 24,
+    });
+    app.frame_state.preview_media_area = Some(Rect {
+        x: 2,
+        y: 3,
+        width: 48,
+        height: 12,
+    });
+    app.frame_state.preview_content_area = Some(Rect {
+        x: 2,
+        y: 15,
+        width: 48,
+        height: 8,
+    });
+    app.preview_state.content = PreviewContent::new(PreviewKind::Comic, Vec::new())
+        .with_preview_visual(PreviewVisual {
+            kind: PreviewVisualKind::PageImage,
+            layout: PreviewVisualLayout::Inline,
+            path: page,
+            size: page_size,
+            modified: None,
+        });
+
+    app.refresh_static_image_preloads();
+    wait_for_displayed_preview_overlay(&mut app);
+    assert!(app.static_image_overlay_displayed());
+
+    app.help_open = true;
+    app.present_preview_overlay()
+        .expect("iTerm popup clear should not fail");
+
+    assert!(!app.static_image_overlay_displayed());
+    let erase = String::from_utf8(app.iterm_pre_draw_erase())
+        .expect("iTerm erase output should be valid utf8");
+    assert!(erase.contains("\x1b[24;2H"));
+    assert!(app.iterm_pre_draw_erase().is_empty());
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

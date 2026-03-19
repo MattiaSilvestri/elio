@@ -9,6 +9,7 @@ use std::{
     io::{Read, Write as _},
     path::Path,
     process::Command,
+    sync::Arc,
 };
 
 /// Write a line to `/tmp/elio-preview.log` when `ELIO_DEBUG_PREVIEW` is set.
@@ -24,10 +25,11 @@ pub(in crate::app) fn preview_log(msg: impl std::fmt::Display) {
         .and_then(|mut f| writeln!(f, "{msg}"));
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(in crate::app) struct TerminalImageState {
     pub(super) protocol: ImageProtocol,
     pub(super) window: Option<TerminalWindowSize>,
+    pending_iterm_erase: Vec<Rect>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -135,28 +137,35 @@ impl App {
         if !needs_clear {
             return Vec::new();
         }
-        self.displayed_static_image_pane_area()
+        self.displayed_static_image_clear_area()
             .or_else(|| self.displayed_pdf_overlay_area())
             .map(erase_cells)
             .unwrap_or_default()
     }
 
-    pub(crate) fn iterm_pre_draw_erase(&self) -> Vec<u8> {
+    pub(crate) fn iterm_pre_draw_erase(&mut self) -> Vec<u8> {
         if self.terminal_images.protocol != ImageProtocol::ItermInline {
             return Vec::new();
         }
+        let mut areas = std::mem::take(&mut self.terminal_images.pending_iterm_erase);
         let keep_stale = self.keep_displayed_static_image_overlay_while_pending();
-        let needs_clear = (self.static_image_overlay_displayed()
+        if self.static_image_overlay_displayed()
             && !self.displayed_static_image_matches_active()
-            && !keep_stale)
-            || (self.pdf_overlay_displayed() && !self.displayed_pdf_overlay_matches_active());
-        if !needs_clear {
+            && !keep_stale
+            && let Some(area) = self.displayed_static_image_clear_area()
+        {
+            push_unique_rect(&mut areas, area);
+        }
+        if self.pdf_overlay_displayed()
+            && !self.displayed_pdf_overlay_matches_active()
+            && let Some(area) = self.displayed_pdf_overlay_area()
+        {
+            push_unique_rect(&mut areas, area);
+        }
+        if areas.is_empty() {
             return Vec::new();
         }
-        self.displayed_static_image_pane_area()
-            .or_else(|| self.displayed_pdf_overlay_area())
-            .map(erase_cells)
-            .unwrap_or_default()
+        areas.into_iter().flat_map(erase_cells).collect()
     }
 
     pub(crate) fn present_preview_overlay(&mut self) -> Result<Vec<u8>> {
@@ -181,6 +190,7 @@ impl App {
         // Non-Kitty protocols (e.g. iTerm2) have no unicode placeholder support —
         // clear the image when any popup is open.
         if any_overlay_open && protocol != ImageProtocol::KittyGraphics {
+            self.queue_forced_iterm_preview_erase();
             return self.clear_preview_overlay();
         }
 
@@ -273,6 +283,18 @@ impl App {
         self.clear_displayed_static_image();
         self.clear_displayed_pdf_overlay();
         Ok(bytes)
+    }
+
+    pub(crate) fn queue_forced_iterm_preview_erase(&mut self) {
+        if self.terminal_images.protocol != ImageProtocol::ItermInline {
+            return;
+        }
+        if let Some(area) = self.displayed_static_image_clear_area() {
+            push_unique_rect(&mut self.terminal_images.pending_iterm_erase, area);
+        }
+        if let Some(area) = self.displayed_pdf_overlay_area() {
+            push_unique_rect(&mut self.terminal_images.pending_iterm_erase, area);
+        }
     }
 
     pub(crate) fn preview_uses_image_overlay(&self) -> bool {
@@ -438,12 +460,15 @@ pub(in crate::app) fn place_terminal_image(
     path: &Path,
     area: Rect,
     excluded: &[Rect],
+    inline_payload: Option<&str>,
 ) -> Result<Vec<u8>> {
     match protocol {
         ImageProtocol::KittyGraphics => {
             place_terminal_image_with_kitty_protocol(path, area, excluded)
         }
-        ImageProtocol::ItermInline => place_terminal_image_with_iterm_protocol(path, area),
+        ImageProtocol::ItermInline => {
+            place_terminal_image_with_iterm_protocol(path, area, inline_payload)
+        }
         ImageProtocol::None => Ok(Vec::new()),
     }
 }
@@ -600,6 +625,13 @@ fn clear_terminal_images_with_kitty_protocol() -> Result<Vec<u8>> {
     Ok(build_kitty_clear_sequence().as_bytes().to_vec())
 }
 
+pub(in crate::app) fn encode_iterm_inline_payload(path: &Path) -> Option<Arc<str>> {
+    let data = fs::read(path).ok()?;
+    Some(Arc::<str>::from(
+        base64::engine::general_purpose::STANDARD.encode(&data),
+    ))
+}
+
 /// Overwrite every cell in `area` with a space colored with the panel background
 /// so iTerm2 ghost pixels are erased without leaving black traces.
 ///
@@ -632,9 +664,24 @@ fn erase_cells(area: Rect) -> Vec<u8> {
     out
 }
 
-fn place_terminal_image_with_iterm_protocol(path: &Path, area: Rect) -> Result<Vec<u8>> {
-    let data = fs::read(path)?;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(&data);
+fn push_unique_rect(rects: &mut Vec<Rect>, area: Rect) {
+    if area.width == 0 || area.height == 0 || rects.contains(&area) {
+        return;
+    }
+    rects.push(area);
+}
+
+fn place_terminal_image_with_iterm_protocol(
+    path: &Path,
+    area: Rect,
+    inline_payload: Option<&str>,
+) -> Result<Vec<u8>> {
+    let encoded = match inline_payload {
+        Some(payload) => payload.to_string(),
+        None => encode_iterm_inline_payload(path)
+            .map(|payload| payload.to_string())
+            .context("failed to encode iTerm inline image payload")?,
+    };
     // Move cursor to the top-left cell of the placement area, then emit the
     // OSC 1337 sequence. `width` and `height` are in terminal cells.
     let seq = format!(

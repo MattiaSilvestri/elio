@@ -15,10 +15,12 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
 
 const STATIC_IMAGE_RENDER_CACHE_LIMIT: usize = 24;
+const STATIC_IMAGE_INLINE_PAYLOAD_CACHE_LIMIT: usize = 10;
 const STATIC_IMAGE_PRELOAD_LIMIT: usize = 6;
 const STATIC_IMAGE_INLINE_FALLBACK_PREPARE_MAX_BYTES: u64 = 512 * 1024;
 const STATIC_IMAGE_INLINE_EXTERNAL_PREPARE_MAX_BYTES: u64 = 16 * 1024 * 1024;
@@ -32,6 +34,8 @@ pub(in crate::app) struct ImagePreviewState {
     pub(super) dimensions: HashMap<StaticImageKey, RenderedImageDimensions>,
     pub(super) rendered_images: HashMap<StaticImageKey, PathBuf>,
     pub(super) render_order: VecDeque<StaticImageKey>,
+    inline_payloads: HashMap<StaticImageKey, Arc<str>>,
+    payload_order: VecDeque<StaticImageKey>,
     pub(super) failed_images: HashSet<StaticImageKey>,
     pub(super) pending_prepares: HashSet<StaticImageKey>,
     displayed: Option<DisplayedStaticImagePreview>,
@@ -51,6 +55,7 @@ pub(in crate::app) struct StaticImageKey {
     target_width_px: u32,
     target_height_px: u32,
     force_render_to_cache: bool,
+    prepare_inline_payload: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -69,11 +74,13 @@ pub(in crate::app) struct StaticImageOverlayRequest {
     pub(super) target_height_px: u32,
     pub(super) mode: StaticImageOverlayMode,
     pub(super) force_render_to_cache: bool,
+    pub(super) prepare_inline_payload: bool,
 }
 
 pub(in crate::app) struct PreparedStaticImage {
     pub(super) display_path: PathBuf,
     pub(super) dimensions: RenderedImageDimensions,
+    pub(super) inline_payload: Option<Arc<str>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -82,7 +89,7 @@ struct DisplayedStaticImagePreview {
     size: u64,
     modified: Option<SystemTime>,
     area: Rect,
-    pane_area: Rect,
+    clear_area: Rect,
     mode: StaticImageOverlayMode,
 }
 
@@ -102,6 +109,7 @@ struct StaticImagePreloadViewport {
 pub(in crate::app) struct PreparedStaticImageAsset {
     pub(super) display_path: PathBuf,
     pub(super) dimensions: RenderedImageDimensions,
+    pub(super) inline_payload: Option<Arc<str>>,
 }
 
 pub(in crate::app) enum StaticImageOverlayPreparation {
@@ -243,7 +251,11 @@ impl App {
             "present_static_image_overlay: dims={}x{} placement={:?}",
             prepared.dimensions.width_px, prepared.dimensions.height_px, placement
         ));
-        let displayed = DisplayedStaticImagePreview::from_request(&request, placement);
+        let displayed = DisplayedStaticImagePreview::from_request(
+            &request,
+            placement,
+            self.static_image_clear_area(&request),
+        );
         let image_changed = self.image_preview.displayed.as_ref() != Some(&displayed);
         let excluded_changed = excluded != self.image_preview.displayed_excluded.as_slice();
         if !image_changed && !excluded_changed {
@@ -256,7 +268,13 @@ impl App {
         if image_changed {
             out.extend(self.clear_preview_overlay()?);
         }
-        match place_terminal_image(protocol, &prepared.display_path, placement, excluded) {
+        match place_terminal_image(
+            protocol,
+            &prepared.display_path,
+            placement,
+            excluded,
+            prepared.inline_payload.as_deref(),
+        ) {
             Ok(bytes) => {
                 preview_log(format_args!(
                     "present_static_image_overlay: placed {} bytes via {protocol:?}",
@@ -320,7 +338,11 @@ impl App {
             "present_preview_visual_overlay: dims={}x{} placement={:?}",
             prepared.dimensions.width_px, prepared.dimensions.height_px, placement
         ));
-        let displayed = DisplayedStaticImagePreview::from_request(&request, placement);
+        let displayed = DisplayedStaticImagePreview::from_request(
+            &request,
+            placement,
+            self.static_image_clear_area(&request),
+        );
         let image_changed = self.image_preview.displayed.as_ref() != Some(&displayed);
         let excluded_changed = excluded != self.image_preview.displayed_excluded.as_slice();
         if !image_changed && !excluded_changed {
@@ -330,7 +352,13 @@ impl App {
         if image_changed {
             out.extend(self.clear_preview_overlay()?);
         }
-        match place_terminal_image(protocol, &prepared.display_path, placement, excluded) {
+        match place_terminal_image(
+            protocol,
+            &prepared.display_path,
+            placement,
+            excluded,
+            prepared.inline_payload.as_deref(),
+        ) {
             Ok(bytes) => {
                 preview_log(format_args!(
                     "present_preview_visual_overlay: placed {} bytes via {protocol:?}",
@@ -357,13 +385,8 @@ impl App {
         request: &StaticImageOverlayRequest,
     ) -> StaticImageOverlayPreparation {
         let key = StaticImageKey::from_request(request);
-        if let Some(dimensions) = self.image_preview.dimensions.get(&key).copied()
-            && let Some(display_path) = self.cached_static_image_display_path(&key)
-        {
-            return StaticImageOverlayPreparation::Ready(PreparedStaticImage {
-                display_path,
-                dimensions,
-            });
+        if let Some(prepared) = self.cached_prepared_static_image_for_overlay(&key, request) {
+            return StaticImageOverlayPreparation::Ready(prepared);
         }
         if let Some(prepared) = self.direct_static_image_for_overlay(request) {
             return StaticImageOverlayPreparation::Ready(prepared);
@@ -425,6 +448,7 @@ impl App {
         Some(PreparedStaticImage {
             display_path: request.path.clone(),
             dimensions,
+            inline_payload: None,
         })
     }
 
@@ -434,8 +458,16 @@ impl App {
             && static_image_format_for_overlay_request(request) == Some(StaticImageFormat::Png)
     }
 
+    fn static_image_can_use_source_path(&self, request: &StaticImageOverlayRequest) -> bool {
+        match self.terminal_images.protocol {
+            ImageProtocol::KittyGraphics => self.static_image_can_display_directly_now(request),
+            ImageProtocol::ItermInline => static_image_supports_iterm_source_passthrough(request),
+            ImageProtocol::None => false,
+        }
+    }
+
     fn static_image_requires_prepare(&self, request: &StaticImageOverlayRequest) -> bool {
-        !self.static_image_can_display_directly_now(request)
+        request.prepare_inline_payload || !self.static_image_can_display_directly_now(request)
     }
 
     fn magick_available(&mut self) -> bool {
@@ -465,10 +497,11 @@ impl App {
         self.image_preview.displayed.is_some()
     }
 
-    /// The full pane rect of the currently displayed static image overlay, if any.
-    /// Used to erase iTerm2 ghost pixels — must cover the whole pane, not just the fitted placement.
-    pub(in crate::app) fn displayed_static_image_pane_area(&self) -> Option<Rect> {
-        self.image_preview.displayed.as_ref().map(|d| d.pane_area)
+    /// The rect that should be erased for the currently displayed static image
+    /// overlay, if any. On iTerm this may be larger than the fitted image box so
+    /// split preview layouts clear fully when the image goes away.
+    pub(in crate::app) fn displayed_static_image_clear_area(&self) -> Option<Rect> {
+        self.image_preview.displayed.as_ref().map(|d| d.clear_area)
     }
 
     pub(in crate::app) fn clear_displayed_static_image(&mut self) {
@@ -611,6 +644,7 @@ impl App {
             build.target_width_px,
             build.target_height_px,
             build.force_render_to_cache,
+            build.prepare_inline_payload,
         );
         self.image_preview.pending_prepares.remove(&key);
         let is_current = self
@@ -632,6 +666,9 @@ impl App {
                 self.image_preview
                     .dimensions
                     .insert(key.clone(), prepared.dimensions);
+                if let Some(payload) = prepared.inline_payload {
+                    self.remember_static_image_inline_payload(key.clone(), payload);
+                }
                 if prepared.display_path != build.path {
                     self.remember_rendered_static_image(key, prepared.display_path);
                 }
@@ -662,6 +699,50 @@ impl App {
             .render_order
             .retain(|queued| queued != key);
         None
+    }
+
+    fn cached_static_image_inline_payload(&self, key: &StaticImageKey) -> Option<Arc<str>> {
+        self.image_preview.inline_payloads.get(key).cloned()
+    }
+
+    fn remember_static_image_inline_payload(&mut self, key: StaticImageKey, payload: Arc<str>) {
+        self.image_preview.inline_payloads.insert(key.clone(), payload);
+        self.image_preview
+            .payload_order
+            .retain(|queued| queued != &key);
+        self.image_preview.payload_order.push_back(key);
+        while self.image_preview.payload_order.len() > STATIC_IMAGE_INLINE_PAYLOAD_CACHE_LIMIT {
+            if let Some(stale_key) = self.image_preview.payload_order.pop_front() {
+                self.image_preview.inline_payloads.remove(&stale_key);
+            }
+        }
+    }
+
+    fn cached_prepared_static_image_for_overlay(
+        &mut self,
+        key: &StaticImageKey,
+        request: &StaticImageOverlayRequest,
+    ) -> Option<PreparedStaticImage> {
+        let dimensions = self.image_preview.dimensions.get(key).copied()?;
+        let inline_payload = if request.prepare_inline_payload {
+            Some(self.cached_static_image_inline_payload(key)?)
+        } else {
+            None
+        };
+        if self.static_image_can_use_source_path(request) {
+            return Some(PreparedStaticImage {
+                display_path: request.path.clone(),
+                dimensions,
+                inline_payload,
+            });
+        }
+
+        let display_path = self.cached_static_image_display_path(key)?;
+        Some(PreparedStaticImage {
+            display_path,
+            dimensions,
+            inline_payload,
+        })
     }
 
     fn remember_rendered_static_image(&mut self, key: StaticImageKey, path: PathBuf) {
@@ -702,6 +783,7 @@ impl App {
             target_height_px: image_target_height_px(area, self.cached_terminal_window()),
             mode: StaticImageOverlayMode::FullPane,
             force_render_to_cache: false,
+            prepare_inline_payload: self.terminal_images.protocol == ImageProtocol::ItermInline,
         })
     }
 
@@ -738,8 +820,8 @@ impl App {
         let key = StaticImageKey::from_request(request);
         if self.image_preview.failed_images.contains(&key)
             || self.image_preview.pending_prepares.contains(&key)
-            || self.image_preview.dimensions.contains_key(&key)
-                && self.cached_static_image_display_path(&key).is_some()
+            || self.cached_prepared_static_image_for_overlay(&key, request)
+                .is_some()
         {
             return;
         }
@@ -767,6 +849,7 @@ impl App {
             ffmpeg_available: self.ffmpeg_available(),
             magick_available: self.magick_available(),
             force_render_to_cache: request.force_render_to_cache,
+            prepare_inline_payload: request.prepare_inline_payload,
         }
     }
 
@@ -783,7 +866,32 @@ impl App {
         Some(DisplayedStaticImagePreview::from_request(
             &request,
             self.static_image_display_area(&request, image_dimensions, window_size),
+            self.static_image_clear_area(&request),
         ))
+    }
+
+    fn static_image_clear_area(&self, request: &StaticImageOverlayRequest) -> Rect {
+        if self.terminal_images.protocol == ImageProtocol::ItermInline {
+            if let Some(panel) = self.frame_state.preview_panel {
+                return panel;
+            }
+            if request.mode == StaticImageOverlayMode::Inline {
+                return self.preview_body_area().unwrap_or(request.area);
+            }
+        }
+        request.area
+    }
+
+    fn preview_body_area(&self) -> Option<Rect> {
+        match (
+            self.frame_state.preview_media_area,
+            self.frame_state.preview_content_area,
+        ) {
+            (Some(media), Some(content)) => Some(union_rect(media, content)),
+            (Some(media), None) => Some(media),
+            (None, Some(content)) => Some(content),
+            (None, None) => None,
+        }
     }
 
     fn static_image_display_area(
@@ -847,6 +955,7 @@ impl StaticImageKey {
             target_width_px: request.target_width_px,
             target_height_px: request.target_height_px,
             force_render_to_cache: request.force_render_to_cache,
+            prepare_inline_payload: request.prepare_inline_payload,
         }
     }
 
@@ -857,6 +966,7 @@ impl StaticImageKey {
         target_width_px: u32,
         target_height_px: u32,
         force_render_to_cache: bool,
+        prepare_inline_payload: bool,
     ) -> Self {
         Self {
             path,
@@ -865,20 +975,34 @@ impl StaticImageKey {
             target_width_px,
             target_height_px,
             force_render_to_cache,
+            prepare_inline_payload,
         }
     }
 }
 
 impl DisplayedStaticImagePreview {
-    fn from_request(request: &StaticImageOverlayRequest, area: Rect) -> Self {
+    fn from_request(request: &StaticImageOverlayRequest, area: Rect, clear_area: Rect) -> Self {
         Self {
             path: request.path.clone(),
             size: request.size,
             modified: request.modified,
             area,
-            pane_area: request.area,
+            clear_area,
             mode: request.mode,
         }
+    }
+}
+
+fn union_rect(a: Rect, b: Rect) -> Rect {
+    let left = a.x.min(b.x);
+    let top = a.y.min(b.y);
+    let right = a.x.saturating_add(a.width).max(b.x.saturating_add(b.width));
+    let bottom = a.y.saturating_add(a.height).max(b.y.saturating_add(b.height));
+    Rect {
+        x: left,
+        y: top,
+        width: right.saturating_sub(left),
+        height: bottom.saturating_sub(top),
     }
 }
 
@@ -946,14 +1070,31 @@ where
         target_width_px,
         target_height_px,
         request.force_render_to_cache,
+        request.prepare_inline_payload,
     );
+    let inline_payload = |path: &Path| -> Option<Option<Arc<str>>> {
+        if !request.prepare_inline_payload {
+            return Some(None);
+        }
+        Some(Some(super::inline_image::encode_iterm_inline_payload(path)?))
+    };
+
+    if static_image_supports_iterm_source_passthrough_for_prepare(request, format) {
+        return Some(PreparedStaticImageAsset {
+            dimensions: source_dimensions,
+            display_path: request.path.clone(),
+            inline_payload: inline_payload(&request.path)?,
+        });
+    }
 
     if format == StaticImageFormat::Svg {
         let cache_path = static_image_render_cache_path(&key)?;
         if cache_path.exists() {
+            let payload = inline_payload(&cache_path)?;
             return Some(PreparedStaticImageAsset {
                 dimensions: prepared_display_dimensions(&cache_path, source_dimensions),
                 display_path: cache_path,
+                inline_payload: payload,
             });
         }
         let temp_path = static_image_render_temp_path(&cache_path)?;
@@ -967,9 +1108,11 @@ where
             )
         {
             finalize_static_image_render(&temp_path, &cache_path)?;
+            let payload = inline_payload(&cache_path)?;
             return Some(PreparedStaticImageAsset {
                 dimensions: prepared_display_dimensions(&cache_path, source_dimensions),
                 display_path: cache_path,
+                inline_payload: payload,
             });
         }
         let _ = fs::remove_file(temp_path);
@@ -978,9 +1121,11 @@ where
 
     let cache_path = static_image_render_cache_path(&key)?;
     if cache_path.exists() {
+        let payload = inline_payload(&cache_path)?;
         return Some(PreparedStaticImageAsset {
             dimensions: prepared_display_dimensions(&cache_path, source_dimensions),
             display_path: cache_path,
+            inline_payload: payload,
         });
     }
     if canceled() {
@@ -1000,9 +1145,11 @@ where
         )
     {
         finalize_static_image_render(&temp_path, &cache_path)?;
+        let payload = inline_payload(&cache_path)?;
         return Some(PreparedStaticImageAsset {
             dimensions: prepared_display_dimensions(&cache_path, source_dimensions),
             display_path: cache_path,
+            inline_payload: payload,
         });
     }
 
@@ -1025,10 +1172,12 @@ where
     }
     image.save_with_format(&temp_path, ImageFormat::Png).ok()?;
     finalize_static_image_render(&temp_path, &cache_path)?;
+    let payload = inline_payload(&cache_path)?;
 
     Some(PreparedStaticImageAsset {
         dimensions: prepared_display_dimensions(&cache_path, source_dimensions),
         display_path: cache_path,
+        inline_payload: payload,
     })
 }
 
@@ -1044,7 +1193,12 @@ fn prepared_display_dimensions(
 fn static_image_render_cache_path(key: &StaticImageKey) -> Option<PathBuf> {
     let mut hasher = DefaultHasher::new();
     STATIC_IMAGE_RENDER_CACHE_VERSION.hash(&mut hasher);
-    key.hash(&mut hasher);
+    key.path.hash(&mut hasher);
+    key.size.hash(&mut hasher);
+    key.modified.hash(&mut hasher);
+    key.target_width_px.hash(&mut hasher);
+    key.target_height_px.hash(&mut hasher);
+    key.force_render_to_cache.hash(&mut hasher);
     let cache_dir = env::temp_dir().join(format!(
         "elio-image-preview-v{STATIC_IMAGE_RENDER_CACHE_VERSION}"
     ));
@@ -1100,6 +1254,31 @@ fn static_image_can_prepare_inline(
             }
         }
         StaticImageFormat::Svg => false,
+    }
+}
+
+fn static_image_supports_iterm_source_passthrough(
+    request: &StaticImageOverlayRequest,
+) -> bool {
+    static_image_format_for_overlay_request(request)
+        .is_some_and(|format| static_image_supports_iterm_source_format(&request.path, format))
+        && !request.force_render_to_cache
+}
+
+fn static_image_supports_iterm_source_passthrough_for_prepare(
+    request: &jobs::ImagePrepareRequest,
+    format: StaticImageFormat,
+) -> bool {
+    request.prepare_inline_payload
+        && !request.force_render_to_cache
+        && static_image_supports_iterm_source_format(&request.path, format)
+}
+
+fn static_image_supports_iterm_source_format(path: &Path, format: StaticImageFormat) -> bool {
+    match format {
+        StaticImageFormat::Png => true,
+        StaticImageFormat::Jpeg => read_exif_orientation(path).unwrap_or(1) == 1,
+        StaticImageFormat::Gif | StaticImageFormat::Webp | StaticImageFormat::Svg => false,
     }
 }
 

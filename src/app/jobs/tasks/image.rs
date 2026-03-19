@@ -39,6 +39,7 @@ pub(in crate::app::jobs) struct ImagePrepareJobKey {
     pub(in crate::app::jobs) target_width_px: u32,
     pub(in crate::app::jobs) target_height_px: u32,
     pub(in crate::app::jobs) force_render_to_cache: bool,
+    pub(in crate::app::jobs) prepare_inline_payload: bool,
 }
 
 impl ImagePreparePool {
@@ -78,6 +79,7 @@ impl ImagePreparePool {
                             target_width_px: request.target_width_px,
                             target_height_px: request.target_height_px,
                             force_render_to_cache: request.force_render_to_cache,
+                            prepare_inline_payload: request.prepare_inline_payload,
                             canceled: canceled.load(Ordering::Relaxed),
                             result,
                         }))
@@ -287,6 +289,7 @@ impl ImagePrepareJobKey {
             target_width_px: request.target_width_px,
             target_height_px: request.target_height_px,
             force_render_to_cache: request.force_render_to_cache,
+            prepare_inline_payload: request.prepare_inline_payload,
         }
     }
 }
