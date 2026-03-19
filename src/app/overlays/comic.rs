@@ -1,4 +1,5 @@
 use super::super::*;
+use crate::preview::preview_work_class;
 use std::{
     path::PathBuf,
     time::{Instant, SystemTime},
@@ -220,6 +221,7 @@ impl App {
             let _ = self.scheduler.submit_preview(PreviewRequest {
                 token: self.preview_state.token,
                 entry: entry.clone(),
+                work_class: preview_work_class(&entry, &variant),
                 variant,
                 priority: PreviewPriority::Low,
             });

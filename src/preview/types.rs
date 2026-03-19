@@ -34,6 +34,12 @@ pub(crate) enum PreviewRequestOptions {
     ComicPage(usize),
 }
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum PreviewWorkClass {
+    Light,
+    Heavy,
+}
+
 impl PreviewRequestOptions {
     pub(crate) fn epub_section_index(&self) -> Option<usize> {
         match self {

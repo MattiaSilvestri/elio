@@ -1,5 +1,5 @@
 use super::*;
-use crate::preview::PreviewRequestOptions;
+use crate::preview::{PreviewRequestOptions, PreviewWorkClass};
 use std::sync::Arc;
 
 fn image_prepare_request(name: &str) -> ImagePrepareRequest {
@@ -16,6 +16,16 @@ fn image_prepare_request(name: &str) -> ImagePrepareRequest {
     }
 }
 
+fn preview_request(entry: Entry, token: u64, priority: PreviewPriority) -> PreviewRequest {
+    PreviewRequest {
+        token,
+        entry,
+        variant: PreviewRequestOptions::Default,
+        priority,
+        work_class: PreviewWorkClass::Light,
+    }
+}
+
 #[test]
 fn preview_pool_deduplicates_identical_active_or_queued_requests() {
     let scheduler = JobScheduler::new_for_tests(0, 0, 8);
@@ -29,18 +39,16 @@ fn preview_pool_deduplicates_identical_active_or_queued_requests() {
         readonly: false,
     };
 
-    assert!(scheduler.submit_preview(PreviewRequest {
-        token: 1,
-        entry: entry.clone(),
-        variant: PreviewRequestOptions::Default,
-        priority: PreviewPriority::Low,
-    }));
-    assert!(scheduler.submit_preview(PreviewRequest {
-        token: 2,
+    assert!(scheduler.submit_preview(preview_request(
+        entry.clone(),
+        1,
+        PreviewPriority::Low,
+    )));
+    assert!(scheduler.submit_preview(preview_request(
         entry,
-        variant: PreviewRequestOptions::Default,
-        priority: PreviewPriority::Low,
-    }));
+        2,
+        PreviewPriority::Low,
+    )));
     let snapshot = scheduler.snapshot();
     assert!(snapshot.preview_pending_high.is_empty());
     assert_eq!(
@@ -86,9 +94,8 @@ fn preview_pool_discards_oldest_queued_request_when_full() {
     let scheduler = JobScheduler::new_for_tests(0, 0, 2);
 
     for name in ["a.zip", "b.zip", "c.zip"] {
-        assert!(scheduler.submit_preview(PreviewRequest {
-            token: 1,
-            entry: Entry {
+        assert!(scheduler.submit_preview(preview_request(
+            Entry {
                 path: PathBuf::from(name),
                 name: name.to_string(),
                 name_key: name.to_string(),
@@ -97,9 +104,9 @@ fn preview_pool_discards_oldest_queued_request_when_full() {
                 modified: None,
                 readonly: false,
             },
-            variant: PreviewRequestOptions::Default,
-            priority: PreviewPriority::Low,
-        }));
+            1,
+            PreviewPriority::Low,
+        )));
     }
 
     assert!(scheduler.snapshot().preview_pending_high.is_empty());
@@ -135,18 +142,16 @@ fn high_priority_preview_promotes_over_low_priority_duplicate() {
         readonly: false,
     };
 
-    assert!(scheduler.submit_preview(PreviewRequest {
-        token: 1,
-        entry: entry.clone(),
-        variant: PreviewRequestOptions::Default,
-        priority: PreviewPriority::Low,
-    }));
-    assert!(scheduler.submit_preview(PreviewRequest {
-        token: 2,
+    assert!(scheduler.submit_preview(preview_request(
+        entry.clone(),
+        1,
+        PreviewPriority::Low,
+    )));
+    assert!(scheduler.submit_preview(preview_request(
         entry,
-        variant: PreviewRequestOptions::Default,
-        priority: PreviewPriority::High,
-    }));
+        2,
+        PreviewPriority::High,
+    )));
 
     let snapshot = scheduler.snapshot();
     assert!(snapshot.preview_pending_low.is_empty());
@@ -166,9 +171,8 @@ fn high_priority_preview_promotes_over_low_priority_duplicate() {
 fn low_priority_preview_does_not_displace_full_high_priority_queue() {
     let scheduler = JobScheduler::new_for_tests(0, 0, 1);
 
-    assert!(scheduler.submit_preview(PreviewRequest {
-        token: 1,
-        entry: Entry {
+    assert!(scheduler.submit_preview(preview_request(
+        Entry {
             path: PathBuf::from("a.zip"),
             name: "a.zip".to_string(),
             name_key: "a.zip".to_string(),
@@ -177,12 +181,11 @@ fn low_priority_preview_does_not_displace_full_high_priority_queue() {
             modified: None,
             readonly: false,
         },
-        variant: PreviewRequestOptions::Default,
-        priority: PreviewPriority::High,
-    }));
-    assert!(scheduler.submit_preview(PreviewRequest {
-        token: 2,
-        entry: Entry {
+        1,
+        PreviewPriority::High,
+    )));
+    assert!(scheduler.submit_preview(preview_request(
+        Entry {
             path: PathBuf::from("b.zip"),
             name: "b.zip".to_string(),
             name_key: "b.zip".to_string(),
@@ -191,9 +194,9 @@ fn low_priority_preview_does_not_displace_full_high_priority_queue() {
             modified: None,
             readonly: false,
         },
-        variant: PreviewRequestOptions::Default,
-        priority: PreviewPriority::Low,
-    }));
+        2,
+        PreviewPriority::Low,
+    )));
 
     let snapshot = scheduler.snapshot();
     assert_eq!(
@@ -217,9 +220,8 @@ fn low_priority_preview_eviction_updates_metrics() {
     let scheduler = JobScheduler::new_for_tests(0, 0, 1);
 
     for name in ["a.zip", "b.zip"] {
-        assert!(scheduler.submit_preview(PreviewRequest {
-            token: 1,
-            entry: Entry {
+        assert!(scheduler.submit_preview(preview_request(
+            Entry {
                 path: PathBuf::from(name),
                 name: name.to_string(),
                 name_key: name.to_string(),
@@ -228,14 +230,117 @@ fn low_priority_preview_eviction_updates_metrics() {
                 modified: None,
                 readonly: false,
             },
-            variant: PreviewRequestOptions::Default,
-            priority: PreviewPriority::Low,
-        }));
+            1,
+            PreviewPriority::Low,
+        )));
     }
 
     let metrics = scheduler.metrics_snapshot();
     assert_eq!(metrics.preview_jobs_submitted_low, 2);
     assert_eq!(metrics.preview_low_priority_evictions, 1);
+}
+
+#[test]
+fn low_priority_heavy_preview_does_not_start_a_second_heavy_job() {
+    let scheduler = JobScheduler::new_for_tests(0, 0, 4);
+    let first = Entry {
+        path: PathBuf::from("first.zip"),
+        name: "first.zip".to_string(),
+        name_key: "first.zip".to_string(),
+        kind: EntryKind::File,
+        size: 1,
+        modified: None,
+        readonly: false,
+    };
+    let second = Entry {
+        path: PathBuf::from("second.zip"),
+        name: "second.zip".to_string(),
+        name_key: "second.zip".to_string(),
+        kind: EntryKind::File,
+        size: 1,
+        modified: None,
+        readonly: false,
+    };
+
+    assert!(scheduler.submit_preview(PreviewRequest {
+        token: 1,
+        entry: first.clone(),
+        variant: PreviewRequestOptions::Default,
+        priority: PreviewPriority::Low,
+        work_class: PreviewWorkClass::Heavy,
+    }));
+    assert!(scheduler.submit_preview(PreviewRequest {
+        token: 2,
+        entry: second.clone(),
+        variant: PreviewRequestOptions::Default,
+        priority: PreviewPriority::Low,
+        work_class: PreviewWorkClass::Heavy,
+    }));
+
+    let started = scheduler
+        .preview
+        .pop_next_pending_for_tests()
+        .expect("first heavy preview should start");
+    assert_eq!(started.entry.path, first.path);
+    assert!(scheduler.preview.pop_next_pending_for_tests().is_none());
+    assert_eq!(
+        scheduler.snapshot().preview_pending_low,
+        vec![PreviewJobKey {
+            path: second.path,
+            size: 1,
+            modified: None,
+            variant: PreviewRequestOptions::Default,
+        }]
+    );
+}
+
+#[test]
+fn low_priority_light_preview_can_start_while_heavy_preview_is_active() {
+    let scheduler = JobScheduler::new_for_tests(0, 0, 4);
+    let heavy = Entry {
+        path: PathBuf::from("archive.zip"),
+        name: "archive.zip".to_string(),
+        name_key: "archive.zip".to_string(),
+        kind: EntryKind::File,
+        size: 1,
+        modified: None,
+        readonly: false,
+    };
+    let light = Entry {
+        path: PathBuf::from("notes.txt"),
+        name: "notes.txt".to_string(),
+        name_key: "notes.txt".to_string(),
+        kind: EntryKind::File,
+        size: 1,
+        modified: None,
+        readonly: false,
+    };
+
+    assert!(scheduler.submit_preview(PreviewRequest {
+        token: 1,
+        entry: heavy.clone(),
+        variant: PreviewRequestOptions::Default,
+        priority: PreviewPriority::Low,
+        work_class: PreviewWorkClass::Heavy,
+    }));
+    assert!(scheduler.submit_preview(PreviewRequest {
+        token: 2,
+        entry: light.clone(),
+        variant: PreviewRequestOptions::Default,
+        priority: PreviewPriority::Low,
+        work_class: PreviewWorkClass::Light,
+    }));
+
+    let started_heavy = scheduler
+        .preview
+        .pop_next_pending_for_tests()
+        .expect("heavy preview should start");
+    assert_eq!(started_heavy.entry.path, heavy.path);
+    let started_light = scheduler
+        .preview
+        .pop_next_pending_for_tests()
+        .expect("light preview should still start");
+    assert_eq!(started_light.entry.path, light.path);
 }
 
 #[test]

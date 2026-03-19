@@ -696,7 +696,7 @@ fn image_metadata_preview_loads_in_background() {
 }
 
 #[test]
-fn nearby_archive_preview_is_prefetched_at_low_priority() {
+fn nearby_archive_preview_skips_heavy_prefetch_work() {
     let root = temp_path("archive-prefetch");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let first = root.join("a.zip");
@@ -709,17 +709,15 @@ fn nearby_archive_preview_is_prefetched_at_low_priority() {
     for _ in 0..100 {
         let _ = app.process_preview_prefetch_timers();
         let _ = app.process_background_jobs();
-        if app.has_cached_preview_for_path(&second) {
-            break;
-        }
         thread::sleep(Duration::from_millis(10));
     }
-    assert!(app.has_cached_preview_for_path(&second));
+    assert!(!app.has_cached_preview_for_path(&second));
     let scheduler_metrics = app.scheduler_metrics();
     assert!(scheduler_metrics.preview_jobs_submitted_high >= 1);
-    assert!(scheduler_metrics.preview_jobs_submitted_low >= 1);
+    assert_eq!(scheduler_metrics.preview_jobs_submitted_low, 0);
 
     app.set_selected(1);
+    wait_for_background_preview(&mut app);
     assert_eq!(app.preview_section_label(), "Archive");
     assert!(
         app.preview_lines()

@@ -1,7 +1,7 @@
 use super::*;
 use crate::preview::{
-    PreviewContent, PreviewKind, PreviewLineCoverage, PreviewRequestOptions, loading_preview_for,
-    should_build_preview_in_background,
+    PreviewContent, PreviewKind, PreviewLineCoverage, PreviewRequestOptions, PreviewWorkClass,
+    loading_preview_for, preview_work_class, should_build_preview_in_background,
 };
 use std::sync::Arc;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -186,11 +186,13 @@ impl App {
                 {
                     self.preview_state.metrics.cache_misses += 1;
                     let loading_path = entry.path.clone();
+                    let work_class = preview_work_class(&entry, &preview_options);
                     let request = PreviewRequest {
                         token: self.preview_state.token,
                         entry,
                         variant: preview_options.clone(),
                         priority: PreviewPriority::High,
+                        work_class,
                     };
                     if !self.scheduler.submit_preview(request) {
                         self.preview_state.load_state = None;
@@ -209,11 +211,13 @@ impl App {
                         )),
                     );
                     let loading_path = entry.path.clone();
+                    let work_class = preview_work_class(&entry, &preview_options);
                     let request = PreviewRequest {
                         token: self.preview_state.token,
                         entry,
                         variant: preview_options.clone(),
                         priority: PreviewPriority::High,
+                        work_class,
                     };
                     if !self.scheduler.submit_preview(request) {
                         self.preview_state.load_state = None;
@@ -422,7 +426,9 @@ impl App {
                 continue;
             };
             let variant = self.preview_request_options_for_entry(&entry);
+            let work_class = preview_work_class(&entry, &variant);
             if !should_build_preview_in_background(&entry)
+                || work_class == PreviewWorkClass::Heavy
                 || self.cached_preview_for(&entry, &variant).is_some()
             {
                 continue;
@@ -433,6 +439,7 @@ impl App {
                 entry,
                 variant,
                 priority: PreviewPriority::Low,
+                work_class: PreviewWorkClass::Light,
             };
             if self.scheduler.submit_preview(request) {
                 queued += 1;

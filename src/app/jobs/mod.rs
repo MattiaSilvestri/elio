@@ -18,6 +18,7 @@ use self::{
 use super::overlays::images::PreparedStaticImageAsset;
 use super::overlays::pdf::PdfProbeResult;
 use super::*;
+use crate::preview::PreviewWorkClass;
 use crate::fs::search::SearchCandidate;
 use std::{
     collections::VecDeque,
@@ -277,6 +278,7 @@ pub(super) struct PreviewRequest {
     pub entry: Entry,
     pub variant: preview::PreviewRequestOptions,
     pub priority: PreviewPriority,
+    pub work_class: PreviewWorkClass,
 }
 
 #[derive(Debug)]

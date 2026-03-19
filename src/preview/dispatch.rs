@@ -15,6 +15,24 @@ pub(crate) fn should_build_preview_in_background(entry: &Entry) -> bool {
     true
 }
 
+pub(crate) fn preview_work_class(
+    entry: &Entry,
+    options: &PreviewRequestOptions,
+) -> PreviewWorkClass {
+    let facts = file_info::inspect_path_cached(&entry.path, entry.kind, entry.size, entry.modified);
+    if options.comic_page_index().is_some()
+        || options.epub_section_index().is_some()
+        || facts.builtin_class == FileClass::Archive
+        || facts.preview.kind == file_info::PreviewKind::Iso
+        || facts.preview.kind == file_info::PreviewKind::Torrent
+        || facts.preview.document_format.is_some()
+    {
+        PreviewWorkClass::Heavy
+    } else {
+        PreviewWorkClass::Light
+    }
+}
+
 pub(crate) fn loading_preview_for(
     entry: &Entry,
     options: &PreviewRequestOptions,
