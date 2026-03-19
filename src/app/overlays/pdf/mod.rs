@@ -15,7 +15,8 @@ use super::inline_image::{
 };
 #[cfg(test)]
 use super::inline_image::{
-    TerminalIdentity, build_kitty_clear_sequence, build_kitty_upload_sequence,
+    TerminalIdentity, build_kitty_clear_sequence, build_kitty_placeholder_sequence,
+    build_kitty_upload_sequence,
     fallback_window_size_pixels, parse_window_size, select_image_protocol,
 };
 use crate::file_info::{self, DocumentFormat};

@@ -22,7 +22,7 @@ const STATIC_IMAGE_RENDER_CACHE_LIMIT: usize = 24;
 const STATIC_IMAGE_PRELOAD_LIMIT: usize = 6;
 const STATIC_IMAGE_INLINE_FALLBACK_PREPARE_MAX_BYTES: u64 = 512 * 1024;
 const STATIC_IMAGE_INLINE_EXTERNAL_PREPARE_MAX_BYTES: u64 = 16 * 1024 * 1024;
-const STATIC_IMAGE_RENDER_CACHE_VERSION: usize = 2;
+const STATIC_IMAGE_RENDER_CACHE_VERSION: usize = 3;
 const FAST_FORCE_RENDER_FFMPEG_RASTER_ARGS: [&str; 4] =
     ["-compression_level", "1", "-sws_flags", "fast_bilinear"];
 const DEFAULT_FFMPEG_RASTER_ARGS: [&str; 0] = [];
@@ -635,11 +635,6 @@ impl App {
         {
             return Some(path.clone());
         }
-        if key.path.exists()
-            && static_image_format_for_path(&key.path) == Some(StaticImageFormat::Png)
-        {
-            return Some(key.path.clone());
-        }
 
         self.image_preview.rendered_images.remove(key);
         self.image_preview
@@ -928,15 +923,6 @@ where
         }
         let _ = fs::remove_file(temp_path);
         return None;
-    }
-
-    if format == StaticImageFormat::Png {
-        if !request.force_render_to_cache {
-            return Some(PreparedStaticImageAsset {
-                display_path: request.path.clone(),
-                dimensions: source_dimensions,
-            });
-        }
     }
 
     let cache_path = static_image_render_cache_path(&key)?;

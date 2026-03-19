@@ -92,6 +92,21 @@ fn write_test_raster_image(path: &Path, format: ImageFormat, width_px: u32, heig
         .expect("failed to write raster test image");
 }
 
+fn write_test_transparent_png(path: &Path, width_px: u32, height_px: u32) {
+    let mut image = RgbaImage::new(width_px, height_px);
+    for (x, y, pixel) in image.enumerate_pixels_mut() {
+        *pixel = if (x + y) % 2 == 0 {
+            Rgba([32, 128, 224, 255])
+        } else {
+            Rgba([0, 0, 0, 0])
+        };
+    }
+
+    DynamicImage::ImageRgba8(image)
+        .save_with_format(path, ImageFormat::Png)
+        .expect("failed to write transparent png");
+}
+
 fn write_test_oriented_jpeg(path: &Path, width_px: u32, height_px: u32, orientation: u16) {
     write_test_raster_image(path, ImageFormat::Jpeg, width_px, height_px);
 
@@ -378,7 +393,14 @@ fn current_extensionless_png_prepares_inline_for_immediate_overlay() {
         .expect("image request should be available");
     match app.prepared_static_image_for_overlay(&request) {
         crate::app::overlays::images::StaticImageOverlayPreparation::Ready(prepared) => {
-            assert_eq!(prepared.display_path, path);
+            assert_ne!(prepared.display_path, path);
+            assert_eq!(
+                prepared
+                    .display_path
+                    .extension()
+                    .and_then(|extension| extension.to_str()),
+                Some("png")
+            );
             assert_eq!(
                 prepared.dimensions,
                 RenderedImageDimensions {
@@ -592,7 +614,14 @@ fn extensionless_png_static_image_preparation_succeeds() {
             height_px: 300,
         }
     );
-    assert_eq!(prepared.display_path, path);
+    assert_ne!(prepared.display_path, path);
+    assert_eq!(
+        prepared
+            .display_path
+            .extension()
+            .and_then(|extension| extension.to_str()),
+        Some("png")
+    );
     assert_eq!(
         image::ImageReader::open(&prepared.display_path)
             .expect("rendered image should open")
@@ -654,11 +683,7 @@ fn raster_static_images_use_png_display_paths() {
                 height_px: 300,
             }
         );
-        if file_name == "demo.png" {
-            assert_eq!(prepared.display_path, path);
-        } else {
-            assert_ne!(prepared.display_path, path);
-        }
+        assert_ne!(prepared.display_path, path);
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -746,7 +771,7 @@ fn extensionless_svg_static_image_preparation_succeeds() {
 }
 
 #[test]
-fn oversized_png_static_images_use_source_file_for_overlay() {
+fn oversized_png_static_images_are_normalized_to_cached_overlays() {
     let root = temp_root("large-png-cache");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let path = root.join("large.png");
@@ -768,13 +793,29 @@ fn oversized_png_static_images_use_source_file_for_overlay() {
     )
     .expect("large png should prepare successfully");
 
-    assert_eq!(prepared.display_path, path);
+    assert_ne!(prepared.display_path, path);
+    assert_eq!(
+        prepared
+            .display_path
+            .extension()
+            .and_then(|extension| extension.to_str()),
+        Some("png")
+    );
     assert_eq!(
         prepared.dimensions,
         RenderedImageDimensions {
             width_px: 3200,
             height_px: 1800,
         }
+    );
+    assert_eq!(
+        image::ImageReader::open(&prepared.display_path)
+            .expect("rendered image should open")
+            .with_guessed_format()
+            .expect("rendered image format should be detected")
+            .into_dimensions()
+            .expect("rendered image should be readable"),
+        (768, 432)
     );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
@@ -832,7 +873,7 @@ fn forced_png_preview_renders_a_cached_overlay_asset() {
 }
 
 #[test]
-fn oversized_extensionless_png_static_images_use_source_file_for_overlay() {
+fn oversized_extensionless_png_static_images_are_normalized_to_cached_overlays() {
     let root = temp_root("large-png-noext-cache");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let path = root.join("background");
@@ -854,13 +895,29 @@ fn oversized_extensionless_png_static_images_use_source_file_for_overlay() {
     )
     .expect("large extensionless png should prepare successfully");
 
-    assert_eq!(prepared.display_path, path);
+    assert_ne!(prepared.display_path, path);
+    assert_eq!(
+        prepared
+            .display_path
+            .extension()
+            .and_then(|extension| extension.to_str()),
+        Some("png")
+    );
     assert_eq!(
         prepared.dimensions,
         RenderedImageDimensions {
             width_px: 3200,
             height_px: 1800,
         }
+    );
+    assert_eq!(
+        image::ImageReader::open(&prepared.display_path)
+            .expect("rendered image should open")
+            .with_guessed_format()
+            .expect("rendered image format should be detected")
+            .into_dimensions()
+            .expect("rendered image should be readable"),
+        (768, 432)
     );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
@@ -989,8 +1046,14 @@ fn fallback_window_size_pixels_uses_reasonable_cell_defaults() {
 fn build_kitty_upload_sequence_uses_unicode_placeholder_mode() {
     let path = Path::new("/tmp/demo.pdf-preview.png");
     let id = 42_u32;
+    let area = Rect {
+        x: 10,
+        y: 4,
+        width: 30,
+        height: 20,
+    };
 
-    let sequence = build_kitty_upload_sequence(path, id);
+    let sequence = build_kitty_upload_sequence(path, id, area);
 
     assert!(sequence.starts_with("\u{1b}_G"));
     assert!(sequence.contains("a=T"));
@@ -998,11 +1061,68 @@ fn build_kitty_upload_sequence_uses_unicode_placeholder_mode() {
     assert!(sequence.contains("t=f"));
     assert!(sequence.contains("U=1"));
     assert!(sequence.contains(&format!("i={id}")));
+    assert!(sequence.contains("c=30"));
+    assert!(sequence.contains("r=20"));
     assert!(sequence.contains("C=1"));
-    assert!(!sequence.contains("c="));
-    assert!(!sequence.contains("r="));
     assert!(sequence.contains(&BASE64_STANDARD.encode(path.as_os_str().as_encoded_bytes())));
     assert!(sequence.ends_with("\u{1b}\\"));
+}
+
+#[test]
+fn kitty_placeholder_sequence_sets_panel_background_for_transparency() {
+    let sequence = String::from_utf8(
+        build_kitty_placeholder_sequence(
+            42,
+            Rect {
+                x: 1,
+                y: 2,
+                width: 2,
+                height: 2,
+            },
+            &[],
+        ),
+    )
+    .expect("placeholder sequence should be utf8");
+
+    assert!(sequence.contains("[38;2;"));
+    assert!(sequence.contains(";48;2;"));
+}
+
+#[test]
+fn png_static_image_preparation_preserves_alpha_channel() {
+    let root = temp_root("png-alpha");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("alpha.png");
+    write_test_transparent_png(&path, 8, 8);
+    let metadata = fs::metadata(&path).expect("png metadata should exist");
+
+    let prepared = crate::app::overlays::images::prepare_static_image_asset(
+        &jobs::ImagePrepareRequest {
+            path: path.clone(),
+            size: metadata.len(),
+            modified: None,
+            target_width_px: 8,
+            target_height_px: 8,
+            ffmpeg_available: true,
+            magick_available: true,
+            force_render_to_cache: false,
+        },
+        || false,
+    )
+    .expect("png should prepare successfully");
+
+    let pixels = image::ImageReader::open(&prepared.display_path)
+        .expect("prepared image should open")
+        .with_guessed_format()
+        .expect("prepared image format should be detected")
+        .decode()
+        .expect("prepared image should decode")
+        .into_rgba8();
+
+    assert_eq!(pixels.get_pixel(1, 0).0[3], 0);
+    assert_eq!(pixels.get_pixel(0, 0).0[3], 255);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
 }
 
 #[test]

@@ -2,7 +2,7 @@ use super::super::*;
 use anyhow::{Context, Result};
 use base64::Engine as _;
 use crossterm::terminal;
-use ratatui::layout::Rect;
+use ratatui::{layout::Rect, style::Color};
 use std::{
     env,
     fs::{self, File},
@@ -462,10 +462,14 @@ pub(in crate::app) fn clear_terminal_images(protocol: ImageProtocol) -> Result<V
     }
 }
 
-pub(in crate::app) fn build_kitty_upload_sequence(path: &Path, id: u32) -> String {
+pub(in crate::app) fn build_kitty_upload_sequence(path: &Path, id: u32, area: Rect) -> String {
     let payload =
         base64::engine::general_purpose::STANDARD.encode(path.as_os_str().as_encoded_bytes());
-    format!("\u{1b}_Ga=T,q=2,f=100,t=f,U=1,i={id},C=1;{payload}\u{1b}\\")
+    format!(
+        "\u{1b}_Ga=T,q=2,f=100,t=f,U=1,i={id},c={},r={},C=1;{payload}\u{1b}\\",
+        area.width.max(1),
+        area.height.max(1),
+    )
 }
 
 pub(in crate::app) fn build_kitty_placeholder_sequence(
@@ -475,7 +479,17 @@ pub(in crate::app) fn build_kitty_placeholder_sequence(
 ) -> Vec<u8> {
     let mut buf = Vec::with_capacity(usize::from(area.width) * usize::from(area.height) * 8 + 32);
     let (r, g, b) = ((id >> 16) & 0xff, (id >> 8) & 0xff, id & 0xff);
-    let _ = write!(buf, "\x1b[38;2;{r};{g};{b}m");
+    match crate::ui::theme::palette().panel {
+        Color::Rgb(bg_r, bg_g, bg_b) => {
+            let _ = write!(
+                buf,
+                "\x1b[38;2;{r};{g};{b};48;2;{bg_r};{bg_g};{bg_b}m"
+            );
+        }
+        _ => {
+            let _ = write!(buf, "\x1b[38;2;{r};{g};{b}m");
+        }
+    }
     for y in 0..area.height {
         let abs_row = area.y.saturating_add(y);
         let dy = usize::from(y).min(DIACRITICS.len() - 1);
@@ -577,7 +591,7 @@ fn place_terminal_image_with_kitty_protocol(
     excluded: &[Rect],
 ) -> Result<Vec<u8>> {
     let id = kitty_image_id();
-    let mut out = build_kitty_upload_sequence(path, id).into_bytes();
+    let mut out = build_kitty_upload_sequence(path, id, area).into_bytes();
     out.extend(build_kitty_placeholder_sequence(id, area, excluded));
     Ok(out)
 }
