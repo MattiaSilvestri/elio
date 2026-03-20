@@ -1,5 +1,6 @@
 use super::*;
 use crate::{file_info, fs::natural_cmp, ui::theme};
+use flate2::read::GzDecoder;
 use ratatui::text::Line;
 use std::{
     collections::{BTreeMap, HashMap, VecDeque, hash_map::DefaultHasher},
@@ -12,6 +13,7 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
     time::SystemTime,
 };
+use tar::Archive as TarArchive;
 use zip::ZipArchive;
 
 const COMIC_ARCHIVE_IMAGE_ENTRY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
@@ -64,6 +66,9 @@ pub(in crate::preview) fn build_archive_preview(
         return Some(preview);
     }
     if let Some(preview) = build_zip_archive_preview(path, format, type_detail) {
+        return Some(preview);
+    }
+    if let Some(preview) = build_tar_archive_preview(path, format, type_detail) {
         return Some(preview);
     }
     build_external_archive_preview(path, format, type_detail)
@@ -241,6 +246,27 @@ fn build_zip_archive_preview(
         scan_truncated,
     });
     Some(preview)
+}
+
+fn build_tar_archive_preview(
+    path: &Path,
+    format: ArchiveFormat,
+    type_detail: Option<&'static str>,
+) -> Option<PreviewContent> {
+    let (metadata, entries, total_entries, scan_truncated) =
+        collect_internal_tar_listing(path, format)?;
+    let detail = type_detail.unwrap_or(archive_default_label(format));
+
+    Some(render_archive_preview(ArchiveRenderConfig {
+        detail: detail.to_string(),
+        metadata,
+        entries: Some(entries),
+        total_entries_hint: Some(total_entries),
+        empty_label: archive_is_empty_label(format),
+        unavailable_label: "Unable to read archive contents",
+        extra_sections: Vec::new(),
+        scan_truncated,
+    }))
 }
 
 fn build_comic_archive_preview(
@@ -493,12 +519,73 @@ fn build_external_archive_preview(
     }))
 }
 
+fn collect_internal_tar_listing(
+    path: &Path,
+    format: ArchiveFormat,
+) -> Option<(ArchiveMetadata, Vec<ArchiveEntry>, usize, bool)> {
+    match format {
+        ArchiveFormat::Tar => {
+            let file = File::open(path).ok()?;
+            collect_tar_listing_from_reader(file, path, format)
+        }
+        ArchiveFormat::TarGzip => {
+            let file = File::open(path).ok()?;
+            collect_tar_listing_from_reader(GzDecoder::new(file), path, format)
+        }
+        _ => None,
+    }
+}
+
+fn collect_tar_listing_from_reader<R: Read>(
+    reader: R,
+    path: &Path,
+    format: ArchiveFormat,
+) -> Option<(ArchiveMetadata, Vec<ArchiveEntry>, usize, bool)> {
+    let mut archive = TarArchive::new(reader);
+    let entries = archive.entries().ok()?;
+    let mut normalized_entries = Vec::new();
+    let mut metadata = ArchiveMetadata {
+        format_label: Some(archive_format_name(format).to_string()),
+        physical_size: fs::metadata(path).ok().map(|metadata| metadata.len()),
+        ..ArchiveMetadata::default()
+    };
+    let mut total_entries = 0usize;
+    let mut scan_truncated = false;
+
+    for entry in entries {
+        let entry = entry.ok()?;
+        total_entries = total_entries.saturating_add(1);
+        if total_entries > ARCHIVE_ENTRY_SCAN_LIMIT {
+            scan_truncated = true;
+            break;
+        }
+
+        let is_dir = entry.header().entry_type().is_dir();
+        metadata.unpacked_size = Some(
+            metadata
+                .unpacked_size
+                .unwrap_or(0)
+                .saturating_add(entry.header().size().ok().unwrap_or(0)),
+        );
+
+        let path = entry.path().ok()?;
+        let path = path.to_string_lossy();
+        if let Some(path) = normalize_archive_path(&path, false) {
+            normalized_entries.push(ArchiveEntry { path, is_dir });
+        }
+    }
+
+    Some((metadata, normalized_entries, total_entries, scan_truncated))
+}
+
 fn collect_preferred_archive_entries(
     path: &Path,
     format: ArchiveFormat,
 ) -> Option<Vec<ArchiveEntry>> {
     if prefers_tar_listing(format) {
-        return collect_archive_entries_with_bsdtar(path)
+        return collect_internal_tar_listing(path, format)
+            .map(|(_, entries, _, _)| entries)
+            .or_else(|| collect_archive_entries_with_bsdtar(path))
             .or_else(|| collect_archive_entries_with_tar(path));
     }
 

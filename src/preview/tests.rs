@@ -3,6 +3,7 @@ use crate::{
     app::{Entry, EntryKind},
     ui::theme,
 };
+use flate2::{Compression, write::GzEncoder};
 use image::{DynamicImage, ImageFormat, Rgba, RgbaImage};
 use ratatui::style::{Color, Modifier};
 use ratatui::text::Line;
@@ -18,6 +19,7 @@ use std::{
     thread,
     time::{SystemTime, UNIX_EPOCH},
 };
+use tar::{Builder as TarBuilder, Header as TarHeader};
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 fn temp_path(label: &str) -> PathBuf {
@@ -190,28 +192,49 @@ fn write_test_raster_image(path: &Path, format: ImageFormat, width_px: u32, heig
         .expect("failed to write raster test image");
 }
 
-fn write_tar_gz_entries(path: &Path, entries: &[(&str, &str)]) -> bool {
-    let root = temp_path("tar-gz-root");
-    fs::create_dir_all(&root).expect("failed to create tar staging root");
+fn write_tar_entries(path: &Path, entries: &[(&str, &str)]) {
+    let file = File::create(path).expect("failed to create tar");
+    let mut builder = TarBuilder::new(file);
+    append_tar_entries(&mut builder, entries);
+    builder.finish().expect("failed to finish tar");
+}
 
+fn write_tar_gz_entries(path: &Path, entries: &[(&str, &str)]) {
+    let file = File::create(path).expect("failed to create tar.gz");
+    let encoder = GzEncoder::new(file, Compression::default());
+    let mut builder = TarBuilder::new(encoder);
+    append_tar_entries(&mut builder, entries);
+    builder.finish().expect("failed to finish tar.gz");
+}
+
+fn append_tar_entries<W: Write>(builder: &mut TarBuilder<W>, entries: &[(&str, &str)]) {
     for (name, contents) in entries {
-        let entry_path = root.join(name);
-        if let Some(parent) = entry_path.parent() {
-            fs::create_dir_all(parent).expect("failed to create tar staging directory");
+        if let Some(parent) = Path::new(name).parent() {
+            append_tar_directories(builder, parent);
         }
-        fs::write(&entry_path, contents).expect("failed to write tar staging file");
+
+        let mut header = TarHeader::new_gnu();
+        header.set_entry_type(tar::EntryType::Regular);
+        header.set_mode(0o644);
+        header.set_size(contents.len() as u64);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, *name, contents.as_bytes())
+            .expect("failed to append tar entry");
     }
+}
 
-    let created = Command::new("tar")
-        .arg("-czf")
-        .arg(path)
-        .arg("-C")
-        .arg(&root)
-        .arg(".")
-        .status();
-
-    fs::remove_dir_all(root).expect("failed to remove tar staging root");
-    created.as_ref().is_ok_and(|status| status.success())
+fn append_tar_directories<W: Write>(builder: &mut TarBuilder<W>, path: &Path) {
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        current.push(component);
+        let mut header = TarHeader::new_gnu();
+        header.set_entry_type(tar::EntryType::Directory);
+        header.set_mode(0o755);
+        header.set_size(0);
+        header.set_cksum();
+        let _ = builder.append_data(&mut header, &current, std::io::empty());
+    }
 }
 
 fn write_xz_compressed_file(path: &Path, contents: &[u8]) -> bool {
@@ -2722,20 +2745,44 @@ fn comic_rar_preview_renders_first_page_without_summary() {
 }
 
 #[test]
-fn tar_gz_preview_lists_inner_archive_contents() {
-    let root = temp_path("tar-gz-preview");
+fn tar_preview_lists_inner_archive_contents() {
+    let root = temp_path("tar-preview");
     fs::create_dir_all(&root).expect("failed to create temp root");
-    let path = root.join("bundle.tar.gz");
-    if !write_tar_gz_entries(
+    let path = root.join("bundle.tar");
+    write_tar_entries(
         &path,
         &[
             ("docs/readme.txt", "hello"),
             ("src/main.rs", "fn main() {}\n"),
         ],
-    ) {
-        fs::remove_dir_all(root).expect("failed to remove temp root");
-        return;
-    }
+    );
+
+    let preview = build_preview(&file_entry(path));
+    let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
+
+    assert_eq!(preview.kind, PreviewKind::Archive);
+    assert_eq!(preview.detail.as_deref(), Some("TAR archive"));
+    assert!(line_texts.iter().any(|text| text.contains("docs/")));
+    assert!(line_texts.iter().any(|text| text.contains("src/")));
+    assert!(line_texts.iter().any(|text| text.contains("readme.txt")));
+    assert!(line_texts.iter().any(|text| text.contains("main.rs")));
+    assert!(!line_texts.iter().any(|text| text.contains("bundle.tar")));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn tar_gz_preview_lists_inner_archive_contents() {
+    let root = temp_path("tar-gz-preview");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("bundle.tar.gz");
+    write_tar_gz_entries(
+        &path,
+        &[
+            ("docs/readme.txt", "hello"),
+            ("src/main.rs", "fn main() {}\n"),
+        ],
+    );
 
     let preview = build_preview(&file_entry(path));
     let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
@@ -2756,13 +2803,10 @@ fn tgz_preview_keeps_tar_gz_label_and_contents_tree() {
     let root = temp_path("tgz-preview");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let path = root.join("bundle.tgz");
-    if !write_tar_gz_entries(
+    write_tar_gz_entries(
         &path,
         &[("assets/logo.txt", "logo"), ("bin/elio", "#!/bin/sh\n")],
-    ) {
-        fs::remove_dir_all(root).expect("failed to remove temp root");
-        return;
-    }
+    );
 
     let preview = build_preview(&file_entry(path));
     let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
