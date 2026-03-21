@@ -47,80 +47,22 @@ impl DocumentFormat {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum HighlightLanguage {
-    JsLike,
-    CLike,
-    DirectiveConf,
-    Lua,
-    Python,
-    Make,
-    Shell,
-    Nix,
-    CMake,
-    Markup,
-    Css,
-    Toml,
-    Json,
-    Jsonc,
-    Yaml,
-    Log,
-    Ini,
-    DesktopEntry,
+pub(crate) enum CodeBackend {
+    Plain,
+    Syntect,
+    Custom(CustomCodeKind),
 }
 
-impl HighlightLanguage {
-    pub(crate) fn label(self) -> &'static str {
-        match self {
-            Self::JsLike => "JavaScript / TypeScript",
-            Self::CLike => "C-style code",
-            Self::DirectiveConf => "Directive config",
-            Self::Lua => "Lua",
-            Self::Python => "Python",
-            Self::Make => "Makefile",
-            Self::Shell => "Shell",
-            Self::Nix => "Nix",
-            Self::CMake => "CMake",
-            Self::Markup => "Markup",
-            Self::Css => "CSS",
-            Self::Toml => "TOML",
-            Self::Json => "JSON",
-            Self::Jsonc => "JSONC",
-            Self::Yaml => "YAML",
-            Self::Log => "Log",
-            Self::Ini => "INI",
-            Self::DesktopEntry => "Desktop Entry",
-        }
-    }
-
-    pub(crate) fn detail_label(self) -> String {
-        self.label().to_string()
-    }
-
-    pub(crate) fn from_language_token(token: &str) -> Option<Self> {
-        match token.trim().to_ascii_lowercase().as_str() {
-            "js" | "jsx" | "javascript" | "ts" | "tsx" | "typescript" => Some(Self::JsLike),
-            "c" | "h" | "cpp" | "c++" | "cc" | "cxx" | "hpp" | "hh" | "hxx" | "rust" | "rs"
-            | "go" | "golang" | "java" | "kotlin" | "kt" | "swift" | "php" => Some(Self::CLike),
-            "conf" | "cfg" | "config" => Some(Self::DirectiveConf),
-            "lua" => Some(Self::Lua),
-            "python" | "py" | "ruby" | "rb" => Some(Self::Python),
-            "make" | "makefile" => Some(Self::Make),
-            "sh" | "shell" | "bash" | "zsh" | "ksh" | "fish" => Some(Self::Shell),
-            "nix" => Some(Self::Nix),
-            "cmake" => Some(Self::CMake),
-            "kitty" | "mpv" | "btop" => Some(Self::DirectiveConf),
-            "html" | "xml" | "xhtml" | "svg" | "markup" => Some(Self::Markup),
-            "css" | "scss" | "sass" | "less" => Some(Self::Css),
-            "toml" => Some(Self::Toml),
-            "json" => Some(Self::Json),
-            "jsonc" | "json5" => Some(Self::Jsonc),
-            "yaml" | "yml" => Some(Self::Yaml),
-            "log" => Some(Self::Log),
-            "ini" | "dosini" => Some(Self::Ini),
-            "desktop" => Some(Self::DesktopEntry),
-            _ => None,
-        }
-    }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CustomCodeKind {
+    DirectiveConf,
+    Ini,
+    DesktopEntry,
+    Json,
+    Jsonc,
+    Toml,
+    Yaml,
+    Log,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -252,7 +194,8 @@ impl DiskImageKind {
 pub(crate) struct PreviewSpec {
     pub kind: PreviewKind,
     pub language_hint: Option<&'static str>,
-    pub highlight_language: Option<HighlightLanguage>,
+    pub code_syntax: Option<&'static str>,
+    pub code_backend: CodeBackend,
     pub structured_format: Option<StructuredFormat>,
     pub document_format: Option<DocumentFormat>,
 }
@@ -262,7 +205,8 @@ impl PreviewSpec {
         Self {
             kind: PreviewKind::PlainText,
             language_hint: None,
-            highlight_language: None,
+            code_syntax: None,
+            code_backend: CodeBackend::Plain,
             structured_format: None,
             document_format: None,
         }
@@ -272,7 +216,8 @@ impl PreviewSpec {
         Self {
             kind: PreviewKind::Markdown,
             language_hint: None,
-            highlight_language: None,
+            code_syntax: None,
+            code_backend: CodeBackend::Plain,
             structured_format: None,
             document_format: None,
         }
@@ -282,7 +227,8 @@ impl PreviewSpec {
         Self {
             kind: PreviewKind::Iso,
             language_hint: None,
-            highlight_language: None,
+            code_syntax: None,
+            code_backend: CodeBackend::Plain,
             structured_format: None,
             document_format: None,
         }
@@ -292,21 +238,34 @@ impl PreviewSpec {
         Self {
             kind: PreviewKind::Torrent,
             language_hint: None,
-            highlight_language: None,
+            code_syntax: None,
+            code_backend: CodeBackend::Plain,
             structured_format: None,
             document_format: None,
         }
     }
 
-    pub(super) const fn source(
-        language_hint: Option<&'static str>,
-        highlight_language: Option<HighlightLanguage>,
+    pub(super) const fn source(language_hint: Option<&'static str>) -> Self {
+        Self {
+            kind: PreviewKind::Source,
+            language_hint,
+            code_syntax: language_hint,
+            code_backend: CodeBackend::Plain,
+            structured_format: None,
+            document_format: None,
+        }
+    }
+
+    pub(crate) const fn code(
+        code_syntax: &'static str,
+        code_backend: CodeBackend,
         structured_format: Option<StructuredFormat>,
     ) -> Self {
         Self {
             kind: PreviewKind::Source,
-            language_hint,
-            highlight_language,
+            language_hint: Some(code_syntax),
+            code_syntax: Some(code_syntax),
+            code_backend,
             structured_format,
             document_format: None,
         }
@@ -316,22 +275,10 @@ impl PreviewSpec {
         Self {
             kind: PreviewKind::PlainText,
             language_hint: None,
-            highlight_language: None,
+            code_syntax: None,
+            code_backend: CodeBackend::Plain,
             structured_format: None,
             document_format: Some(document_format),
-        }
-    }
-
-    pub(super) const fn highlighted_source(
-        language_hint: Option<&'static str>,
-        highlight_language: HighlightLanguage,
-    ) -> Self {
-        Self {
-            kind: PreviewKind::Source,
-            language_hint,
-            highlight_language: Some(highlight_language),
-            structured_format: None,
-            document_format: None,
         }
     }
 }
@@ -362,78 +309,10 @@ pub(super) const fn source_only(
     FileFacts {
         builtin_class: class,
         specific_type_label,
-        preview: PreviewSpec::source(language_hint, None, None),
+        preview: PreviewSpec::source(language_hint),
     }
-}
-
-pub(super) const fn shell_file_facts(
-    class: FileClass,
-    specific_type_label: &'static str,
-    language_hint: &'static str,
-) -> FileFacts {
-    source_only(class, Some(specific_type_label), Some(language_hint))
-        .with_highlight_language(HighlightLanguage::Shell)
-}
-
-pub(super) const fn c_like_file_facts(
-    class: FileClass,
-    specific_type_label: &'static str,
-    language_hint: &'static str,
-) -> FileFacts {
-    source_only(class, Some(specific_type_label), Some(language_hint))
-        .with_highlight_language(HighlightLanguage::CLike)
-}
-
-pub(super) const fn python_file_facts(
-    class: FileClass,
-    specific_type_label: Option<&'static str>,
-) -> FileFacts {
-    source_only(class, specific_type_label, Some("python"))
-        .with_highlight_language(HighlightLanguage::Python)
-}
-
-pub(super) const fn js_like_file_facts(
-    class: FileClass,
-    specific_type_label: Option<&'static str>,
-) -> FileFacts {
-    source_only(class, specific_type_label, Some("typescript"))
-        .with_highlight_language(HighlightLanguage::JsLike)
-}
-
-pub(super) const fn nix_file_facts(
-    class: FileClass,
-    specific_type_label: &'static str,
-) -> FileFacts {
-    source_only(class, Some(specific_type_label), Some("nix"))
-        .with_highlight_language(HighlightLanguage::Nix)
-}
-
-pub(super) const fn cmake_file_facts(
-    class: FileClass,
-    specific_type_label: &'static str,
-) -> FileFacts {
-    source_only(class, Some(specific_type_label), Some("cmake"))
-        .with_highlight_language(HighlightLanguage::CMake)
-}
-
-pub(super) const fn directive_conf_file_facts(
-    class: FileClass,
-    language_hint: Option<&'static str>,
-) -> FileFacts {
-    source_only(class, None, language_hint)
-        .with_highlight_language(HighlightLanguage::DirectiveConf)
 }
 
 pub(super) const fn disk_image_file_facts(kind: DiskImageKind) -> FileFacts {
     plain(FileClass::File, Some(kind.detail_label()))
-}
-
-impl FileFacts {
-    pub(super) const fn with_highlight_language(
-        mut self,
-        highlight_language: HighlightLanguage,
-    ) -> Self {
-        self.preview.highlight_language = Some(highlight_language);
-        self
-    }
 }

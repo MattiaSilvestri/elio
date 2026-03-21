@@ -415,6 +415,85 @@ fn markdown_preview_renders_fenced_code_blocks() {
 }
 
 #[test]
+fn markdown_preview_routes_fence_aliases_through_registry() {
+    let root = temp_path("markdown-fence-aliases");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("README.md");
+    fs::write(
+        &path,
+        "```js\nconst value = 1;\n```\n\n```csharp\npublic class Greeter {}\n```\n\n```exs\ndefmodule Greeter do\nend\n```\n\n```clj\n(defn greet [name] (str \"hi \" name))\n```\n\n```pwsh\nfunction Invoke-Greeting { Write-Host \"hello\" }\n```\n\n```kitty\nfont_size 11.5\n```\n",
+    )
+    .expect("failed to write markdown");
+
+    let preview = build_preview(&file_entry(path.clone()));
+    let code_palette = theme::code_preview_palette();
+
+    assert_eq!(preview.kind, PreviewKind::Markdown);
+    assert!(
+        preview
+            .lines
+            .iter()
+            .any(|line| line.spans.iter().any(|span| span.content == "js"))
+    );
+    assert!(
+        preview
+            .lines
+            .iter()
+            .any(|line| line.spans.iter().any(|span| span.content == "kitty"))
+    );
+
+    let js_line = preview
+        .lines
+        .iter()
+        .find(|line| line_text(line).contains("const value = 1;"))
+        .expect("expected highlighted js line");
+    assert_ne!(span_color(js_line, "const"), Some(code_palette.fg));
+
+    let kitty_line = preview
+        .lines
+        .iter()
+        .find(|line| line_text(line).contains("font_size 11.5"))
+        .expect("expected highlighted kitty line");
+    assert_eq!(
+        span_color(kitty_line, "font_size"),
+        Some(code_palette.function)
+    );
+
+    let csharp_line = preview
+        .lines
+        .iter()
+        .find(|line| line_text(line).contains("public class Greeter {}"))
+        .expect("expected highlighted csharp line");
+    assert_ne!(span_color(csharp_line, "public"), Some(code_palette.fg));
+
+    let elixir_line = preview
+        .lines
+        .iter()
+        .find(|line| line_text(line).contains("defmodule Greeter do"))
+        .expect("expected highlighted elixir line");
+    assert_ne!(span_color(elixir_line, "defmodule"), Some(code_palette.fg));
+
+    let powershell_line = preview
+        .lines
+        .iter()
+        .find(|line| line_text(line).contains("function Invoke-Greeting"))
+        .expect("expected highlighted powershell line");
+    assert_ne!(
+        span_color(powershell_line, "function"),
+        Some(code_palette.fg)
+    );
+
+    let clojure_line = preview
+        .lines
+        .iter()
+        .find(|line| line_text(line).contains("(defn greet [name]"))
+        .expect("expected highlighted clojure line");
+    assert_ne!(span_color(clojure_line, "defn"), Some(code_palette.fg));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn markdown_preview_renders_links() {
     let root = temp_path("markdown-links");
     fs::create_dir_all(&root).expect("failed to create temp root");
@@ -585,14 +664,8 @@ fn c_preview_uses_code_renderer() {
             .flat_map(|line| line.spans.iter())
             .any(|span| span.content.contains("printf"))
     );
-    assert_eq!(
-        span_color(&preview.lines[0], "#"),
-        Some(code_palette.r#macro)
-    );
-    assert_eq!(
-        span_color(&preview.lines[1], "int"),
-        Some(code_palette.r#type)
-    );
+    assert_ne!(span_color(&preview.lines[0], "#"), Some(code_palette.fg));
+    assert_ne!(span_color(&preview.lines[1], "int"), Some(code_palette.fg));
     assert_ne!(
         span_color(&preview.lines[2], "printf"),
         Some(code_palette.fg)
@@ -616,26 +689,26 @@ fn python_preview_uses_code_renderer_with_colors() {
     let code_palette = theme::code_preview_palette();
 
     assert_eq!(preview.kind, PreviewKind::Code);
-    assert!(preview.detail.is_some());
-    assert_eq!(
-        span_color(&preview.lines[0], "@"),
-        Some(code_palette.r#macro)
+    assert!(
+        preview
+            .detail
+            .is_some_and(|detail| detail.contains("Python"))
     );
-    assert_eq!(
+    assert_ne!(
         span_color(&preview.lines[1], "class"),
-        Some(code_palette.keyword)
+        Some(code_palette.fg)
     );
-    assert_eq!(
+    assert_ne!(
         span_color(&preview.lines[1], "Greeter"),
-        Some(code_palette.r#type)
+        Some(code_palette.fg)
     );
-    assert_eq!(
+    assert_ne!(
         span_color(&preview.lines[2], "async"),
-        Some(code_palette.keyword)
+        Some(code_palette.fg)
     );
-    assert_eq!(
+    assert_ne!(
         span_color(&preview.lines[2], "greet"),
-        Some(code_palette.function)
+        Some(code_palette.fg)
     );
     assert_ne!(
         span_color(&preview.lines[4], "return"),
@@ -645,8 +718,8 @@ fn python_preview_uses_code_renderer_with_colors() {
         span_color(&preview.lines[4], "f\"hi {name}\""),
         Some(code_palette.fg)
     );
-    assert!(line_has_color(&preview.lines[3], code_palette.string));
-    assert!(line_has_color(&preview.lines[4], code_palette.string));
+    assert!(line_text(&preview.lines[3]).contains("Return greeting."));
+    assert!(line_text(&preview.lines[4]).contains("f\"hi {name}\""));
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -669,27 +742,26 @@ fn javascript_preview_uses_code_renderer_with_colors() {
     assert!(
         preview
             .detail
-            .is_some_and(|detail| detail.contains("TypeScript"))
+            .is_some_and(|detail| detail.contains("JavaScript"))
     );
-    assert_eq!(
+    assert_ne!(
         span_color(&preview.lines[0], "export"),
-        Some(code_palette.keyword)
+        Some(code_palette.fg)
     );
-    assert_eq!(
+    assert_ne!(
         span_color(&preview.lines[0], "Greeter"),
-        Some(code_palette.r#type)
+        Some(code_palette.fg)
     );
-    assert_eq!(
+    assert_ne!(
         span_color(&preview.lines[1], "return"),
-        Some(code_palette.keyword)
+        Some(code_palette.fg)
     );
-    assert!(line_has_color(&preview.lines[1], code_palette.string));
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
 
 #[test]
-fn nix_preview_uses_code_renderer() {
+fn nix_preview_uses_curated_syntect_support() {
     let root = temp_path("nix");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let path = root.join("flake.nix");
@@ -704,9 +776,9 @@ fn nix_preview_uses_code_renderer() {
 
     assert_eq!(preview.kind, PreviewKind::Code);
     assert!(preview.detail.is_some_and(|detail| detail.contains("Nix")));
-    assert_eq!(
+    assert_ne!(
         span_color(&preview.lines[0], "description"),
-        Some(code_palette.parameter)
+        Some(code_palette.fg)
     );
     assert!(line_has_color(&preview.lines[0], code_palette.string));
     assert!(
@@ -721,7 +793,7 @@ fn nix_preview_uses_code_renderer() {
 }
 
 #[test]
-fn cmake_preview_uses_code_renderer() {
+fn cmake_preview_uses_curated_syntect_support() {
     let root = temp_path("cmake");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let path = root.join("CMakeLists.txt");
@@ -742,6 +814,10 @@ fn cmake_preview_uses_code_renderer() {
     );
     assert_ne!(
         span_color(&preview.lines[2], "add_executable"),
+        Some(code_palette.fg)
+    );
+    assert_ne!(
+        span_color(&preview.lines[1], "project"),
         Some(code_palette.fg)
     );
     assert!(
@@ -1942,12 +2018,15 @@ fn shell_style_conf_preview_uses_shell_highlighting() {
 
     assert_eq!(preview.kind, PreviewKind::Code);
     assert_eq!(preview.detail.as_deref(), Some("Shell"));
-    assert_eq!(
-        span_color(&preview.lines[0], "MAKE"),
-        Some(code_palette.parameter)
-    );
+    assert_ne!(span_color(&preview.lines[0], "MAKE"), Some(code_palette.fg));
     assert!(line_text(&preview.lines[0]).contains("${kernelver}"));
-    assert!(line_has_color(&preview.lines[0], code_palette.string));
+    assert_ne!(
+        span_color(
+            &preview.lines[0],
+            "\"make -C src/ KERNELDIR=/lib/modules/${kernelver}/build\""
+        ),
+        Some(code_palette.fg)
+    );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -2016,10 +2095,7 @@ fn shell_script_preview_uses_code_renderer() {
     );
     assert!(line_texts.iter().any(|text| text.contains("printf")));
     assert!(line_texts.iter().any(|text| text.contains("$(whoami)")));
-    assert_eq!(
-        span_color(&preview.lines[2], "if"),
-        Some(code_palette.keyword)
-    );
+    assert_ne!(span_color(&preview.lines[2], "if"), Some(code_palette.fg));
     assert_ne!(
         span_color(&preview.lines[3], "printf"),
         Some(code_palette.fg)
@@ -2028,6 +2104,114 @@ fn shell_script_preview_uses_code_renderer() {
         span_color(&preview.lines[3], "$(whoami)"),
         Some(code_palette.fg)
     );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn sh_file_preview_keeps_core_shell_tokens_non_gray() {
+    let root = temp_path("sh-preview");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("deploy.sh");
+    fs::write(
+        &path,
+        "NAME=elio\nif [ -n \"$HOME\" ]; then\n  echo \"$NAME\"\nfi # done\n",
+    )
+    .expect("failed to write sh script");
+
+    let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
+
+    assert_eq!(preview.kind, PreviewKind::Code);
+    assert!(
+        preview
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("Shell"))
+    );
+    assert_ne!(span_color(&preview.lines[0], "NAME"), Some(code_palette.fg));
+    assert_ne!(span_color(&preview.lines[1], "if"), Some(code_palette.fg));
+    assert_ne!(span_color(&preview.lines[1], "$"), Some(code_palette.fg));
+    assert_ne!(span_color(&preview.lines[1], "HOME"), Some(code_palette.fg));
+    assert_ne!(span_color(&preview.lines[2], "echo"), Some(code_palette.fg));
+    assert_eq!(
+        span_color(&preview.lines[3], "#"),
+        Some(code_palette.comment)
+    );
+    assert_eq!(
+        span_color(&preview.lines[3], " done"),
+        Some(code_palette.comment)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn sh_preview_highlights_plain_commands_and_options() {
+    let root = temp_path("sh-commands-preview");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("deploy.sh");
+    fs::write(
+        &path,
+        "deploy() {\n  grep -q \"$HOME\" /etc/profile\n  my_tool --flag \"$NAME\"\n}\n",
+    )
+    .expect("failed to write sh commands script");
+
+    let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
+
+    assert_eq!(preview.kind, PreviewKind::Code);
+    assert_ne!(
+        span_color(&preview.lines[0], "deploy"),
+        Some(code_palette.fg)
+    );
+    assert_ne!(span_color(&preview.lines[1], "grep"), Some(code_palette.fg));
+    assert_ne!(span_color(&preview.lines[1], "-q"), Some(code_palette.fg));
+    assert_ne!(
+        span_color(&preview.lines[2], "my_tool"),
+        Some(code_palette.fg)
+    );
+    assert_ne!(
+        span_color(&preview.lines[2], "--flag"),
+        Some(code_palette.fg)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn sh_preview_highlights_common_builtins_and_redirections() {
+    let root = temp_path("sh-builtins-preview");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("deploy.sh");
+    fs::write(
+        &path,
+        "#!/bin/sh\nset -e\ncd /tmp\ntrap 'cleanup' EXIT\nexport PATH=\"$HOME/bin:$PATH\"\nsource ./env.sh\nread -r NAME\nexec \"$NAME\" > /tmp/out.log\n",
+    )
+    .expect("failed to write sh builtins script");
+
+    let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
+
+    assert_eq!(preview.kind, PreviewKind::Code);
+    assert_eq!(
+        span_color(&preview.lines[0], "#!"),
+        Some(code_palette.r#macro)
+    );
+    assert_ne!(span_color(&preview.lines[1], "set"), Some(code_palette.fg));
+    assert_ne!(span_color(&preview.lines[2], "cd"), Some(code_palette.fg));
+    assert_ne!(span_color(&preview.lines[3], "trap"), Some(code_palette.fg));
+    assert_ne!(
+        span_color(&preview.lines[4], "export"),
+        Some(code_palette.fg)
+    );
+    assert_ne!(
+        span_color(&preview.lines[5], "source"),
+        Some(code_palette.fg)
+    );
+    assert_ne!(span_color(&preview.lines[6], "read"), Some(code_palette.fg));
+    assert_ne!(span_color(&preview.lines[7], "exec"), Some(code_palette.fg));
+    assert_ne!(span_color(&preview.lines[7], ">"), Some(code_palette.fg));
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -2091,7 +2275,52 @@ fn zsh_preview_uses_shell_specific_support() {
 }
 
 #[test]
-fn keys_preview_uses_highlighting_renderer() {
+fn powershell_preview_uses_curated_syntect_support() {
+    let root = temp_path("powershell");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("build.ps1");
+    fs::write(
+        &path,
+        "function Invoke-Greeting([string]$Name) {\n  Write-Host \"Hello $Name\"\n}\n",
+    )
+    .expect("failed to write powershell script");
+
+    let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
+
+    assert_eq!(preview.kind, PreviewKind::Code);
+    assert!(
+        preview
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("PowerShell"))
+    );
+    assert_eq!(
+        span_color(&preview.lines[0], "function"),
+        Some(code_palette.keyword)
+    );
+    assert_eq!(
+        span_color(&preview.lines[0], "Invoke-Greeting"),
+        Some(code_palette.function)
+    );
+    assert_eq!(
+        span_color(&preview.lines[0], "[string]"),
+        Some(code_palette.r#type)
+    );
+    assert_eq!(
+        span_color(&preview.lines[1], "\"Hello "),
+        Some(code_palette.string)
+    );
+    assert_eq!(
+        span_color(&preview.lines[1], "$Name"),
+        Some(code_palette.string)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn keys_preview_uses_custom_code_renderer() {
     let root = temp_path("keys");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let path = root.join("bindings.keys");
@@ -3068,12 +3297,30 @@ fn typescript_preview_uses_code_renderer() {
     let root = temp_path("typescript");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let path = root.join("main.ts");
-    fs::write(&path, "export const value = 1;\n").expect("failed to write ts");
+    fs::write(&path, "export const value: number = 1;\n").expect("failed to write ts");
 
     let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
 
     assert_eq!(preview.kind, PreviewKind::Code);
-    assert!(preview.detail.is_some());
+    assert!(
+        preview
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("TypeScript"))
+    );
+    assert_ne!(
+        span_color(&preview.lines[0], "export"),
+        Some(code_palette.fg)
+    );
+    assert_ne!(
+        span_color(&preview.lines[0], "const"),
+        Some(code_palette.fg)
+    );
+    assert_ne!(
+        span_color(&preview.lines[0], "number"),
+        Some(code_palette.fg)
+    );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -3085,14 +3332,238 @@ fn tsx_preview_uses_code_renderer() {
     let path = root.join("App.tsx");
     fs::write(
         &path,
-        "export function App() { return <div>Hello</div>; }\n",
+        "export function App() { return <div className=\"greeting\">Hello</div>; }\n",
     )
     .expect("failed to write tsx");
 
     let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
 
     assert_eq!(preview.kind, PreviewKind::Code);
-    assert!(preview.detail.is_some());
+    assert!(
+        preview
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("TSX"))
+    );
+    assert_ne!(
+        span_color(&preview.lines[0], "export"),
+        Some(code_palette.fg)
+    );
+    assert_ne!(
+        span_color(&preview.lines[0], "return"),
+        Some(code_palette.fg)
+    );
+    assert_eq!(span_color(&preview.lines[0], "div"), Some(code_palette.tag));
+    assert_eq!(
+        span_color(&preview.lines[0], "className"),
+        Some(code_palette.parameter)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn curated_syntect_languages_render_with_theme_colors() {
+    let root = temp_path("curated-syntect");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let code_palette = theme::code_preview_palette();
+
+    for (name, contents, detail, token) in [
+        (
+            "schema.sql",
+            "SELECT name FROM users WHERE id = 1;\n",
+            "SQL",
+            "SELECT",
+        ),
+        (
+            "Dockerfile",
+            "FROM rust:1.87\nRUN cargo build --release\n",
+            "Docker build file",
+            "FROM",
+        ),
+        (
+            "main.tf",
+            "terraform { required_version = \">= 1.7\" }\n",
+            "Terraform module",
+            "terraform",
+        ),
+        (
+            "terraform.hcl",
+            "server { listen = \"127.0.0.1\" }\n",
+            "HCL config",
+            "server",
+        ),
+        (
+            "build.gradle",
+            "plugins { id 'java' }\n",
+            "Gradle build script",
+            "'java'",
+        ),
+        (
+            "build.sbt",
+            "lazy val root = (project in file(\".\"))\n",
+            "sbt build definition",
+            "lazy",
+        ),
+        (
+            "script.pl",
+            "sub greet { print \"hi\\n\"; }\n",
+            "Perl",
+            "sub",
+        ),
+        (
+            "Main.hs",
+            "module Main where\nmain = putStrLn \"elio\"\n",
+            "Haskell",
+            "module",
+        ),
+        (
+            "main.jl",
+            "function greet(name)\n  return name\nend\n",
+            "Julia",
+            "function",
+        ),
+        (
+            "analysis.r",
+            "library(ggplot2)\nprint(\"elio\")\n",
+            "R",
+            "library",
+        ),
+        ("Justfile", "build:\n  cargo test\n", "Just", "build"),
+        (
+            "styles.scss",
+            "$fg: #fff;\n.button { color: $fg; }\n",
+            "SCSS",
+            "$fg",
+        ),
+        (
+            "theme.sass",
+            "$fg: #fff\n.button\n  color: $fg\n",
+            "Sass",
+            "$fg",
+        ),
+        (
+            "theme.less",
+            "@fg: #fff;\n.button { color: @fg; }\n",
+            "Less",
+            "@fg",
+        ),
+        (
+            "Program.cs",
+            "public class Greeter { public string Greet(string name) => name; }\n",
+            "C#",
+            "public",
+        ),
+        (
+            "main.dart",
+            "class Greeter { String greet(String name) => name; }\n",
+            "Dart",
+            "class",
+        ),
+        (
+            "solver.f90",
+            "program elio\n  implicit none\n  print *, \"hello\"\nend program elio\n",
+            "Fortran",
+            "program",
+        ),
+        (
+            "ledger.cbl",
+            "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. ELIOTEST.\n       PROCEDURE DIVISION.\n           DISPLAY \"HELLO\".\n",
+            "COBOL",
+            "IDENTIFICATION",
+        ),
+        (
+            "main.zig",
+            "const std = @import(\"std\");\npub fn main() void {}\n",
+            "Zig",
+            "@import",
+        ),
+        (
+            "main.kt",
+            "class Greeter { fun greet(name: String): String = name }\n",
+            "Kotlin",
+            "fun",
+        ),
+        (
+            "main.swift",
+            "struct Greeter { func greet(name: String) -> String { name } }\n",
+            "Swift",
+            "func",
+        ),
+        (
+            "main.exs",
+            "defmodule Greeter do\n  def greet(name), do: \"hi #{name}\"\nend\n",
+            "Elixir",
+            "defmodule",
+        ),
+        (
+            "core.clj",
+            "(ns elio.core)\n(defn greet [name] (str \"hi \" name))\n",
+            "Clojure",
+            "defn",
+        ),
+        (
+            "build.ps1",
+            "function Invoke-Greeting([string]$Name) {\n  Write-Host \"Hello $Name\"\n}\n",
+            "PowerShell",
+            "function",
+        ),
+    ] {
+        let path = root.join(name);
+        fs::write(&path, contents).expect("failed to write curated syntax fixture");
+        let preview = build_preview(&file_entry(path));
+
+        assert_eq!(preview.kind, PreviewKind::Code);
+        assert!(
+            preview
+                .detail
+                .as_deref()
+                .is_some_and(|rendered| rendered.contains(detail)),
+            "expected preview detail to mention {detail}"
+        );
+        assert_ne!(
+            span_color(&preview.lines[0], token),
+            Some(code_palette.fg),
+            "expected {name} to highlight {token}"
+        );
+    }
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn diff_preview_uses_curated_syntect_support() {
+    let root = temp_path("diff");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("changes.diff");
+    fs::write(
+        &path,
+        "diff --git a/src/main.rs b/src/main.rs\nindex 1111111..2222222 100644\n--- a/src/main.rs\n+++ b/src/main.rs\n@@ -1 +1 @@\n-fn old() {}\n+fn new() {}\n",
+    )
+    .expect("failed to write diff fixture");
+
+    let preview = build_preview(&file_entry(path));
+    let code_palette = theme::code_preview_palette();
+
+    assert_eq!(preview.kind, PreviewKind::Code);
+    assert!(
+        preview
+            .detail
+            .as_deref()
+            .is_some_and(|detail| detail.contains("Diff"))
+    );
+    assert!(
+        preview.lines.iter().any(|line| {
+            line.spans.iter().any(|span| {
+                span.content.trim() != "│"
+                    && !span.content.trim().is_empty()
+                    && span.style.fg.is_some()
+                    && span.style.fg != Some(code_palette.fg)
+            })
+        }),
+        "expected diff preview to contain at least one highlighted token",
+    );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

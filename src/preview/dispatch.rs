@@ -240,9 +240,9 @@ where
             combine_preview_notes(preview_truncation_note, code_truncation_note.as_deref());
         let mut preview = PreviewContent::new(
             PreviewKind::Code,
-            highlighting::render_code_preview_with(
+            code::render_code_preview(
+                preview_spec,
                 &text_preview.text,
-                preview_spec.highlight_language,
                 true,
                 effective_code_line_limit,
                 canceled,
@@ -310,47 +310,18 @@ fn source_preview_detail(
     type_detail
         .map(ToString::to_string)
         .or_else(|| preview_spec.language_hint.map(display_language_hint))
-        .or_else(|| {
-            preview_spec
-                .highlight_language
-                .map(file_info::HighlightLanguage::detail_label)
-        })
 }
 
 fn display_language_hint(language_hint: &str) -> String {
-    match language_hint {
-        "c" => "C".to_string(),
-        "cpp" => "C++".to_string(),
-        "cmake" => "CMake".to_string(),
-        "css" => "CSS".to_string(),
-        "html" => "HTML".to_string(),
-        "ini" => "INI".to_string(),
-        "javascript" => "JavaScript".to_string(),
-        "json" => "JSON".to_string(),
-        "jsonc" => "JSONC".to_string(),
-        "kitty" => "Kitty".to_string(),
-        "kotlin" => "Kotlin".to_string(),
-        "mpv" => "MPV".to_string(),
-        "nix" => "Nix".to_string(),
-        "php" => "PHP".to_string(),
-        "python" => "Python".to_string(),
-        "rust" => "Rust".to_string(),
-        "shell" => "Shell".to_string(),
-        "swift" => "Swift".to_string(),
-        "toml" => "TOML".to_string(),
-        "typescript" => "TypeScript".to_string(),
-        "xml" => "XML".to_string(),
-        "yaml" => "YAML".to_string(),
-        "config" => "Config".to_string(),
-        "desktop" => "Desktop Entry".to_string(),
-        other => {
-            let mut chars = other.chars();
+    super::code::registry::display_label_for_code_syntax(language_hint)
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            let mut chars = language_hint.chars();
             match chars.next() {
                 Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
                 None => String::new(),
             }
-        }
-    }
+        })
 }
 
 fn binary_preview() -> PreviewContent {

@@ -1,7 +1,72 @@
+mod data;
+mod directive;
+mod ini;
+mod logs;
+
+use crate::{file_info::CustomCodeKind, ui::theme};
 use ratatui::{
-    style::{Color, Modifier, Style},
-    text::Span,
+    style::Style,
+    text::{Line, Span},
 };
+
+pub(crate) fn render_custom_code_preview<F>(
+    kind: CustomCodeKind,
+    text: &str,
+    line_numbers: bool,
+    line_limit: usize,
+    canceled: &F,
+) -> Vec<Line<'static>>
+where
+    F: Fn() -> bool,
+{
+    let code_palette = theme::code_preview_palette();
+    let source_lines = crate::preview::collect_preview_lines_with_limit(
+        text,
+        crate::preview::clamp_code_preview_line_limit(line_limit),
+    );
+    let number_width = crate::preview::line_number_width(source_lines.len());
+    let mut rendered = Vec::new();
+    let mut jsonc_block_comment = false;
+
+    for (index, line) in source_lines.iter().enumerate() {
+        if canceled() {
+            break;
+        }
+
+        let mut spans = Vec::new();
+        if line_numbers {
+            spans.push(crate::preview::line_number_span(index + 1, number_width));
+        } else {
+            spans.push(Span::styled(
+                "│ ",
+                Style::default().fg(code_palette.line_number),
+            ));
+        }
+
+        let body = match kind {
+            CustomCodeKind::DirectiveConf => {
+                directive::highlight_directive_conf_line(line, code_palette)
+            }
+            CustomCodeKind::Ini => ini::highlight_ini_line(line, code_palette, false),
+            CustomCodeKind::DesktopEntry => ini::highlight_ini_line(line, code_palette, true),
+            CustomCodeKind::Json => data::highlight_json_line(line, code_palette),
+            CustomCodeKind::Jsonc => {
+                data::highlight_jsonc_line(line, code_palette, &mut jsonc_block_comment)
+            }
+            CustomCodeKind::Toml => data::highlight_toml_line(line, code_palette),
+            CustomCodeKind::Yaml => data::highlight_yaml_line(line, code_palette),
+            CustomCodeKind::Log => logs::highlight_log_line(line, code_palette),
+        };
+        spans.extend(body);
+        rendered.push(Line::from(spans));
+    }
+
+    if rendered.is_empty() && !canceled() {
+        rendered.push(Line::from("File is empty"));
+    }
+
+    rendered
+}
 
 pub(super) fn split_comment(input: &str) -> (&str, Option<&str>) {
     let mut in_string = false;
@@ -180,58 +245,6 @@ pub(super) fn split_jsonc_segments<'a>(
     segments
 }
 
-pub(super) fn split_block_comment_segments<'a>(
-    line: &'a str,
-    in_block_comment: &mut bool,
-    start_delim: &str,
-    end_delim: &str,
-) -> Vec<(bool, &'a str)> {
-    let mut segments = Vec::new();
-    let mut cursor = 0usize;
-
-    while cursor < line.len() {
-        if *in_block_comment {
-            let comment_start = cursor;
-            if let Some(offset) = line[cursor..].find(end_delim) {
-                let end = cursor + offset + end_delim.len();
-                segments.push((true, &line[comment_start..end]));
-                *in_block_comment = false;
-                cursor = end;
-            } else {
-                segments.push((true, &line[comment_start..]));
-                return segments;
-            }
-            continue;
-        }
-
-        if let Some(offset) = line[cursor..].find(start_delim) {
-            let start = cursor + offset;
-            if start > cursor {
-                segments.push((false, &line[cursor..start]));
-            }
-
-            let search_start = start + start_delim.len();
-            if let Some(close_offset) = line[search_start..].find(end_delim) {
-                let end = search_start + close_offset + end_delim.len();
-                segments.push((true, &line[start..end]));
-                cursor = end;
-            } else {
-                segments.push((true, &line[start..]));
-                *in_block_comment = true;
-                return segments;
-            }
-        } else {
-            segments.push((false, &line[cursor..]));
-            return segments;
-        }
-    }
-
-    if segments.is_empty() {
-        segments.push((false, line));
-    }
-    segments
-}
-
 pub(super) fn scan_quoted_segment(input: &str, start: usize) -> usize {
     let quote = input[start..].chars().next().unwrap_or('"');
     let mut index = start + quote.len_utf8();
@@ -257,119 +270,6 @@ pub(super) fn scan_quoted_segment(input: &str, start: usize) -> usize {
     input.len()
 }
 
-pub(super) fn scan_string(input: &str, start: usize, quote: char) -> usize {
-    let mut index = start + quote.len_utf8();
-    let mut escape = false;
-
-    while let Some(ch) = input[index..].chars().next() {
-        if escape {
-            escape = false;
-            index += ch.len_utf8();
-            continue;
-        }
-        if ch == '\\' {
-            escape = true;
-            index += ch.len_utf8();
-            continue;
-        }
-        if ch == quote {
-            return index + ch.len_utf8();
-        }
-        index += ch.len_utf8();
-    }
-
-    input.len()
-}
-
-pub(super) fn next_non_whitespace_char(input: &str, start: usize) -> Option<char> {
-    input[start..].chars().find(|ch| !ch.is_whitespace())
-}
-
-pub(super) fn consume_operator(input: &str, start: usize) -> usize {
-    const TWO_CHAR: [&str; 12] = [
-        "=>", "::", "?.", "??", "&&", "||", "==", "!=", "<=", ">=", "</", "/>",
-    ];
-    for token in TWO_CHAR {
-        if input[start..].starts_with(token) {
-            return start + token.len();
-        }
-    }
-    start
-        + input[start..]
-            .chars()
-            .next()
-            .map(char::len_utf8)
-            .unwrap_or(1)
-}
-
-pub(super) fn scan_make_variable(input: &str, start: usize) -> usize {
-    let opener = input[start..].chars().nth(1).unwrap_or('(');
-    let closer = if opener == '{' { '}' } else { ')' };
-    let mut index = start + 2;
-    let mut depth = 1usize;
-
-    while index < input.len() {
-        let ch = input[index..].chars().next().unwrap_or(closer);
-        index += ch.len_utf8();
-        if ch == opener {
-            depth += 1;
-        } else if ch == closer {
-            depth = depth.saturating_sub(1);
-            if depth == 0 {
-                return index;
-            }
-        }
-    }
-
-    input.len()
-}
-
-pub(super) fn find_unquoted_token(input: &str, token: &str) -> Option<usize> {
-    let mut quote = '\0';
-    let mut escape = false;
-    let mut index = 0usize;
-
-    while index < input.len() {
-        let ch = input[index..].chars().next().expect("valid utf-8 char");
-        if quote != '\0' {
-            if escape {
-                escape = false;
-                index += ch.len_utf8();
-                continue;
-            }
-            if ch == '\\' {
-                escape = true;
-                index += ch.len_utf8();
-                continue;
-            }
-            if ch == quote {
-                quote = '\0';
-            }
-            index += ch.len_utf8();
-            continue;
-        }
-
-        if matches!(ch, '"' | '\'') {
-            quote = ch;
-            index += ch.len_utf8();
-            continue;
-        }
-
-        if input[index..].starts_with(token) {
-            return Some(index);
-        }
-
-        if input[index..].starts_with("$(") || input[index..].starts_with("${") {
-            index = scan_make_variable(input, index);
-            continue;
-        }
-
-        index += ch.len_utf8();
-    }
-
-    None
-}
-
 pub(super) fn looks_numeric(token: &str) -> bool {
     let stripped = token.trim_matches(',');
     !stripped.is_empty()
@@ -378,9 +278,121 @@ pub(super) fn looks_numeric(token: &str) -> bool {
             .all(|ch| ch.is_ascii_digit() || matches!(ch, '.' | '_' | '-' | '+' | 'x' | 'o' | 'b'))
 }
 
-pub(super) fn styled_text(text: &str, color: Color, modifier: Modifier) -> Span<'static> {
+pub(super) fn styled_text(
+    text: &str,
+    color: ratatui::style::Color,
+    modifier: ratatui::style::Modifier,
+) -> Span<'static> {
     Span::styled(
         text.to_string(),
         Style::default().fg(color).add_modifier(modifier),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line_text(line: &Line<'_>) -> String {
+        line.spans
+            .iter()
+            .map(|span| span.content.as_ref())
+            .collect::<String>()
+    }
+
+    fn assert_span_color(line: &Line<'_>, token: &str, expected: ratatui::style::Color) {
+        assert!(
+            line.spans
+                .iter()
+                .any(|span| span.content.contains(token) && span.style.fg == Some(expected)),
+            "expected token {token:?} with color {expected:?} in line {:?}",
+            line_text(line)
+        );
+    }
+
+    #[test]
+    fn jsonc_renderer_keeps_line_comments_and_block_comments() {
+        let lines = render_custom_code_preview(
+            CustomCodeKind::Jsonc,
+            "{\n  // comment\n  /* block */\n  \"name\": \"elio\"\n}\n",
+            true,
+            20,
+            &|| false,
+        );
+
+        assert!(
+            lines[1]
+                .spans
+                .iter()
+                .any(|span| span.content.contains("// comment"))
+        );
+        assert!(
+            lines[2]
+                .spans
+                .iter()
+                .any(|span| span.content.contains("/* block */"))
+        );
+        assert!(line_text(&lines[3]).contains("\"name\": \"elio\""));
+    }
+
+    #[test]
+    fn directive_renderer_keeps_existing_palette_contract() {
+        let palette = theme::code_preview_palette();
+        let lines = render_custom_code_preview(
+            CustomCodeKind::DirectiveConf,
+            "font_size 11.5\nforeground #c0c6e2\ninclude ~/.config/kitty/theme.conf\n",
+            true,
+            20,
+            &|| false,
+        );
+
+        assert_span_color(&lines[0], "font_size", palette.function);
+        assert_span_color(&lines[0], "11.5", palette.constant);
+        assert_span_color(&lines[1], "foreground", palette.function);
+        assert_span_color(&lines[1], "#c0c6e2", palette.constant);
+        assert_span_color(&lines[2], "include", palette.function);
+        assert_span_color(&lines[2], "~/.config/kitty/theme.conf", palette.string);
+    }
+
+    #[test]
+    fn desktop_entry_renderer_handles_unicode_values() {
+        let lines = render_custom_code_preview(
+            CustomCodeKind::DesktopEntry,
+            "[Desktop Entry]\nName=エリオ\nName[ja]=日本語アプリ\n",
+            true,
+            20,
+            &|| false,
+        );
+
+        assert!(
+            lines
+                .iter()
+                .flat_map(|line| line.spans.iter())
+                .any(|span| span.content.contains("日本語アプリ"))
+        );
+    }
+
+    #[test]
+    fn log_renderer_highlights_levels_and_fields() {
+        let lines = render_custom_code_preview(
+            CustomCodeKind::Log,
+            "2026-03-10T12:00:00Z ERROR request_id=42 path=/login failed\n",
+            true,
+            20,
+            &|| false,
+        );
+
+        assert!(
+            lines[0]
+                .spans
+                .iter()
+                .any(|span| span.content.contains("ERROR"))
+        );
+        assert!(
+            lines[0]
+                .spans
+                .iter()
+                .any(|span| span.content.contains("request_id"))
+        );
+    }
 }

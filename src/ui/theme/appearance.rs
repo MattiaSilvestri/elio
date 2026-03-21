@@ -353,18 +353,370 @@ impl Theme {
             ("ts".to_string(), rule_class(FileClass::Code)),
             ("tsx".to_string(), rule_class(FileClass::Code)),
             ("jsx".to_string(), rule_class(FileClass::Code)),
+            (
+                "sql".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(92, 192, 201)),
+                },
+            ),
+            (
+                "diff".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(255, 184, 107)),
+                },
+            ),
+            (
+                "patch".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(255, 184, 107)),
+                },
+            ),
+            (
+                "hcl".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
+                "tf".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
+                "tfvars".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
+                "tfbackend".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
+                "groovy".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(112, 182, 117)),
+                },
+            ),
+            (
+                "gvy".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(112, 182, 117)),
+                },
+            ),
+            (
+                "gradle".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(112, 182, 117)),
+                },
+            ),
+            (
+                "scala".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(232, 90, 90)),
+                },
+            ),
+            (
+                "sbt".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(232, 90, 90)),
+                },
+            ),
+            (
+                "pl".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(125, 176, 255)),
+                },
+            ),
+            (
+                "pm".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(125, 176, 255)),
+                },
+            ),
+            (
+                "pod".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(125, 176, 255)),
+                },
+            ),
+            (
+                "hs".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
+                "lhs".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
+                "jl".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(193, 120, 255)),
+                },
+            ),
+            (
+                "r".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󰟔".to_string()),
+                    color: Some(rgb(95, 153, 219)),
+                },
+            ),
+            (
+                "just".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(255, 184, 107)),
+                },
+            ),
+            (
+                "ziggy".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(245, 173, 64)),
+                },
+            ),
             ("py".to_string(), rule_class(FileClass::Code)),
             ("go".to_string(), rule_class(FileClass::Code)),
             ("c".to_string(), rule_class(FileClass::Code)),
             ("cpp".to_string(), rule_class(FileClass::Code)),
             ("h".to_string(), rule_class(FileClass::Code)),
             ("hpp".to_string(), rule_class(FileClass::Code)),
+            (
+                "cs".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󰌛".to_string()),
+                    color: Some(rgb(104, 179, 120)),
+                },
+            ),
+            (
+                "csx".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󰌛".to_string()),
+                    color: Some(rgb(104, 179, 120)),
+                },
+            ),
+            (
+                "dart".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(56, 213, 255)),
+                },
+            ),
+            (
+                "f".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󱈚".to_string()),
+                    color: Some(rgb(115, 79, 150)),
+                },
+            ),
+            (
+                "for".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󱈚".to_string()),
+                    color: Some(rgb(115, 79, 150)),
+                },
+            ),
+            (
+                "f90".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󱈚".to_string()),
+                    color: Some(rgb(115, 79, 150)),
+                },
+            ),
+            (
+                "f95".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󱈚".to_string()),
+                    color: Some(rgb(115, 79, 150)),
+                },
+            ),
+            (
+                "f03".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󱈚".to_string()),
+                    color: Some(rgb(115, 79, 150)),
+                },
+            ),
+            (
+                "f08".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󱈚".to_string()),
+                    color: Some(rgb(115, 79, 150)),
+                },
+            ),
+            (
+                "fpp".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󱈚".to_string()),
+                    color: Some(rgb(115, 79, 150)),
+                },
+            ),
+            (
+                "cbl".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(0, 92, 165)),
+                },
+            ),
+            (
+                "cob".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(0, 92, 165)),
+                },
+            ),
+            (
+                "cobol".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(0, 92, 165)),
+                },
+            ),
+            (
+                "cpy".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(0, 92, 165)),
+                },
+            ),
             ("java".to_string(), rule_class(FileClass::Code)),
             ("lua".to_string(), rule_class(FileClass::Code)),
             ("php".to_string(), rule_class(FileClass::Code)),
             ("rb".to_string(), rule_class(FileClass::Code)),
+            (
+                "ex".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(155, 143, 199)),
+                },
+            ),
+            (
+                "exs".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(155, 143, 199)),
+                },
+            ),
+            (
+                "clj".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(128, 176, 92)),
+                },
+            ),
+            (
+                "cljs".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(128, 176, 92)),
+                },
+            ),
+            (
+                "cljc".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(128, 176, 92)),
+                },
+            ),
+            (
+                "edn".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(128, 176, 92)),
+                },
+            ),
             ("swift".to_string(), rule_class(FileClass::Code)),
             ("kt".to_string(), rule_class(FileClass::Code)),
+            (
+                "ps1".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󰨊".to_string()),
+                    color: Some(rgb(95, 153, 219)),
+                },
+            ),
+            (
+                "psm1".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Code),
+                    icon: Some("󰨊".to_string()),
+                    color: Some(rgb(95, 153, 219)),
+                },
+            ),
+            (
+                "psd1".to_string(),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("󰨊".to_string()),
+                    color: Some(rgb(95, 153, 219)),
+                },
+            ),
             (
                 "sh".to_string(),
                 RuleOverride {
@@ -595,7 +947,6 @@ impl Theme {
             ("woff2".to_string(), rule_class(FileClass::Font)),
             ("csv".to_string(), rule_class(FileClass::Data)),
             ("tsv".to_string(), rule_class(FileClass::Data)),
-            ("sql".to_string(), rule_class(FileClass::Data)),
             ("sqlite".to_string(), rule_class(FileClass::Data)),
             ("db".to_string(), rule_class(FileClass::Data)),
             ("parquet".to_string(), rule_class(FileClass::Data)),
@@ -708,6 +1059,14 @@ impl Theme {
                 },
             ),
             (
+                normalize_key("Containerfile"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("󰡨".to_string()),
+                    color: Some(rgb(94, 162, 227)),
+                },
+            ),
+            (
                 normalize_key("compose.yml"),
                 RuleOverride {
                     class: Some(FileClass::Config),
@@ -721,6 +1080,110 @@ impl Theme {
                     class: Some(FileClass::Config),
                     icon: Some("󰡨".to_string()),
                     color: Some(rgb(94, 162, 227)),
+                },
+            ),
+            (
+                normalize_key(".terraform.lock.hcl"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(179, 140, 255)),
+                },
+            ),
+            (
+                normalize_key("build.gradle"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(112, 182, 117)),
+                },
+            ),
+            (
+                normalize_key("settings.gradle"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(112, 182, 117)),
+                },
+            ),
+            (
+                normalize_key("init.gradle"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(112, 182, 117)),
+                },
+            ),
+            (
+                normalize_key("build.sbt"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(232, 90, 90)),
+                },
+            ),
+            (
+                normalize_key(".rprofile"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("󰟔".to_string()),
+                    color: Some(rgb(95, 153, 219)),
+                },
+            ),
+            (
+                normalize_key("project.clj"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(128, 176, 92)),
+                },
+            ),
+            (
+                normalize_key("deps.edn"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(128, 176, 92)),
+                },
+            ),
+            (
+                normalize_key("bb.edn"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(128, 176, 92)),
+                },
+            ),
+            (
+                normalize_key("shadow-cljs.edn"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(128, 176, 92)),
+                },
+            ),
+            (
+                normalize_key("Justfile"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(255, 184, 107)),
+                },
+            ),
+            (
+                normalize_key(".justfile"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(255, 184, 107)),
+                },
+            ),
+            (
+                normalize_key("build.zig.zon"),
+                RuleOverride {
+                    class: Some(FileClass::Config),
+                    icon: Some("".to_string()),
+                    color: Some(rgb(245, 173, 64)),
                 },
             ),
             (
@@ -1470,6 +1933,8 @@ macro = "#fedcba"
         .expect("catppuccin-mocha theme should parse");
 
         assert_eq!(theme.palette.bg, rgb(0x1e, 0x1e, 0x2e));
+        assert_eq!(theme.palette.selected_bg, rgb(0x45, 0x47, 0x5a));
+        assert_ne!(theme.palette.selected_bg, theme.palette.surface);
         assert_eq!(theme.preview.code.keyword, rgb(0xcb, 0xa6, 0xf7));
         assert_eq!(theme.preview.code.function, rgb(0x89, 0xb4, 0xfa));
         assert_eq!(theme.preview.code.string, rgb(0xa6, 0xe3, 0xa1));
@@ -1707,6 +2172,86 @@ macro = "#fedcba"
         assert_eq!(xml.icon, "󰗀");
         assert_eq!(xml.color, rgb(179, 140, 255));
 
+        let csharp = theme.resolve(Path::new("Program.cs"), EntryKind::File);
+        assert_eq!(csharp.class, FileClass::Code);
+        assert_eq!(csharp.icon, "󰌛");
+        assert_eq!(csharp.color, rgb(104, 179, 120));
+
+        let csharp_script = theme.resolve(Path::new("Program.csx"), EntryKind::File);
+        assert_eq!(csharp_script.class, FileClass::Code);
+        assert_eq!(csharp_script.icon, "󰌛");
+        assert_eq!(csharp_script.color, rgb(104, 179, 120));
+
+        let dart = theme.resolve(Path::new("main.dart"), EntryKind::File);
+        assert_eq!(dart.class, FileClass::Code);
+        assert_eq!(dart.icon, "");
+        assert_eq!(dart.color, rgb(56, 213, 255));
+
+        let fortran = theme.resolve(Path::new("solver.f90"), EntryKind::File);
+        assert_eq!(fortran.class, FileClass::Code);
+        assert_eq!(fortran.icon, "󱈚");
+        assert_eq!(fortran.color, rgb(115, 79, 150));
+
+        let fortran_pp = theme.resolve(Path::new("solver.fpp"), EntryKind::File);
+        assert_eq!(fortran_pp.class, FileClass::Code);
+        assert_eq!(fortran_pp.icon, "󱈚");
+        assert_eq!(fortran_pp.color, rgb(115, 79, 150));
+
+        let cobol = theme.resolve(Path::new("ledger.cbl"), EntryKind::File);
+        assert_eq!(cobol.class, FileClass::Code);
+        assert_eq!(cobol.icon, "");
+        assert_eq!(cobol.color, rgb(0, 92, 165));
+
+        let cobol_copybook = theme.resolve(Path::new("customer.cpy"), EntryKind::File);
+        assert_eq!(cobol_copybook.class, FileClass::Code);
+        assert_eq!(cobol_copybook.icon, "");
+        assert_eq!(cobol_copybook.color, rgb(0, 92, 165));
+
+        let elixir = theme.resolve(Path::new("main.ex"), EntryKind::File);
+        assert_eq!(elixir.class, FileClass::Code);
+        assert_eq!(elixir.icon, "");
+        assert_eq!(elixir.color, rgb(155, 143, 199));
+
+        let elixir_script = theme.resolve(Path::new("mix.exs"), EntryKind::File);
+        assert_eq!(elixir_script.class, FileClass::Code);
+        assert_eq!(elixir_script.icon, "");
+        assert_eq!(elixir_script.color, rgb(155, 143, 199));
+
+        let clojure = theme.resolve(Path::new("core.clj"), EntryKind::File);
+        assert_eq!(clojure.class, FileClass::Code);
+        assert_eq!(clojure.icon, "");
+        assert_eq!(clojure.color, rgb(128, 176, 92));
+
+        let clojurescript = theme.resolve(Path::new("app.cljs"), EntryKind::File);
+        assert_eq!(clojurescript.class, FileClass::Code);
+        assert_eq!(clojurescript.icon, "");
+        assert_eq!(clojurescript.color, rgb(128, 176, 92));
+
+        let clojure_data = theme.resolve(Path::new("deps.edn"), EntryKind::File);
+        assert_eq!(clojure_data.class, FileClass::Config);
+        assert_eq!(clojure_data.icon, "");
+        assert_eq!(clojure_data.color, rgb(128, 176, 92));
+
+        let leiningen = theme.resolve(Path::new("project.clj"), EntryKind::File);
+        assert_eq!(leiningen.class, FileClass::Config);
+        assert_eq!(leiningen.icon, "");
+        assert_eq!(leiningen.color, rgb(128, 176, 92));
+
+        let powershell = theme.resolve(Path::new("build.ps1"), EntryKind::File);
+        assert_eq!(powershell.class, FileClass::Code);
+        assert_eq!(powershell.icon, "󰨊");
+        assert_eq!(powershell.color, rgb(95, 153, 219));
+
+        let powershell_module = theme.resolve(Path::new("ElioTools.psm1"), EntryKind::File);
+        assert_eq!(powershell_module.class, FileClass::Code);
+        assert_eq!(powershell_module.icon, "󰨊");
+        assert_eq!(powershell_module.color, rgb(95, 153, 219));
+
+        let powershell_data = theme.resolve(Path::new("ElioTools.psd1"), EntryKind::File);
+        assert_eq!(powershell_data.class, FileClass::Config);
+        assert_eq!(powershell_data.icon, "󰨊");
+        assert_eq!(powershell_data.color, rgb(95, 153, 219));
+
         let shell = theme.resolve(Path::new("deploy.sh"), EntryKind::File);
         assert_eq!(shell.class, FileClass::Code);
         assert_eq!(shell.icon, "");
@@ -1726,6 +2271,70 @@ macro = "#fedcba"
         assert_eq!(fish.class, FileClass::Code);
         assert_eq!(fish.icon, "");
         assert_eq!(fish.color, rgb(214, 222, 240));
+    }
+
+    #[test]
+    fn default_theme_assigns_icons_for_new_language_support() {
+        let theme = Theme::default_theme();
+
+        let dockerfile = theme.resolve(Path::new("Dockerfile"), EntryKind::File);
+        assert_eq!(dockerfile.class, FileClass::Config);
+        assert_eq!(dockerfile.icon, "󰡨");
+
+        let sql = theme.resolve(Path::new("schema.sql"), EntryKind::File);
+        assert_eq!(sql.icon, "");
+
+        let diff = theme.resolve(Path::new("changes.diff"), EntryKind::File);
+        assert_eq!(diff.class, FileClass::Code);
+        assert_eq!(diff.icon, "");
+
+        let terraform = theme.resolve(Path::new("main.tf"), EntryKind::File);
+        assert_eq!(terraform.class, FileClass::Config);
+        assert_eq!(terraform.icon, "");
+
+        let hcl = theme.resolve(Path::new("terraform.lock.hcl"), EntryKind::File);
+        assert_eq!(hcl.class, FileClass::Config);
+        assert_eq!(hcl.icon, "");
+
+        let groovy = theme.resolve(Path::new("build.gradle"), EntryKind::File);
+        assert_eq!(groovy.class, FileClass::Config);
+        assert_eq!(groovy.icon, "");
+
+        let scala = theme.resolve(Path::new("build.sbt"), EntryKind::File);
+        assert_eq!(scala.class, FileClass::Config);
+        assert_eq!(scala.icon, "");
+
+        let perl = theme.resolve(Path::new("script.pl"), EntryKind::File);
+        assert_eq!(perl.class, FileClass::Code);
+        assert_eq!(perl.icon, "");
+
+        let haskell = theme.resolve(Path::new("Main.hs"), EntryKind::File);
+        assert_eq!(haskell.class, FileClass::Code);
+        assert_eq!(haskell.icon, "");
+
+        let julia = theme.resolve(Path::new("main.jl"), EntryKind::File);
+        assert_eq!(julia.class, FileClass::Code);
+        assert_eq!(julia.icon, "");
+
+        let r = theme.resolve(Path::new("analysis.r"), EntryKind::File);
+        assert_eq!(r.class, FileClass::Code);
+        assert_eq!(r.icon, "󰟔");
+
+        let just = theme.resolve(Path::new("Justfile"), EntryKind::File);
+        assert_eq!(just.class, FileClass::Config);
+        assert_eq!(just.icon, "");
+
+        let ziggy = theme.resolve(Path::new("config.ziggy"), EntryKind::File);
+        assert_eq!(ziggy.class, FileClass::Config);
+        assert_eq!(ziggy.icon, "");
+
+        let fortran = theme.resolve(Path::new("solver.f90"), EntryKind::File);
+        assert_eq!(fortran.class, FileClass::Code);
+        assert_eq!(fortran.icon, "󱈚");
+
+        let cobol = theme.resolve(Path::new("ledger.cbl"), EntryKind::File);
+        assert_eq!(cobol.class, FileClass::Code);
+        assert_eq!(cobol.icon, "");
     }
 
     #[test]

@@ -260,6 +260,36 @@ Ready-to-use themes are in [examples/themes/](examples/themes/). Copy any `theme
 
 ---
 
+## Code Preview Support
+
+Code preview is now split into one central language registry plus multiple rendering backends:
+
+- `src/preview/code/registry.rs` resolves extensions, exact filenames, shebangs, modelines, and Markdown fence aliases from one source of truth.
+- `src/preview/code/render.rs` is the single preview entrypoint used by both file previews and Markdown fenced code blocks.
+- `src/preview/code/backends/syntect.rs` handles generic syntax-highlighted languages with Elio theme colors and a shell-aware fallback renderer.
+- `src/preview/code/custom/` keeps the semantic renderers that are better than generic syntax highlighting.
+
+Structured and specialized previews take priority over generic syntax highlighting for Markdown, JSON, JSONC / JSON5, TOML, YAML, `.env`, logs, directive configs, and INI / Desktop Entry files.
+
+The current curated syntect bundle explicitly supports these code syntaxes:
+
+- `html`, `xml`, `css`, `scss`, `sass`, `less`
+- `javascript`, `jsx`, `typescript`, `tsx`
+- `sql`, `diff`, `dockerfile`, `hcl`, `terraform`
+- `rust`, `go`, `c`, `cpp`, `cs`, `java`, `dart`, `fortran`, `cobol`, `zig`, `php`, `swift`, `kotlin`, `elixir`, `clojure`, `ruby`, `python`, `lua`
+- `groovy`, `scala`, `perl`, `haskell`, `julia`, `r`
+- `make`, `just`, `sh`, `bash`, `zsh`, `ksh`, `fish`, `powershell`, `nix`, `cmake`
+
+Anything outside that matrix falls back to plain code preview instead of advertising unsupported highlighting.
+
+`clojure` support also covers the common Clojure-family aliases and file shapes used in practice: `clj`, `cljs`, `cljc`, `edn`, `project.clj`, `deps.edn`, `bb.edn`, and `shadow-cljs.edn`.
+
+`fortran` support covers the common source extensions used in practice: `f`, `for`, `f90`, `f95`, `f03`, `f08`, and `fpp`.
+
+`cobol` support covers the common source and copybook extensions used in practice: `cbl`, `cob`, `cobol`, and `cpy`.
+
+---
+
 ## License
 
 [MIT](LICENSE-MIT)

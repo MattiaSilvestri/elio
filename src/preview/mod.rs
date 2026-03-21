@@ -1,9 +1,9 @@
 mod binary;
+pub(crate) mod code;
 mod container;
 mod directory;
 mod dispatch;
 mod document;
-mod highlighting;
 mod markdown;
 mod structured;
 mod text;

@@ -462,10 +462,22 @@ impl MarkdownRenderer {
             ),
         ]));
 
-        let rendered = super::highlighting::render_markdown_code_preview(
+        let preview_spec = super::code::registry::language_for_markdown_fence(&code_block.language)
+            .map(|language| language.preview_spec())
+            .unwrap_or(crate::file_info::PreviewSpec {
+                kind: crate::file_info::PreviewKind::Source,
+                language_hint: None,
+                code_syntax: None,
+                code_backend: crate::file_info::CodeBackend::Plain,
+                structured_format: None,
+                document_format: None,
+            });
+        let rendered = super::code::render_code_preview(
+            preview_spec,
             &code_block.text,
-            &code_block.language,
             false,
+            PREVIEW_RENDER_LINE_LIMIT,
+            &|| false,
         );
         for line in rendered {
             if self.is_full() {
