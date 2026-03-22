@@ -205,6 +205,96 @@ fn cached_adjacent_epub_section_queues_background_image_prepare() {
 }
 
 #[test]
+fn cached_adjacent_audio_cover_queues_background_image_prepare() {
+    let root = temp_root("audio-adjacent-cover-prepare");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let first = root.join("001.mp3");
+    let second = root.join("002.mp3");
+    fs::write(&first, b"audio-one").expect("failed to write first audio fixture");
+    fs::write(&second, b"audio-two").expect("failed to write second audio fixture");
+    let first_metadata = fs::metadata(&first).expect("first audio metadata should exist");
+    let second_metadata = fs::metadata(&second).expect("second audio metadata should exist");
+    let current_cover = root.join("cover-1.png");
+    let next_cover = root.join("cover-2.png");
+    write_test_raster_image(&current_cover, ImageFormat::Png, 900, 900);
+    write_test_raster_image(&next_cover, ImageFormat::Png, 900, 900);
+    let next_cover_metadata = fs::metadata(&next_cover).expect("next cover metadata should exist");
+
+    let mut app = App::new_at(root.clone()).expect("app should initialize");
+    configure_terminal_image_support(&mut app);
+    app.terminal_images.protocol = ImageProtocol::ItermInline;
+    app.entries = vec![
+        Entry {
+            path: first.clone(),
+            name: "001.mp3".to_string(),
+            name_key: "001.mp3".to_string(),
+            kind: EntryKind::File,
+            size: first_metadata.len(),
+            modified: first_metadata.modified().ok(),
+            readonly: false,
+        },
+        Entry {
+            path: second.clone(),
+            name: "002.mp3".to_string(),
+            name_key: "002.mp3".to_string(),
+            kind: EntryKind::File,
+            size: second_metadata.len(),
+            modified: second_metadata.modified().ok(),
+            readonly: false,
+        },
+    ];
+    app.selected = 0;
+    app.frame_state.preview_media_area = Some(Rect {
+        x: 2,
+        y: 3,
+        width: 48,
+        height: 20,
+    });
+    app.preview_state.content = PreviewContent::new(PreviewKind::Audio, Vec::new())
+        .with_detail("MP3 audio")
+        .with_preview_visual(PreviewVisual {
+            kind: PreviewVisualKind::Cover,
+            layout: PreviewVisualLayout::Inline,
+            path: current_cover,
+            size: 11 * 1024,
+            modified: None,
+        });
+
+    let adjacent_preview = PreviewContent::new(PreviewKind::Audio, Vec::new())
+        .with_detail("MP3 audio")
+        .with_preview_visual(PreviewVisual {
+            kind: PreviewVisualKind::Cover,
+            layout: PreviewVisualLayout::Inline,
+            path: next_cover,
+            size: next_cover_metadata.len(),
+            modified: next_cover_metadata.modified().ok(),
+        });
+    let adjacent_entry = app.entries[1].clone();
+    app.cache_preview_result(
+        &adjacent_entry,
+        &preview::PreviewRequestOptions::Default,
+        &adjacent_preview,
+    );
+    let adjacent_request = app.preview_visual_overlay_request_for_visual(
+        PreviewKind::Audio,
+        adjacent_preview
+            .preview_visual
+            .as_ref()
+            .expect("adjacent preview should have a visual"),
+        app.frame_state
+            .preview_media_area
+            .expect("preview media area should exist"),
+    );
+    let adjacent_key = StaticImageKey::from_request(&adjacent_request);
+
+    app.refresh_static_image_preloads();
+
+    assert!(app.image_preview.pending_prepares.contains(&adjacent_key));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn stale_adjacent_comic_preview_result_immediately_queues_image_prepare() {
     let root = temp_root("comic-stale-adjacent-image-prepare");
     fs::create_dir_all(&root).expect("failed to create temp root");

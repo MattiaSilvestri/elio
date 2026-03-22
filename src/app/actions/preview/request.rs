@@ -57,7 +57,10 @@ impl App {
         default_code_preview_line_limit()
     }
 
-    pub(super) fn preview_request_options_for_entry(&self, entry: &Entry) -> PreviewRequestOptions {
+    pub(in crate::app) fn preview_request_options_for_entry(
+        &self,
+        entry: &Entry,
+    ) -> PreviewRequestOptions {
         self.comic_preview_request_options_for_entry(entry)
             .or_else(|| self.epub_preview_request_options_for_entry(entry))
             .unwrap_or_default()

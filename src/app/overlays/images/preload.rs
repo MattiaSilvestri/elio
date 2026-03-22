@@ -17,6 +17,7 @@ impl App {
             let mut requests = self.nearby_comic_preview_visual_overlay_requests();
             requests.extend(self.nearby_comic_entry_preview_visual_overlay_requests());
             requests.extend(self.nearby_epub_preview_visual_overlay_requests());
+            requests.extend(self.nearby_audio_preview_visual_overlay_requests());
             requests
         } else {
             Vec::new()

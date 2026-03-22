@@ -1,7 +1,7 @@
 use super::super::*;
 use super::helpers::{temp_path, wait_for_directory_load};
 use std::{
-    fs,
+    fs, thread,
     time::{Duration, Instant},
 };
 
@@ -167,6 +167,42 @@ fn high_frequency_right_arrow_in_list_view_still_enters_directory() {
     wait_for_directory_load(&mut app);
 
     assert_eq!(app.cwd, child);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn rapid_audio_navigation_defers_second_cold_heavy_preview_refresh() {
+    let root = temp_path("rapid-audio-navigation-preview-defer");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    for name in ["a.mp3", "b.mp3", "c.mp3"] {
+        fs::write(root.join(name), name).expect("failed to write temp audio file");
+    }
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    app.view_mode = ViewMode::List;
+    app.set_media_ffprobe_available_for_tests(false);
+    app.set_media_ffmpeg_available_for_tests(false);
+    app.last_selection_change_at =
+        Instant::now() - WHEEL_SCROLL_BURST_WINDOW - Duration::from_millis(1);
+
+    let initial_token = app.preview_state.token;
+    app.move_vertical(1);
+
+    // Cold heavy audio is always deferred regardless of burst window state.
+    assert_eq!(app.selected, 1);
+    assert_eq!(app.preview_state.token, initial_token);
+    assert!(app.preview_state.deferred_refresh_at.is_some());
+
+    app.move_vertical(1);
+
+    assert_eq!(app.selected, 2);
+    assert_eq!(app.preview_state.token, initial_token);
+    assert!(app.preview_state.deferred_refresh_at.is_some());
+
+    thread::sleep(HIGH_FREQUENCY_PREVIEW_REFRESH_DELAY + Duration::from_millis(20));
+    assert!(app.process_preview_refresh_timers());
+    assert!(app.preview_state.token > initial_token);
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

@@ -172,7 +172,7 @@ impl App {
     }
 
     pub(crate) fn present_preview_overlay(&mut self) -> Result<Vec<u8>> {
-        if self.browser_wheel_burst_active() {
+        if self.browser_wheel_burst_active() || self.preview_state.deferred_refresh_at.is_some() {
             return Ok(Vec::new());
         }
 

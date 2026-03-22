@@ -9,20 +9,34 @@ const JOB_RESULT_APPLY_MAX_PER_TICK: usize = 12;
 const JOB_RESULT_APPLY_TIME_BUDGET: Duration = Duration::from_millis(2);
 
 impl App {
-    fn refresh_static_image_preloads_for_cached_selected_page_preview(
+    fn refresh_static_image_preloads_for_cached_preview_visual(
         &mut self,
         build_entry: &Entry,
         build_variant: &preview::PreviewRequestOptions,
-        build_has_page_image: bool,
+        build_visual_kind: Option<preview::PreviewVisualKind>,
         is_current_entry: bool,
     ) {
-        if build_has_page_image
-            && (is_current_entry
-                || self.refreshes_image_preloads_for_nearby_comic_entry_preview(
-                    build_entry,
-                    build_variant,
-                ))
-        {
+        let Some(build_visual_kind) = build_visual_kind else {
+            return;
+        };
+
+        let should_refresh = match build_visual_kind {
+            preview::PreviewVisualKind::PageImage => {
+                is_current_entry
+                    || self.refreshes_image_preloads_for_nearby_comic_entry_preview(
+                        build_entry,
+                        build_variant,
+                    )
+            }
+            preview::PreviewVisualKind::Cover => {
+                is_current_entry
+                    || self.refreshes_image_preloads_for_nearby_audio_preview(
+                        build_entry,
+                        build_variant,
+                    )
+            }
+        };
+        if should_refresh {
             self.refresh_static_image_preloads();
         }
     }
@@ -178,10 +192,11 @@ impl App {
                         build.variant,
                         preview::PreviewRequestOptions::EpubSection(_)
                     );
-                    let build_has_page_image =
-                        build.result.preview_visual.as_ref().is_some_and(|visual| {
-                            visual.kind == preview::PreviewVisualKind::PageImage
-                        });
+                    let build_visual_kind = build
+                        .result
+                        .preview_visual
+                        .as_ref()
+                        .map(|visual| visual.kind);
                     let is_current_entry = self
                         .selected_entry()
                         .map(|entry| {
@@ -198,10 +213,10 @@ impl App {
                         || build.code_line_limit
                             != self.preview_code_line_limit_for_entry(&build.entry)
                     {
-                        self.refresh_static_image_preloads_for_cached_selected_page_preview(
+                        self.refresh_static_image_preloads_for_cached_preview_visual(
                             &build.entry,
                             &build.variant,
-                            build_has_page_image,
+                            build_visual_kind,
                             is_current_entry,
                         );
                         self.preview_state.metrics.stale_results_dropped += 1;
@@ -216,10 +231,11 @@ impl App {
                     self.preview_state.scroll = 0;
                     self.preview_state.horizontal_scroll = 0;
                     self.sync_preview_scroll();
-                    if build_has_page_image {
+                    if build_visual_kind.is_some() {
                         self.refresh_static_image_preloads();
                     }
                     if build_is_comic || build_is_epub_section || is_current_entry {
+                        self.prefetch_nearby_audio_previews();
                         self.schedule_preview_prefetch();
                     }
                     self.preview_state.metrics.applied_results += 1;

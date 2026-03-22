@@ -1,5 +1,7 @@
 use super::*;
-use crate::preview::PreviewContent;
+use crate::app::FileClass;
+use crate::file_info;
+use crate::preview::{PreviewContent, PreviewWorkClass, preview_work_class};
 
 impl App {
     pub fn selection_summary(&self) -> String {
@@ -72,6 +74,8 @@ impl App {
     fn set_selected_with_preview_mode(&mut self, index: usize, preview_mode: PreviewRefreshMode) {
         let next = index.min(self.entries.len().saturating_sub(1));
         if next != self.selected {
+            let preview_mode =
+                self.effective_preview_refresh_mode_for_selection(next, preview_mode);
             self.selected = next;
             self.last_selection_change_at = Instant::now();
             self.image_preview.selection_activation_delay = match preview_mode {
@@ -93,6 +97,31 @@ impl App {
             self.refresh_static_image_preloads();
         }
         self.remember_current_directory_view();
+    }
+
+    fn effective_preview_refresh_mode_for_selection(
+        &self,
+        index: usize,
+        preview_mode: PreviewRefreshMode,
+    ) -> PreviewRefreshMode {
+        if preview_mode != PreviewRefreshMode::Immediate {
+            return preview_mode;
+        }
+        let Some(entry) = self.entries.get(index) else {
+            return preview_mode;
+        };
+        let variant = self.preview_request_options_for_entry(entry);
+        let builtin_class =
+            file_info::inspect_path_cached(&entry.path, entry.kind, entry.size, entry.modified)
+                .builtin_class;
+        let cold_heavy_preview = matches!(builtin_class, FileClass::Audio | FileClass::Video)
+            && preview_work_class(entry, &variant) == PreviewWorkClass::Heavy
+            && self.cached_preview_for(entry, &variant).is_none();
+        if cold_heavy_preview {
+            PreviewRefreshMode::Deferred
+        } else {
+            PreviewRefreshMode::Immediate
+        }
     }
 
     pub(in crate::app) fn set_selected_last(&mut self) {

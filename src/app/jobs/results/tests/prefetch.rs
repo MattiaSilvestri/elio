@@ -187,3 +187,49 @@ fn nearby_comic_entry_prefetch_warms_adjacent_file_preview() {
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
+
+#[test]
+fn nearby_audio_preview_prefetch_warms_adjacent_file_preview() {
+    let root = temp_path("audio-entry-prefetch");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let first = root.join("001.mp3");
+    let second = root.join("002.mp3");
+    fs::write(&first, b"audio-one").expect("failed to write first audio fixture");
+    fs::write(&second, b"audio-two").expect("failed to write second audio fixture");
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    wait_for_directory_load(&mut app);
+    app.set_media_ffprobe_available_for_tests(false);
+    app.set_media_ffmpeg_available_for_tests(false);
+    app.refresh_preview();
+    wait_for_background_preview(&mut app);
+    wait_for_preview_prefetch(&mut app);
+
+    for _ in 0..200 {
+        let _ = app.process_preview_prefetch_timers();
+        let _ = app.process_background_jobs();
+        if app.has_cached_preview_for_path(&second) {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    assert!(app.has_cached_preview_for_path(&second));
+    assert!(app.scheduler_metrics().preview_jobs_submitted_low >= 1);
+
+    let preview_metrics = app.preview_metrics();
+    app.set_selected(1);
+    assert_eq!(
+        app.preview_metrics().cache_hits,
+        preview_metrics.cache_hits + 1
+    );
+    assert_eq!(app.preview_section_label(), "Audio");
+    assert_eq!(app.preview_header_detail(10).as_deref(), Some("MP3 audio"));
+    assert!(
+        app.preview_lines()
+            .iter()
+            .all(|line| !line.to_string().contains("Loading preview"))
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
