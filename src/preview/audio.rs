@@ -17,7 +17,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-const AUDIO_ARTWORK_CACHE_VERSION: usize = 1;
+const AUDIO_ARTWORK_CACHE_VERSION: usize = 2;
+const NATIVE_ARTWORK_STREAM_INDEX: u32 = u32::MAX;
 const CANCELLABLE_COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 static COMMAND_CAPTURE_ID: AtomicU64 = AtomicU64::new(0);
@@ -88,6 +89,15 @@ where
 {
     let detail = type_detail.unwrap_or("Audio");
     let (byte_size, modified) = audio_source_identity(entry);
+
+    // Fast path: native in-process reading — no subprocess, completes in < 1ms.
+    if let Some(preview) =
+        build_audio_preview_native(entry, type_detail, byte_size, modified, ffmpeg_available, canceled)
+    {
+        return preview;
+    }
+
+    // Slow fallback: ffprobe + ffmpeg for formats lofty does not support.
     let probe = if canceled() || !ffprobe_available {
         None
     } else {
@@ -107,6 +117,120 @@ where
         preview = preview.with_preview_visual(visual);
     }
     preview
+}
+
+fn build_audio_preview_native<F>(
+    entry: &Entry,
+    type_detail: Option<&'static str>,
+    byte_size: u64,
+    modified: Option<SystemTime>,
+    ffmpeg_available: bool,
+    canceled: &F,
+) -> Option<PreviewContent>
+where
+    F: Fn() -> bool,
+{
+    use lofty::file::TaggedFileExt;
+    use lofty::prelude::*;
+
+    let tagged_file = lofty::read_from_path(&entry.path).ok()?;
+    let tag = tagged_file.primary_tag().or_else(|| tagged_file.first_tag());
+    let props = tagged_file.properties();
+
+    let metadata = AudioMetadata {
+        title: tag.and_then(|t| t.title()).map(|s| s.into_owned()),
+        artist: tag.and_then(|t| t.artist()).map(|s| s.into_owned()),
+        album: tag.and_then(|t| t.album()).map(|s| s.into_owned()),
+        track: tag.and_then(|t| t.track()).map(|n| n.to_string()),
+        duration_seconds: {
+            let d = props.duration().as_secs_f64();
+            (d > 0.0).then_some(d)
+        },
+        codec: codec_from_lofty_file_type(tagged_file.file_type()),
+        bitrate_bps: props.audio_bitrate().map(|kbps| kbps as u64 * 1000),
+        sample_rate_hz: props.sample_rate(),
+        channels: props.channels().map(|c| c as u32),
+    };
+
+    let lines = render_audio_metadata_lines(Some(&metadata), byte_size);
+    let detail = type_detail.unwrap_or("Audio");
+    let mut preview = PreviewContent::new(PreviewKind::Audio, lines).with_detail(detail);
+
+    if !canceled() && ffmpeg_available {
+        if let Some(tag) = tag {
+            let picture = tag
+                .pictures()
+                .iter()
+                .find(|p| p.pic_type() == lofty::picture::PictureType::CoverFront)
+                .or_else(|| tag.pictures().first());
+            if let Some(pic) = picture {
+                if let Some(visual) =
+                    extract_audio_artwork_native(entry, byte_size, modified, pic.data(), canceled)
+                {
+                    preview = preview.with_preview_visual(visual);
+                }
+            }
+        }
+    }
+
+    Some(preview)
+}
+
+fn codec_from_lofty_file_type(file_type: lofty::file::FileType) -> Option<String> {
+    use lofty::file::FileType;
+    Some(
+        match file_type {
+            FileType::Mpeg => "mp3",
+            FileType::Flac => "flac",
+            FileType::Mp4 => "aac",
+            FileType::Wav => "pcm",
+            FileType::Aiff => "pcm",
+            FileType::Opus => "opus",
+            FileType::Vorbis => "vorbis",
+            FileType::Speex => "speex",
+            _ => return None,
+        }
+        .to_string(),
+    )
+}
+
+fn extract_audio_artwork_native<F>(
+    entry: &Entry,
+    size: u64,
+    modified: Option<SystemTime>,
+    picture_data: &[u8],
+    canceled: &F,
+) -> Option<PreviewVisual>
+where
+    F: Fn() -> bool,
+{
+    let ext = picture_data_extension(picture_data);
+    let cache_path =
+        audio_artwork_cache_path(&entry.path, size, modified, NATIVE_ARTWORK_STREAM_INDEX, ext)?;
+    if cache_path.exists() {
+        return preview_visual_from_path(cache_path);
+    }
+    if canceled() {
+        return None;
+    }
+    let temp_path = audio_artwork_temp_path(&cache_path)?;
+    fs::write(&temp_path, picture_data).ok()?;
+    if canceled() {
+        let _ = fs::remove_file(&temp_path);
+        return None;
+    }
+    finalize_audio_artwork(&temp_path, &cache_path)?;
+    preview_visual_from_path(cache_path)
+}
+
+fn picture_data_extension(data: &[u8]) -> &'static str {
+    if data.starts_with(b"\xFF\xD8\xFF") {
+        "jpg"
+    } else if data.starts_with(b"\x89PNG\r\n\x1A\n") {
+        "png"
+    } else {
+        "jpg"
+    }
 }
 
 fn probe_audio_metadata<F>(entry: &Entry, canceled: &F) -> Option<AudioProbeResult>
@@ -202,7 +326,8 @@ where
         return None;
     }
 
-    let cache_path = audio_artwork_cache_path(&entry.path, size, modified, artwork_stream_index)?;
+    let cache_path =
+        audio_artwork_cache_path(&entry.path, size, modified, artwork_stream_index, "png")?;
     if cache_path.exists() {
         return preview_visual_from_path(cache_path);
     }
@@ -254,6 +379,7 @@ fn audio_artwork_cache_path(
     size: u64,
     modified: Option<SystemTime>,
     artwork_stream_index: u32,
+    extension: &str,
 ) -> Option<PathBuf> {
     let mut hasher = DefaultHasher::new();
     AUDIO_ARTWORK_CACHE_VERSION.hash(&mut hasher);
@@ -264,7 +390,7 @@ fn audio_artwork_cache_path(
     let cache_dir =
         env::temp_dir().join(format!("elio-audio-cover-v{AUDIO_ARTWORK_CACHE_VERSION}"));
     fs::create_dir_all(&cache_dir).ok()?;
-    Some(cache_dir.join(format!("cover-{:016x}.png", hasher.finish())))
+    Some(cache_dir.join(format!("cover-{:016x}.{extension}", hasher.finish())))
 }
 
 fn audio_artwork_temp_path(path: &Path) -> Option<PathBuf> {
@@ -276,7 +402,8 @@ fn audio_artwork_temp_path(path: &Path) -> Option<PathBuf> {
         .map(|duration| duration.as_nanos())
         .unwrap_or_default();
     let stem = path.file_stem()?.to_string_lossy();
-    Some(parent.join(format!(".{stem}.tmp-{}-{unique}.png", std::process::id())))
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
+    Some(parent.join(format!(".{stem}.tmp-{}-{unique}.{ext}", std::process::id())))
 }
 
 fn finalize_audio_artwork(temp_path: &Path, cache_path: &Path) -> Option<()> {
@@ -656,11 +783,11 @@ mod tests {
     fn audio_artwork_cache_path_is_stable_for_same_input_and_changes_with_stream() {
         let modified = Some(SystemTime::UNIX_EPOCH + Duration::from_secs(123));
         let path = Path::new("/tmp/demo.mp3");
-        let current = audio_artwork_cache_path(path, 42, modified, 1)
+        let current = audio_artwork_cache_path(path, 42, modified, 1, "jpg")
             .expect("cache path should be available");
-        let same = audio_artwork_cache_path(path, 42, modified, 1)
+        let same = audio_artwork_cache_path(path, 42, modified, 1, "jpg")
             .expect("cache path should be available");
-        let different = audio_artwork_cache_path(path, 42, modified, 2)
+        let different = audio_artwork_cache_path(path, 42, modified, 2, "jpg")
             .expect("cache path should be available");
 
         assert_eq!(current, same);
