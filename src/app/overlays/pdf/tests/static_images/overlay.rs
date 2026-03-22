@@ -4,6 +4,7 @@ use super::*;
 fn refresh_preview_uses_blank_static_image_surface_preview_when_backend_enabled() {
     for (file_name, detail) in [
         ("demo.png", "PNG image"),
+        ("demo.ico", "ICO image"),
         ("demo.jpg", "JPEG image"),
         ("demo.jpeg", "JPEG image"),
         ("demo.gif", "GIF image"),
@@ -24,6 +25,7 @@ fn refresh_preview_uses_blank_static_image_surface_preview_when_backend_enabled(
 fn preview_prefers_image_surface_for_supported_static_images_when_backend_enabled() {
     for (file_name, placeholder) in [
         ("demo.png", None),
+        ("demo.ico", Some("Preparing image preview")),
         ("demo.jpg", Some("Preparing image preview")),
         ("demo.jpeg", Some("Preparing image preview")),
         ("demo.gif", Some("Preparing image preview")),

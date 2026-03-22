@@ -10,7 +10,7 @@ base64 = "0.22"
 cfb = "0.10"
 crossterm = "0.28"
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
-image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
+image = { version = "0.25", default-features = false, features = ["gif", "ico", "jpeg", "png", "webp"] }
 notify = "7.0"
 json5 = "0.4"
 pulldown-cmark = "0.13"

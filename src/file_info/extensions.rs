@@ -163,7 +163,7 @@ pub(super) fn inspect_extension(ext: &str) -> FileFacts {
             preview: preview_for_extension(ext),
         },
         "xcf" => plain(FileClass::Image, Some("GIMP image")),
-        "ico" => plain(FileClass::Image, Some("Icon image")),
+        "ico" => plain(FileClass::Image, Some("ICO image")),
         "rpm" => plain(FileClass::Archive, Some("RPM package")),
         "hash" => plain(FileClass::Data, Some("Hash file")),
         "sha1" => plain(FileClass::Data, Some("SHA-1 checksum")),

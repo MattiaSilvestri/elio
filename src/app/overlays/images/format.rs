@@ -7,6 +7,7 @@ use std::{fs, fs::File, io::Read, path::Path};
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum StaticImageFormat {
     Png,
+    Ico,
     Jpeg,
     Gif,
     Webp,
@@ -17,6 +18,7 @@ impl StaticImageFormat {
     fn detail_label(self) -> &'static str {
         match self {
             Self::Png => "PNG image",
+            Self::Ico => "ICO image",
             Self::Jpeg => "JPEG image",
             Self::Gif => "GIF image",
             Self::Webp => "WebP image",
@@ -27,6 +29,7 @@ impl StaticImageFormat {
     fn from_label(label: &'static str) -> Option<Self> {
         match label {
             "PNG image" => Some(Self::Png),
+            "ICO image" | "Icon image" => Some(Self::Ico),
             "JPEG image" => Some(Self::Jpeg),
             "GIF image" => Some(Self::Gif),
             "WebP image" => Some(Self::Webp),

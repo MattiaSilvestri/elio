@@ -238,6 +238,7 @@ pub(super) fn static_image_can_prepare_inline(
 ) -> bool {
     match format {
         StaticImageFormat::Png => true,
+        StaticImageFormat::Ico => true,
         StaticImageFormat::Jpeg | StaticImageFormat::Gif | StaticImageFormat::Webp => {
             if ffmpeg_available {
                 size <= STATIC_IMAGE_INLINE_EXTERNAL_PREPARE_MAX_BYTES
@@ -269,6 +270,7 @@ fn static_image_supports_iterm_source_passthrough_for_prepare(
 fn static_image_supports_iterm_source_format(path: &Path, format: StaticImageFormat) -> bool {
     match format {
         StaticImageFormat::Png => true,
+        StaticImageFormat::Ico => false,
         StaticImageFormat::Jpeg => read_exif_orientation(path).unwrap_or(1) == 1,
         StaticImageFormat::Gif | StaticImageFormat::Webp | StaticImageFormat::Svg => false,
     }

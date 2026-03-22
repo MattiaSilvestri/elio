@@ -208,6 +208,7 @@ pub(super) fn build_selected_static_image_app(label: &str, file_name: &str) -> (
         .as_deref()
     {
         Some("png") => write_test_raster_image(&image_path, ImageFormat::Png, 600, 300),
+        Some("ico") => write_test_raster_image(&image_path, ImageFormat::Ico, 64, 64),
         Some("jpg") | Some("jpeg") => {
             write_test_raster_image(&image_path, ImageFormat::Jpeg, 600, 300)
         }
@@ -279,6 +280,7 @@ pub(super) fn build_multi_static_image_app(label: &str, file_names: &[&str]) -> 
             .as_deref()
         {
             Some("png") => write_test_raster_image(&image_path, ImageFormat::Png, 600, 300),
+            Some("ico") => write_test_raster_image(&image_path, ImageFormat::Ico, 64, 64),
             Some("jpg") | Some("jpeg") => {
                 write_test_raster_image(&image_path, ImageFormat::Jpeg, 600, 300)
             }

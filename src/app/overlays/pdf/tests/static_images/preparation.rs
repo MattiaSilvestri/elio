@@ -116,7 +116,14 @@ fn extensionless_png_static_image_preparation_succeeds() {
 
 #[test]
 fn raster_static_images_use_png_display_paths() {
-    for file_name in ["demo.png", "demo.jpg", "demo.jpeg", "demo.gif", "demo.webp"] {
+    for file_name in [
+        "demo.png",
+        "demo.ico",
+        "demo.jpg",
+        "demo.jpeg",
+        "demo.gif",
+        "demo.webp",
+    ] {
         let (_app, root) = build_selected_static_image_app("image-cache", file_name);
         let path = root.join(file_name);
         let metadata = fs::metadata(&path).expect("image metadata should exist");

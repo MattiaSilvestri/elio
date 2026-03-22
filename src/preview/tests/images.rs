@@ -46,3 +46,29 @@ fn extensionless_png_preview_uses_image_metadata_fallback() {
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
+
+#[test]
+fn ico_preview_uses_image_metadata_fallback() {
+    let root = temp_path("image-metadata-ico");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("favicon.ico");
+    write_test_raster_image(&path, ImageFormat::Ico, 64, 64);
+
+    let preview = build_preview(&file_entry(path));
+    let line_texts: Vec<_> = preview.lines.iter().map(line_text).collect();
+
+    assert_eq!(preview.kind, PreviewKind::Image);
+    assert_eq!(preview.detail.as_deref(), Some("ICO image"));
+    assert!(
+        line_texts
+            .iter()
+            .any(|line| line.contains("Dimensions") && line.contains("64x64"))
+    );
+    assert!(
+        line_texts
+            .iter()
+            .all(|line| !line.contains("Binary or unsupported file"))
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
