@@ -8,4 +8,5 @@ pub(super) mod line_count;
 pub(super) mod paste;
 pub(super) mod pdf_probe;
 pub(super) mod pdf_render;
+pub(super) mod restore;
 pub(super) mod trash;

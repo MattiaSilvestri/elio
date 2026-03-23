@@ -1,6 +1,7 @@
 use super::super::{
     App,
-    state::{DirectoryHistoryMode, DirectoryLoadCompletion, PendingDirectoryLoad, RestoreOverlay},
+    jobs::RestoreRequest,
+    state::{RestoreOverlay, RestoreProgress},
 };
 use crate::fs::rect_contains;
 use anyhow::Result;
@@ -30,6 +31,13 @@ impl App {
 
     pub fn restore_is_open(&self) -> bool {
         self.restore.is_some()
+    }
+
+    /// Returns `(completed, total)` for an in-progress restore, or `None` when idle.
+    pub fn restore_progress(&self) -> Option<(usize, usize)> {
+        self.restore_progress
+            .as_ref()
+            .map(|p| (p.completed, p.total))
     }
 
     pub fn restore_title(&self) -> String {
@@ -191,44 +199,32 @@ impl App {
     }
 
     pub(in crate::app::create) fn confirm_restore(&mut self) -> Result<()> {
+        if self.restore_progress.is_some() {
+            self.status = "Restore in progress — press Esc to cancel".to_string();
+            self.restore = None;
+            return Ok(());
+        }
         let Some(r) = self.restore.take() else {
             return Ok(());
         };
-        let mut restored = 0usize;
-        let mut last_error: Option<String> = None;
-        for target in &r.targets {
-            match crate::fs::restore_trash_item(&target.path) {
-                Ok(_) => restored += 1,
-                Err(error) => {
-                    last_error = Some(format!("Could not restore \"{}\": {error}", target.name));
-                }
-            }
+        if r.targets.is_empty() {
+            return Ok(());
         }
         self.selected_paths.clear();
-        let status = if let Some(error) = last_error {
-            if restored == 0 {
-                error
-            } else {
-                format!("Restored {restored} item(s) with errors")
-            }
-        } else {
-            match r.targets.len() {
-                0 => String::new(),
-                1 => format!("Restored \"{}\"", r.targets[0].name),
-                n => format!("Restored {n} items"),
-            }
-        };
-        self.queue_directory_load(PendingDirectoryLoad {
-            token: 0,
-            target_cwd: self.cwd.clone(),
-            previous_cwd: self.cwd.clone(),
-            previous_selected_path: None,
-            previous_selection_name: None,
-            reselect_path: None,
-            history_mode: DirectoryHistoryMode::None,
-            refresh_search: false,
-            completion: DirectoryLoadCompletion::Status(status),
-        })?;
+
+        let token = self.restore_token.wrapping_add(1);
+        self.restore_token = token;
+        self.restore_progress = Some(RestoreProgress {
+            completed: 0,
+            total: r.targets.len(),
+        });
+        self.restore_source_cwd = Some(self.cwd.clone());
+
+        self.scheduler.submit_restore(RestoreRequest {
+            token,
+            targets: r.targets,
+        });
+
         Ok(())
     }
 }

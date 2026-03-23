@@ -264,6 +264,43 @@ impl App {
                     }
                     dirty = true;
                 }
+                JobResult::Restore(build) => {
+                    if build.token != self.restore_token {
+                        continue;
+                    }
+                    if build.done {
+                        self.restore_progress = None;
+                        let source_cwd = self
+                            .restore_source_cwd
+                            .take()
+                            .unwrap_or_else(|| self.cwd.clone());
+                        let status = build.status.unwrap_or_default();
+                        let nav_target = self
+                            .directory_runtime
+                            .pending_load
+                            .as_ref()
+                            .map(|l| l.target_cwd.as_path());
+                        let nav_to_source = nav_target == Some(source_cwd.as_path());
+                        if source_cwd == self.cwd && (nav_target.is_none() || nav_to_source) {
+                            let _ = self.queue_directory_load(PendingDirectoryLoad {
+                                token: 0,
+                                target_cwd: source_cwd,
+                                previous_cwd: self.cwd.clone(),
+                                previous_selected_path: None,
+                                previous_selection_name: None,
+                                reselect_path: None,
+                                history_mode: DirectoryHistoryMode::None,
+                                refresh_search: false,
+                                completion: DirectoryLoadCompletion::Status(status),
+                            });
+                        } else {
+                            self.status = status;
+                        }
+                    } else if let Some(prog) = &mut self.restore_progress {
+                        prog.completed = build.completed;
+                    }
+                    dirty = true;
+                }
                 JobResult::Preview(build) => {
                     self.cache_preview_result_with_code_line_limit(
                         &build.entry,

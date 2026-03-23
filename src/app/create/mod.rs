@@ -35,6 +35,17 @@ mod tests {
         panic!("timed out waiting for trash and directory reload to complete");
     }
 
+    fn wait_for_restore_and_reload(app: &mut App) {
+        for _ in 0..500 {
+            let _ = app.process_background_jobs();
+            if app.restore_progress().is_none() && app.directory_runtime.pending_load.is_none() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("timed out waiting for restore and directory reload to complete");
+    }
+
     fn temp_path(label: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -492,16 +503,165 @@ mod tests {
         app.confirm_restore().expect("restore should succeed");
 
         assert!(app.restore.is_none());
-        assert!(original_path.is_file());
-        assert!(!trashed_path.exists());
         assert!(app.selected_paths.is_empty());
 
-        let (status, reselect_path) = take_pending_status(&mut app);
-        assert_eq!(status, "Restored \"restore-target.txt\"");
-        assert_eq!(reselect_path, None);
+        // Restore is now async — wait for the background worker and
+        // subsequent directory reload to both complete.
+        wait_for_restore_and_reload(&mut app);
+
+        assert!(original_path.is_file());
+        assert!(!trashed_path.exists());
+        assert_eq!(app.status_message(), "Restored \"restore-target.txt\"");
 
         app.directory_runtime.watch = None;
         drop(app);
         fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn confirm_restore_bulk_restores_multiple_files_and_reports_count() {
+        let root = temp_path("restore-bulk");
+        let originals_dir = root.join("originals");
+        let trash_files = root.join("Trash/files");
+        let trash_info = root.join("Trash/info");
+        fs::create_dir_all(&originals_dir).expect("failed to create originals dir");
+        fs::create_dir_all(&trash_files).expect("failed to create trash files dir");
+        fs::create_dir_all(&trash_info).expect("failed to create trash info dir");
+
+        // Create two fake trashed files.
+        for name in ["alpha.txt", "beta.txt"] {
+            let original = originals_dir.join(name);
+            let trashed = trash_files.join(name);
+            fs::write(&original, name).expect("failed to write original");
+            fs::rename(&original, &trashed).expect("failed to move to fake trash");
+            fs::write(
+                trash_info.join(format!("{name}.trashinfo")),
+                format!(
+                    "[Trash Info]\nPath={}\nDeletionDate=2026-03-23T00:00:00\n",
+                    encode_trashinfo_path(&original)
+                ),
+            )
+            .expect("failed to write trashinfo");
+        }
+
+        let mut app = App::new_at(trash_files.clone()).expect("failed to create app");
+        app.in_trash = true;
+        app.selected_paths.insert(trash_files.join("alpha.txt"));
+        app.selected_paths.insert(trash_files.join("beta.txt"));
+        app.open_restore_prompt();
+
+        assert_eq!(app.restore_title(), "Restore 2 files?");
+        app.confirm_restore().expect("restore should succeed");
+
+        assert!(app.restore.is_none());
+        assert!(app.selected_paths.is_empty());
+
+        wait_for_restore_and_reload(&mut app);
+
+        assert!(originals_dir.join("alpha.txt").is_file());
+        assert!(originals_dir.join("beta.txt").is_file());
+        assert!(!trash_files.join("alpha.txt").exists());
+        assert!(!trash_files.join("beta.txt").exists());
+        assert_eq!(app.status_message(), "Restored 2 items");
+
+        app.directory_runtime.watch = None;
+        drop(app);
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn esc_during_restore_clears_chip_immediately() {
+        // Restore is per-item (like permanent delete), so pressing Esc should
+        // clear the chip right away rather than waiting for done=true.
+        let (root, trash_files, _original_path, _trashed_path) =
+            create_fake_trash_file("restore-cancel");
+
+        let mut app = App::new_at(trash_files.clone()).expect("failed to create app");
+        app.in_trash = true;
+        app.open_restore_prompt();
+        app.confirm_restore().expect("restore should succeed");
+
+        assert!(
+            app.restore_progress().is_some(),
+            "chip should be visible after submit"
+        );
+
+        // Simulate Esc: chip clears immediately for per-item operations.
+        let token = app.restore_token;
+        app.scheduler.cancel_restore(token);
+        app.restore_progress = None;
+
+        assert!(
+            app.restore_progress().is_none(),
+            "chip should clear immediately after Esc for restore"
+        );
+
+        // Drive to completion so the background thread shuts down cleanly.
+        // The done=true result still arrives and is ignored (token matches
+        // but restore_progress is already None), and restore_source_cwd is
+        // taken and a directory reload is queued.
+        for _ in 0..200 {
+            let _ = app.process_background_jobs();
+            if app.directory_runtime.pending_load.is_none() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        // Status is either "Restore cancelled" (cancel won the race) or
+        // "Restored \"restore-target.txt\"" (restore finished before cancel).
+        let status = app.status_message();
+        let valid = status.starts_with("Restore cancelled")
+            || status.starts_with("Restored")
+            || status.starts_with("Nothing was restored");
+        assert!(valid, "unexpected status: {status:?}");
+
+        app.directory_runtime.watch = None;
+        drop(app);
+        // root may or may not still contain the original file depending on
+        // the race; ignore removal errors.
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn confirm_restore_while_in_progress_shows_status_and_dismisses_overlay() {
+        // If the user opens and confirms a second restore while one is already
+        // running, confirm_restore should surface a status message and close
+        // the overlay without submitting a duplicate job.
+        let (root, trash_files, _original_path, _trashed_path) =
+            create_fake_trash_file("restore-in-progress");
+
+        let mut app = App::new_at(trash_files.clone()).expect("failed to create app");
+        app.in_trash = true;
+        app.open_restore_prompt();
+        app.confirm_restore().expect("first restore should succeed");
+
+        // A second restore is attempted while the first is still in flight.
+        app.open_restore_prompt();
+        assert!(app.restore.is_some(), "overlay should open");
+        app.confirm_restore()
+            .expect("second confirm should not error");
+
+        assert!(
+            app.restore.is_none(),
+            "overlay should be dismissed by the in-progress guard"
+        );
+        assert_eq!(
+            app.status, "Restore in progress — press Esc to cancel",
+            "in-progress message should be shown"
+        );
+
+        // Clean up the background worker.
+        for _ in 0..200 {
+            let _ = app.process_background_jobs();
+            if app.restore_progress().is_none() && app.directory_runtime.pending_load.is_none() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+
+        app.directory_runtime.watch = None;
+        drop(app);
+        let _ = fs::remove_dir_all(root);
     }
 }

@@ -69,6 +69,9 @@ impl App {
                 }
                 // Non-permanent: the batch OS call is atomic and may already be
                 // in flight.  Keep the chip visible; done=true will clear it.
+            } else if self.restore_progress.is_some() {
+                self.scheduler.cancel_restore(self.restore_token);
+                self.restore_progress = None;
             } else if self.paste_progress.is_some() {
                 self.scheduler.cancel_paste(self.paste_token);
                 self.paste_progress = None;
@@ -162,6 +165,9 @@ impl App {
                     if prog.permanent {
                         self.trash_progress = None;
                     }
+                } else if self.restore_progress.is_some() {
+                    self.scheduler.cancel_restore(self.restore_token);
+                    self.restore_progress = None;
                 } else if self.paste_progress.is_some() {
                     self.scheduler.cancel_paste(self.paste_token);
                     self.paste_progress = None;

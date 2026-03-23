@@ -1025,6 +1025,7 @@ impl Theme {
                 yank_bar: rgb(87, 201, 87),
                 cut_bar: rgb(224, 90, 90),
                 trash_bar: rgb(210, 65, 95),
+                restore_bar: rgb(65, 160, 220),
                 sidebar_active: rgb(27, 56, 88),
                 button_bg: rgb(14, 23, 38),
                 button_disabled_bg: rgb(8, 16, 27),

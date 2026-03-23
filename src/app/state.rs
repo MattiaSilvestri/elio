@@ -99,6 +99,12 @@ pub(super) struct TrashProgress {
 }
 
 #[derive(Clone, Debug)]
+pub(super) struct RestoreProgress {
+    pub(super) completed: usize,
+    pub(super) total: usize,
+}
+
+#[derive(Clone, Debug)]
 pub(super) struct TrashTarget {
     pub(super) path: std::path::PathBuf,
     pub(super) name: String,
@@ -385,6 +391,12 @@ pub struct App {
     /// `trash_progress` for the same reason as `paste_dest_dir`.
     pub(super) trash_source_cwd: Option<PathBuf>,
     pub(super) trash: Option<TrashOverlay>,
+    pub(super) restore_token: u64,
+    pub(super) restore_progress: Option<RestoreProgress>,
+    /// Source directory of the in-flight restore.  Kept separately from
+    /// `restore_progress` so that cancelling the chip does not lose the
+    /// context needed by the completion handler.
+    pub(super) restore_source_cwd: Option<PathBuf>,
     pub(super) restore: Option<RestoreOverlay>,
     pub(super) create: Option<CreateOverlay>,
     pub(super) rename: Option<RenameOverlay>,
@@ -470,6 +482,9 @@ impl App {
             trash_progress: None,
             trash_source_cwd: None,
             trash: None,
+            restore_token: 0,
+            restore_progress: None,
+            restore_source_cwd: None,
             restore: None,
             create: None,
             rename: None,

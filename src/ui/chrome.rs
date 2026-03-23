@@ -118,10 +118,11 @@ pub(super) fn render_status(frame: &mut Frame<'_>, area: Rect, app: &App, palett
     let sel_count = app.selection_count();
     let paste_prog = app.paste_progress();
     let trash_prog = app.trash_progress();
+    let restore_prog = app.restore_progress();
 
     // Build the left line: optional progress chips (trash takes priority,
-    // then paste; both take over the clipboard slot), optional selection
-    // chip, then the path/position summary.
+    // then restore, then paste; all take over the clipboard slot), optional
+    // selection chip, then the path/position summary.
     let left_line = {
         let mut spans: Vec<Span<'_>> = Vec::new();
         let mut chips_width: u16 = 0;
@@ -140,6 +141,18 @@ pub(super) fn render_status(frame: &mut Frame<'_>, area: Rect, app: &App, palett
                 label,
                 Style::default()
                     .bg(palette.trash_bar)
+                    .fg(palette.chrome)
+                    .add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::raw("  "));
+        } else if let Some((completed, total)) = restore_prog {
+            let noun = if total == 1 { "item" } else { "items" };
+            let label = format!(" Restoring {completed}/{total} {noun} ");
+            chips_width += label.len() as u16 + 2;
+            spans.push(Span::styled(
+                label,
+                Style::default()
+                    .bg(palette.restore_bar)
                     .fg(palette.chrome)
                     .add_modifier(Modifier::BOLD),
             ));
