@@ -126,7 +126,7 @@ fn epub_preview_keeps_section_navigation_while_next_section_loads() {
 }
 
 #[test]
-fn comic_rar_preview_loads_in_background_and_steps_pages() {
+fn cbr_file_with_zip_content_loads_in_background_and_steps_pages() {
     let root = temp_path("comic-rar-background");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let archive = root.join("issue.cbr");

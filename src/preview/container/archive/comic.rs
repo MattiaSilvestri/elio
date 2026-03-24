@@ -27,10 +27,33 @@ const CANCELLABLE_COMMAND_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 static COMMAND_CAPTURE_ID: AtomicU64 = AtomicU64::new(0);
 
+fn has_unrar() -> bool {
+    static RESULT: OnceLock<bool> = OnceLock::new();
+    *RESULT.get_or_init(|| Command::new("unrar").output().is_ok())
+}
+
+fn seven_zip_has_rar_support() -> bool {
+    static RESULT: OnceLock<bool> = OnceLock::new();
+    *RESULT.get_or_init(|| {
+        Command::new("7z")
+            .arg("i")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .map(|s| s.contains("Rar"))
+            .unwrap_or(false)
+    })
+}
+
+fn has_rar_capable_extractor() -> bool {
+    has_unrar() || seven_zip_has_rar_support()
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ComicArchiveBackend {
     Zip,
     SevenZip,
+    Unrar,
 }
 
 #[derive(Clone, Debug)]
@@ -75,7 +98,22 @@ where
         return None;
     }
 
-    let comic = load_comic_archive(path, canceled)?;
+    let Some(comic) = load_comic_archive(path, canceled) else {
+        if matches!(format, ArchiveFormat::ComicRar) {
+            let detail = type_detail.unwrap_or(archive_default_label(format)).to_string();
+            let note = if has_rar_capable_extractor() {
+                "Unable to read RAR archive (file may be corrupted or unsupported)"
+            } else {
+                "RAR preview requires unrar or a 7z build with RAR support"
+            };
+            return Some(
+                PreviewContent::new(PreviewKind::Comic, Vec::new())
+                    .with_detail(detail)
+                    .with_status_note(note),
+            );
+        }
+        return None;
+    };
     if comic.page_entries.is_empty() {
         return None;
     }
@@ -150,7 +188,9 @@ fn parse_comic_archive<F>(path: &Path, canceled: &F) -> Option<CachedComicArchiv
 where
     F: Fn() -> bool,
 {
-    parse_zip_comic_archive(path, canceled).or_else(|| parse_comic_archive_with_7z(path, canceled))
+    parse_zip_comic_archive(path, canceled)
+        .or_else(|| parse_comic_archive_with_7z(path, canceled))
+        .or_else(|| parse_comic_archive_with_unrar(path, canceled))
 }
 
 fn parse_zip_comic_archive<F>(path: &Path, canceled: &F) -> Option<CachedComicArchive>
@@ -281,6 +321,48 @@ fn push_7z_comic_page_entry(
     current.clear();
 }
 
+fn parse_comic_archive_with_unrar<F>(path: &Path, canceled: &F) -> Option<CachedComicArchive>
+where
+    F: Fn() -> bool,
+{
+    let mut command = Command::new("unrar");
+    command.arg("lb").arg(path);
+    let output = run_command_capture_stdout_cancellable(command, "comic-list", canceled)?;
+    let listing = String::from_utf8_lossy(&output);
+    let mut page_entries = Vec::new();
+
+    for line in listing.lines() {
+        if canceled() {
+            return None;
+        }
+        let name = line.trim();
+        if name.is_empty() {
+            continue;
+        }
+        let Some(extension) = archive_image_extension(name) else {
+            continue;
+        };
+        let sort_key = normalize_archive_path(name, false)
+            .unwrap_or_else(|| name.to_string())
+            .to_lowercase();
+        page_entries.push(ComicArchivePage {
+            entry_name: name.to_string(),
+            sort_key,
+            extension: extension.to_string(),
+        });
+    }
+
+    if canceled() || page_entries.is_empty() {
+        return None;
+    }
+
+    page_entries.sort_by(|a, b| natural_cmp(&a.sort_key, &b.sort_key));
+    Some(CachedComicArchive {
+        backend: ComicArchiveBackend::Unrar,
+        page_entries,
+    })
+}
+
 fn comic_archive_cache() -> &'static Mutex<ComicArchiveCache> {
     COMIC_ARCHIVE_CACHE.get_or_init(|| Mutex::new(ComicArchiveCache::default()))
 }
@@ -324,6 +406,12 @@ where
                 )?
             }
             ComicArchiveBackend::SevenZip => read_7z_entry_bytes_limited(
+                archive_path,
+                &page.entry_name,
+                COMIC_ARCHIVE_IMAGE_ENTRY_LIMIT_BYTES,
+                canceled,
+            )?,
+            ComicArchiveBackend::Unrar => read_unrar_entry_bytes_limited(
                 archive_path,
                 &page.entry_name,
                 COMIC_ARCHIVE_IMAGE_ENTRY_LIMIT_BYTES,
@@ -389,6 +477,28 @@ where
     command
         .arg("x")
         .arg("-so")
+        .arg(archive_path)
+        .arg(entry_name);
+    let output = run_command_capture_stdout_cancellable(command, "comic-extract", canceled)?;
+    if output.is_empty() || output.len() > limit_bytes {
+        return None;
+    }
+    Some(output)
+}
+
+fn read_unrar_entry_bytes_limited<F>(
+    archive_path: &Path,
+    entry_name: &str,
+    limit_bytes: usize,
+    canceled: &F,
+) -> Option<Vec<u8>>
+where
+    F: Fn() -> bool,
+{
+    let mut command = Command::new("unrar");
+    command
+        .arg("p")
+        .arg("-inul")
         .arg(archive_path)
         .arg(entry_name);
     let output = run_command_capture_stdout_cancellable(command, "comic-extract", canceled)?;
@@ -710,6 +820,44 @@ Packed Size = 40
             Some(2)
         );
         assert!(preview.preview_visual.is_some());
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn build_comic_archive_preview_shows_status_note_when_cbr_cannot_be_opened() {
+        // Write a file with a RAR5 magic header but invalid/truncated body.
+        // All backends (ZIP, 7z, unrar) reject it, so the code must choose a
+        // status note based on whether a RAR-capable extractor is installed:
+        //   • no extractor  → "RAR preview requires unrar or a 7z build with RAR support"
+        //   • extractor present but file unreadable → "Unable to read RAR archive …"
+        // Both messages contain "RAR", which is the common denominator we assert.
+        let root = temp_path("cbr-unreadable");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let archive = root.join("issue.cbr");
+        let rar5_header = b"Rar!\x1a\x07\x01\x00\x00\x00\x00";
+        fs::write(&archive, rar5_header).expect("failed to write fake rar header");
+
+        let preview = build_comic_archive_preview(
+            &archive,
+            ArchiveFormat::ComicRar,
+            Some("Comic RAR archive"),
+            0,
+            &|| false,
+        )
+        .expect("unreadable cbr should return a status preview, not None");
+
+        assert_eq!(preview.kind, PreviewKind::Comic);
+        assert_eq!(preview.detail.as_deref(), Some("Comic RAR archive"));
+        assert!(
+            preview.navigation_position.is_none(),
+            "no pages should be navigable when no backend could open the archive"
+        );
+        let status = preview.status_note.as_deref().unwrap_or("");
+        assert!(
+            status.contains("RAR"),
+            "status note should mention RAR, got: {status:?}"
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }

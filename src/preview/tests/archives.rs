@@ -496,7 +496,7 @@ fn comic_zip_preview_uses_natural_page_order_and_page_selection() {
 }
 
 #[test]
-fn comic_rar_preview_renders_first_page_without_summary() {
+fn cbr_file_with_zip_content_renders_as_comic_preview() {
     let root = temp_path("comic-rar-preview");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let path = root.join("issue.cbr");
