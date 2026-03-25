@@ -5,7 +5,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Clear, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -21,36 +21,28 @@ pub(super) fn render_help(
             action: "move selection",
         },
         HelpEntry {
-            key: "← / h",
+            key: "← / h / Backspace",
             action: "parent folder",
         },
         HelpEntry {
-            key: "→ / l",
-            action: "enter folder",
+            key: "→ / l / Enter",
+            action: "enter folder / open",
         },
         HelpEntry {
-            key: "Enter",
-            action: "open item",
+            key: "g / G",
+            action: "first / last item",
         },
         HelpEntry {
-            key: "Tab",
-            action: "next pinned place",
+            key: "PageUp / PageDown",
+            action: "page up / down",
         },
         HelpEntry {
-            key: "Shift+Tab",
-            action: "previous pinned place",
+            key: "Tab / Shift+Tab",
+            action: "cycle pinned places",
         },
         HelpEntry {
-            key: "Backspace",
-            action: "parent folder",
-        },
-        HelpEntry {
-            key: "Alt+Left",
-            action: "back",
-        },
-        HelpEntry {
-            key: "Alt+Right",
-            action: "forward",
+            key: "Alt+← / →",
+            action: "back / forward",
         },
     ];
     const SEARCH_ENTRIES: &[HelpEntry<'_>] = &[
@@ -79,7 +71,77 @@ pub(super) fn render_help(
             action: "fallback word delete",
         },
     ];
-    const MOUSE_VIEW_ENTRIES: &[HelpEntry<'_>] = &[
+    const CLIPBOARD_ENTRIES: &[HelpEntry<'_>] = &[
+        HelpEntry {
+            key: "Space",
+            action: "toggle selection",
+        },
+        HelpEntry {
+            key: "Ctrl+A",
+            action: "select all",
+        },
+        HelpEntry {
+            key: "Esc",
+            action: "clear selection",
+        },
+        HelpEntry {
+            key: "y",
+            action: "yank (copy)",
+        },
+        HelpEntry {
+            key: "x",
+            action: "cut",
+        },
+        HelpEntry {
+            key: "p",
+            action: "paste",
+        },
+    ];
+    const FILES_ENTRIES: &[HelpEntry<'_>] = &[
+        HelpEntry {
+            key: "a",
+            action: "create file or folder",
+        },
+        HelpEntry {
+            key: "Alt/Shift+Enter",
+            action: "add line in create prompt",
+        },
+        HelpEntry {
+            key: "d",
+            action: "trash (delete if in trash)",
+        },
+        HelpEntry {
+            key: "r / F2",
+            action: "rename (bulk if selection)",
+        },
+        HelpEntry {
+            key: "r (in trash)",
+            action: "restore from trash",
+        },
+        HelpEntry {
+            key: "o",
+            action: "open externally",
+        },
+    ];
+    const VIEW_ENTRIES: &[HelpEntry<'_>] = &[
+        HelpEntry {
+            key: "v",
+            action: "toggle grid / list",
+        },
+        HelpEntry {
+            key: ".",
+            action: "toggle dotfiles",
+        },
+        HelpEntry {
+            key: "s",
+            action: "cycle sort",
+        },
+        HelpEntry {
+            key: "< / >",
+            action: "scroll preview left / right",
+        },
+    ];
+    const MOUSE_ENTRIES: &[HelpEntry<'_>] = &[
         HelpEntry {
             key: "Click",
             action: "select item",
@@ -94,119 +156,99 @@ pub(super) fn render_help(
         },
         HelpEntry {
             key: "Shift+Wheel",
-            action: "scroll code sideways",
-        },
-        HelpEntry {
-            key: "v",
-            action: "toggle grid/list",
-        },
-        HelpEntry {
-            key: ".",
-            action: "toggle dotfiles",
-        },
-        HelpEntry {
-            key: "s",
-            action: "cycle sort",
-        },
-        HelpEntry {
-            key: "o",
-            action: "open externally",
-        },
-        HelpEntry {
-            key: "Space",
-            action: "toggle selection",
-        },
-        HelpEntry {
-            key: "Ctrl+A",
-            action: "select all",
-        },
-        HelpEntry {
-            key: "Esc",
-            action: "clear selection",
-        },
-        HelpEntry {
-            key: "a",
-            action: "create file or folder",
-        },
-        HelpEntry {
-            key: "d",
-            action: "trash (delete if in trash)",
-        },
-        HelpEntry {
-            key: "r / F2",
-            action: "rename",
-        },
-        HelpEntry {
-            key: "r (in trash)",
-            action: "restore from trash",
+            action: "scroll preview",
         },
     ];
     const LEFT_SECTIONS: &[HelpSection<'_>] = &[
         HelpSection {
-            title: "Navigation",
+            title: "Navigate",
             entries: NAVIGATION_ENTRIES,
         },
         HelpSection {
             title: "Search",
             entries: SEARCH_ENTRIES,
         },
+        HelpSection {
+            title: "Mouse",
+            entries: MOUSE_ENTRIES,
+        },
     ];
-    const RIGHT_SECTIONS: &[HelpSection<'_>] = &[HelpSection {
-        title: "Mouse + View",
-        entries: MOUSE_VIEW_ENTRIES,
-    }];
+    const RIGHT_SECTIONS: &[HelpSection<'_>] = &[
+        HelpSection {
+            title: "Files",
+            entries: FILES_ENTRIES,
+        },
+        HelpSection {
+            title: "Selection & Clipboard",
+            entries: CLIPBOARD_ENTRIES,
+        },
+        HelpSection {
+            title: "View",
+            entries: VIEW_ENTRIES,
+        },
+    ];
 
-    let popup = helpers::centered_rect(area, 82, 22);
+    let popup = helpers::centered_rect(area, 88, 26);
     state.help_panel = Some(popup);
     frame.render_widget(Clear, popup);
     frame.render_widget(
-        helpers::panel_block(" Controls ", palette.chrome_alt, palette),
-        popup,
-    );
-    let inner = helpers::inner_with_padding(popup);
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(2),
-            Constraint::Min(8),
-            Constraint::Length(1),
-        ])
-        .split(inner);
-
-    frame.render_widget(
-        Paragraph::new(vec![
-            Line::from(vec![
+        Block::new()
+            .title(Line::from(vec![
+                Span::raw(" "),
                 Span::styled(
                     "󰘳",
                     Style::default()
                         .fg(palette.accent)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::raw(" "),
                 Span::styled(
-                    "Keyboard and mouse controls",
+                    " Keyboard and mouse controls ",
                     Style::default()
-                        .fg(palette.text)
+                        .fg(palette.accent_text)
                         .add_modifier(Modifier::BOLD),
                 ),
-            ]),
-            Line::from(vec![
-                helpers::chip_span("navigate", palette.accent_soft, palette.accent_text, true),
-                Span::raw(" "),
-                helpers::chip_span("search", palette.accent_soft, palette.accent_text, true),
-                Span::raw(" "),
-                helpers::chip_span("mouse", palette.accent_soft, palette.accent_text, true),
-                Span::raw(" "),
-                helpers::chip_span("view", palette.accent_soft, palette.accent_text, true),
-            ]),
+            ]))
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .style(Style::default().bg(palette.chrome_alt).fg(palette.text))
+            .border_style(Style::default().fg(palette.border)),
+        popup,
+    );
+    let inner = helpers::inner_with_padding(popup);
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(8),
+            Constraint::Length(1),
         ])
+        .split(inner);
+
+    frame.render_widget(
+        Paragraph::new(vec![Line::from(vec![
+            helpers::chip_span("navigate", palette.accent_soft, palette.accent_text, true),
+            Span::raw(" "),
+            helpers::chip_span("search", palette.accent_soft, palette.accent_text, true),
+            Span::raw(" "),
+            helpers::chip_span("mouse", palette.accent_soft, palette.accent_text, true),
+            Span::raw(" "),
+            helpers::chip_span("files", palette.accent_soft, palette.accent_text, true),
+            Span::raw(" "),
+            helpers::chip_span("selection", palette.accent_soft, palette.accent_text, true),
+            Span::raw(" "),
+            helpers::chip_span("view", palette.accent_soft, palette.accent_text, true),
+        ])])
         .style(Style::default().bg(palette.chrome_alt).fg(palette.text)),
         rows[0],
     );
 
     let cols = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .constraints([
+            Constraint::Length(39),
+            Constraint::Length(3),
+            Constraint::Length(44),
+        ])
         .split(rows[1]);
 
     frame.render_widget(
@@ -216,11 +258,21 @@ pub(super) fn render_help(
         cols[0],
     );
 
+    let divider_lines: Vec<Line<'static>> =
+        vec![
+            Line::from(Span::styled(" │ ", Style::default().fg(palette.border)));
+            cols[1].height as usize
+        ];
     frame.render_widget(
-        Paragraph::new(help_column_lines(cols[1].width, RIGHT_SECTIONS, palette))
+        Paragraph::new(divider_lines).style(Style::default().bg(palette.chrome_alt)),
+        cols[1],
+    );
+
+    frame.render_widget(
+        Paragraph::new(help_column_lines(cols[2].width, RIGHT_SECTIONS, palette))
             .style(Style::default().bg(palette.chrome_alt).fg(palette.text))
             .wrap(Wrap { trim: false }),
-        cols[1],
+        cols[2],
     );
 
     frame.render_widget(
@@ -265,7 +317,7 @@ fn help_column_lines(
         .max()
         .unwrap_or(0);
     let gap_width = 2usize;
-    let mut key_width = max_key_width.min(16);
+    let mut key_width = max_key_width.min(17);
     let min_action_width = 14usize.min(content_width.saturating_sub(gap_width + 1));
     if key_width + gap_width + min_action_width > content_width {
         key_width = content_width.saturating_sub(gap_width + min_action_width);
@@ -276,7 +328,10 @@ fn help_column_lines(
     let action_width = content_width.saturating_sub(key_width + gap_width).max(1);
 
     let mut lines = Vec::new();
-    for section in sections {
+    for (i, section) in sections.iter().enumerate() {
+        if i > 0 {
+            lines.push(Line::default());
+        }
         lines.push(help_section_title(section.title, palette));
         for entry in section.entries {
             lines.extend(help_entry_lines(*entry, key_width, action_width, palette));
@@ -311,11 +366,12 @@ fn help_entry_lines(
 
     lines.push(Line::from(vec![
         Span::styled(
-            format!("{}{}", entry.key, key_padding),
+            entry.key.to_string(),
             Style::default()
                 .fg(palette.accent_text)
                 .add_modifier(Modifier::BOLD),
         ),
+        Span::raw(key_padding),
         Span::raw("  "),
         Span::styled(wrapped_action.remove(0), Style::default().fg(palette.muted)),
     ]));

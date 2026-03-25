@@ -622,7 +622,7 @@ mod tests {
 
         let mut app = App::new_at(root.clone()).expect("app should load temp directory");
         app.help_open = true;
-        let mut terminal = Terminal::new(TestBackend::new(90, 24)).expect("terminal should init");
+        let mut terminal = Terminal::new(TestBackend::new(100, 30)).expect("terminal should init");
 
         draw_ui(&mut terminal, &mut app);
         let rendered = buffer_text(terminal.backend().buffer());
