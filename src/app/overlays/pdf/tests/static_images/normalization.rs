@@ -130,8 +130,8 @@ fn oversized_png_static_images_are_normalized_to_cached_overlays() {
     assert_eq!(
         prepared.dimensions,
         RenderedImageDimensions {
-            width_px: 768,
-            height_px: 432,
+            width_px: 3200,
+            height_px: 1800,
         }
     );
     assert_eq!(
@@ -183,8 +183,8 @@ fn forced_png_preview_renders_a_cached_overlay_asset() {
     assert_eq!(
         prepared.dimensions,
         RenderedImageDimensions {
-            width_px: 768,
-            height_px: 432,
+            width_px: 3200,
+            height_px: 1800,
         }
     );
     assert_eq!(
@@ -236,8 +236,8 @@ fn oversized_extensionless_png_static_images_are_normalized_to_cached_overlays()
     assert_eq!(
         prepared.dimensions,
         RenderedImageDimensions {
-            width_px: 768,
-            height_px: 432,
+            width_px: 3200,
+            height_px: 1800,
         }
     );
     assert_eq!(

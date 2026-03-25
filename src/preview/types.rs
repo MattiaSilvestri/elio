@@ -15,6 +15,7 @@ use unicode_width::UnicodeWidthStr;
 
 pub(super) const PREVIEW_LIMIT_BYTES: usize = 64 * 1024;
 pub(super) const PREVIEW_RENDER_LINE_LIMIT: usize = 240;
+pub(crate) const MARKDOWN_CONTENT_WIDTH: usize = 100;
 pub(crate) const MIN_DYNAMIC_CODE_PREVIEW_LINE_LIMIT: usize = 80;
 pub(super) const PREVIEW_WRAPPED_LINE_LIMIT: usize = PREVIEW_RENDER_LINE_LIMIT;
 const WRAPPED_LAYOUT_CACHE_LIMIT: usize = 4;
@@ -93,7 +94,6 @@ impl PreviewKind {
                 | Self::Document
                 | Self::Image
                 | Self::Video
-                | Self::Markdown
                 | Self::Text
                 | Self::Binary
                 | Self::Unavailable
@@ -101,7 +101,10 @@ impl PreviewKind {
     }
 
     pub(crate) fn allows_horizontal_scroll(self) -> bool {
-        self == Self::Code
+        matches!(
+            self,
+            Self::Code | Self::Markdown | Self::Archive | Self::Directory
+        )
     }
 }
 
@@ -181,6 +184,7 @@ struct WrappedLayoutCache {
 #[derive(Debug)]
 struct WrappedPreviewLines {
     lines: Arc<[Line<'static>]>,
+    max_line_width: usize,
     truncated: bool,
 }
 
@@ -363,11 +367,19 @@ impl PreviewContent {
         if !self.kind.wraps_in_preview() {
             return Arc::new(WrappedPreviewLines {
                 lines: Arc::clone(&self.lines),
+                max_line_width: self.max_line_width,
                 truncated: false,
             });
         }
 
-        let width = width.max(1);
+        // Cap markdown at MARKDOWN_CONTENT_WIDTH so prose wraps at a GitHub-like
+        // column limit rather than expanding to fill the full terminal width.
+        let width = if self.kind == PreviewKind::Markdown {
+            MARKDOWN_CONTENT_WIDTH.min(width)
+        } else {
+            width
+        }
+        .max(1);
         if let Some(layout) = self.cached_wrapped_layout(width) {
             return layout;
         }
@@ -393,8 +405,8 @@ impl PreviewContent {
         wrapped
     }
 
-    pub(crate) fn max_line_width(&self) -> usize {
-        self.max_line_width
+    pub(crate) fn wrapped_max_line_width(&self, width: usize) -> usize {
+        self.wrapped_layout(width).max_line_width
     }
 
     #[cfg(test)]
@@ -557,8 +569,10 @@ fn wrap_preview_lines(lines: &[Line<'static>], width: usize) -> WrappedPreviewLi
     if wrapped.is_empty() {
         wrapped.push(Line::default());
     }
+    let max_line_width = wrapped.iter().map(Line::width).max().unwrap_or(0);
     WrappedPreviewLines {
         lines: Arc::from(wrapped),
+        max_line_width,
         truncated,
     }
 }

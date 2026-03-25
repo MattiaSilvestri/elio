@@ -493,7 +493,11 @@ fn retain_image_prepares_promotes_nearby_job_to_current_when_it_becomes_current(
     scheduler.retain_image_prepares(Some(&now_current), &[]);
 
     let pending = scheduler.snapshot().image_prepare_pending;
-    assert_eq!(pending.len(), 1, "promoted job should be the only pending job");
+    assert_eq!(
+        pending.len(),
+        1,
+        "promoted job should be the only pending job"
+    );
     assert_eq!(
         pending[0],
         ImagePrepareJobKey {

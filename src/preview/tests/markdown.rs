@@ -162,6 +162,31 @@ fn markdown_preview_renders_links() {
 }
 
 #[test]
+fn markdown_preview_renders_images_as_alt_text_only() {
+    let root = temp_path("markdown-images");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("README.md");
+    fs::write(
+        &path,
+        "![Catppuccin Mocha](examples/themes/catppuccin-mocha/screenshot.png)\n",
+    )
+    .expect("failed to write markdown");
+
+    let preview = build_preview(&file_entry(path.clone()));
+
+    assert_eq!(preview.kind, PreviewKind::Markdown);
+    let texts: Vec<String> = preview.lines.iter().map(line_text).collect();
+    // Alt text shown
+    assert!(texts.iter().any(|t| t.contains("Catppuccin Mocha")));
+    // Path not shown
+    assert!(!texts.iter().any(|t| t.contains("screenshot.png")));
+    // "image:" prefix not shown
+    assert!(!texts.iter().any(|t| t.contains("image:")));
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn markdown_preview_adds_spacing_between_blocks() {
     let root = temp_path("markdown-spacing");
     fs::create_dir_all(&root).expect("failed to create temp root");
@@ -229,6 +254,115 @@ fn markdown_preview_renders_mixed_lists() {
             .lines
             .iter()
             .any(|line| line.spans.iter().any(|span| span.content == "2. "))
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn markdown_preview_renders_table_with_header_separator() {
+    let root = temp_path("markdown-table");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("README.md");
+    fs::write(
+        &path,
+        "| Key | Description |\n|---|---|\n| Enter | Open |\n| Backspace | Go up |\n",
+    )
+    .expect("failed to write markdown");
+
+    let preview = build_preview(&file_entry(path.clone()));
+
+    assert_eq!(preview.kind, PreviewKind::Markdown);
+    let texts: Vec<String> = preview.lines.iter().map(line_text).collect();
+    // Box borders are present
+    assert!(
+        texts.iter().any(|t| t.contains('┌')),
+        "expected top-left corner"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains('├')),
+        "expected header separator"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains('└')),
+        "expected bottom-left corner"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains('│')),
+        "expected vertical border"
+    );
+    // Header row content visible
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("Key") && t.contains("Description"))
+    );
+    // Data rows visible
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("Enter") && t.contains("Open"))
+    );
+    assert!(
+        texts
+            .iter()
+            .any(|t| t.contains("Backspace") && t.contains("Go up"))
+    );
+    // Header cells are bold
+    let header_line = preview
+        .lines
+        .iter()
+        .find(|line| line_text(line).contains("Key") && line_text(line).contains("Description"))
+        .expect("expected header line");
+    let key_span = header_line
+        .spans
+        .iter()
+        .find(|span| span.content.contains("Key"))
+        .expect("expected Key span");
+    assert!(
+        key_span
+            .style
+            .add_modifier
+            .contains(ratatui::style::Modifier::BOLD)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn markdown_preview_renders_details_summary() {
+    let root = temp_path("markdown-details");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("README.md");
+    fs::write(
+        &path,
+        "<details>\n<summary><strong>Controls and Navigation</strong></summary>\n\nSome content here.\n\n</details>\n",
+    )
+    .expect("failed to write markdown");
+
+    let preview = build_preview(&file_entry(path.clone()));
+
+    assert_eq!(preview.kind, PreviewKind::Markdown);
+    let texts: Vec<String> = preview.lines.iter().map(line_text).collect();
+    // Summary text is shown (tags stripped)
+    assert!(texts.iter().any(|t| t.contains("Controls and Navigation")));
+    // Bare <details> tags are not shown as raw HTML
+    assert!(!texts.iter().any(|t| t.trim() == "<details>"));
+    assert!(!texts.iter().any(|t| t.trim() == "</details>"));
+    // The disclosure indicator is present
+    assert!(texts.iter().any(|t| t.contains('▶')));
+    // Body content is shown with gutter prefix
+    let content_line = preview
+        .lines
+        .iter()
+        .find(|line| line_text(line).contains("Some content here."))
+        .expect("expected content line");
+    assert!(
+        content_line
+            .spans
+            .iter()
+            .any(|span| span.content.contains('╎')),
+        "content inside details should have gutter"
     );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");

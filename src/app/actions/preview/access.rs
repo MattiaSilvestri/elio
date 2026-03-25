@@ -40,7 +40,7 @@ impl App {
         }
         self.preview_state
             .content
-            .max_line_width()
+            .wrapped_max_line_width(visible_cols)
             .saturating_sub(visible_cols.max(1))
     }
 

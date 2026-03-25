@@ -78,7 +78,6 @@ fn render_preview_body(
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Min(0)])
         .split(area);
-    state.preview_rows_visible = sections[1].height as usize;
     helpers::fill_area(frame, sections[0], palette.panel, palette.text);
     if sections[1].height > 0 {
         helpers::fill_area(frame, sections[1], palette.panel, palette.text);
@@ -116,6 +115,7 @@ fn render_preview_body(
         helpers::fill_area(frame, scrollbar_area, palette.panel, palette.border);
     }
     let visible_rows = text_area.height as usize;
+    state.preview_rows_visible = visible_rows;
     state.preview_cols_visible = text_area.width as usize;
     let section_label = app.preview_section_label();
     let header_detail_width = sections[0]
@@ -200,6 +200,7 @@ fn render_preview_body(
             PreviewLinesWidget::new(
                 wrapped_lines.as_ref(),
                 app.preview_scroll_offset(),
+                app.preview_horizontal_scroll_offset(),
                 Style::default().bg(palette.panel).fg(palette.text),
             ),
             text_area,
@@ -230,14 +231,16 @@ fn render_preview_body(
 struct PreviewLinesWidget<'a> {
     lines: &'a [Line<'static>],
     scroll: usize,
+    h_scroll: usize,
     style: Style,
 }
 
 impl<'a> PreviewLinesWidget<'a> {
-    fn new(lines: &'a [Line<'static>], scroll: usize, style: Style) -> Self {
+    fn new(lines: &'a [Line<'static>], scroll: usize, h_scroll: usize, style: Style) -> Self {
         Self {
             lines,
             scroll,
+            h_scroll,
             style,
         }
     }
@@ -252,8 +255,15 @@ impl Widget for PreviewLinesWidget<'_> {
 
         buf.set_style(area, self.style);
         for (line, row) in self.lines.iter().skip(self.scroll).zip(area.rows()) {
-            let line_width = line.width();
-            let offset = match line.alignment.unwrap_or(Alignment::Left) {
+            let clipped;
+            let render_line: &Line = if self.h_scroll > 0 {
+                clipped = skip_line_chars(line, self.h_scroll);
+                &clipped
+            } else {
+                line
+            };
+            let line_width = render_line.width();
+            let offset = match render_line.alignment.unwrap_or(Alignment::Left) {
                 Alignment::Center => row.width.saturating_sub(line_width as u16) / 2,
                 Alignment::Right => row.width.saturating_sub(line_width as u16),
                 Alignment::Left => 0,
@@ -261,10 +271,33 @@ impl Widget for PreviewLinesWidget<'_> {
             if offset >= row.width {
                 continue;
             }
-
             let x = row.x.saturating_add(offset);
             let max_width = row.width.saturating_sub(offset);
-            buf.set_line(x, row.y, line, max_width);
+            buf.set_line(x, row.y, render_line, max_width);
         }
     }
+}
+
+fn skip_line_chars(line: &Line<'static>, skip: usize) -> Line<'static> {
+    let mut remaining = skip;
+    let mut result = Vec::new();
+    for span in &line.spans {
+        if remaining == 0 {
+            result.push(span.clone());
+            continue;
+        }
+        let char_count = span.content.chars().count();
+        if char_count <= remaining {
+            remaining -= char_count;
+        } else {
+            let content: String = span.content.chars().skip(remaining).collect();
+            if !content.is_empty() {
+                result.push(Span::styled(content, span.style));
+            }
+            remaining = 0;
+        }
+    }
+    let mut new_line = Line::from(result);
+    new_line.alignment = line.alignment;
+    new_line
 }

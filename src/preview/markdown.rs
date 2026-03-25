@@ -6,6 +6,8 @@ use ratatui::{
     text::{Line, Span},
 };
 
+const MAX_TABLE_COL_WIDTH: usize = 40;
+
 #[derive(Clone, Debug, Default)]
 struct ListContext {
     next_index: Option<u64>,
@@ -30,10 +32,75 @@ struct InlineTarget {
     is_image: bool,
 }
 
+struct CellContent {
+    spans: Vec<Span<'static>>,
+}
+
+impl CellContent {
+    fn visual_width(&self) -> usize {
+        self.spans.iter().map(|s| s.content.chars().count()).sum()
+    }
+
+    fn into_padded(self, width: usize) -> Vec<Span<'static>> {
+        let w = self.visual_width();
+        if w > width {
+            let mut remaining = width.saturating_sub(1);
+            let mut result = Vec::new();
+            for span in self.spans {
+                if remaining == 0 {
+                    break;
+                }
+                let char_count = span.content.chars().count();
+                if char_count <= remaining {
+                    remaining -= char_count;
+                    result.push(span);
+                } else {
+                    let truncated: String = span.content.chars().take(remaining).collect();
+                    result.push(Span::styled(truncated, span.style));
+                    remaining = 0;
+                }
+            }
+            result.push(Span::raw("…"));
+            result
+        } else {
+            let padding = width.saturating_sub(w);
+            let mut spans = self.spans;
+            if padding > 0 {
+                spans.push(Span::raw(" ".repeat(padding)));
+            }
+            spans
+        }
+    }
+}
+
+struct TableRowBuffer {
+    cells: Vec<CellContent>,
+    is_head: bool,
+}
+
+struct TableState {
+    rows: Vec<TableRowBuffer>,
+    current_cells: Vec<CellContent>,
+    current_cell_spans: Vec<Span<'static>>,
+    in_head: bool,
+}
+
+impl TableState {
+    fn new() -> Self {
+        Self {
+            rows: Vec::new(),
+            current_cells: Vec::new(),
+            current_cell_spans: Vec::new(),
+            in_head: false,
+        }
+    }
+}
+
 struct MarkdownRenderer {
     palette: theme::Palette,
     lines: Vec<Line<'static>>,
     current: Vec<Span<'static>>,
+    prefix_span_count: usize,
     styles: Vec<Style>,
     list_stack: Vec<ListContext>,
     current_item: Option<ItemContext>,
@@ -41,7 +108,9 @@ struct MarkdownRenderer {
     heading_level: Option<HeadingLevel>,
     code_block: Option<CodeBlockContext>,
     inline_targets: Vec<InlineTarget>,
-    pending_table_cell_separator: bool,
+    in_table_head: bool,
+    table_state: Option<TableState>,
+    details_depth: usize,
 }
 
 pub(super) fn render_markdown_preview(text: &str) -> Vec<Line<'static>> {
@@ -67,6 +136,7 @@ impl MarkdownRenderer {
             palette,
             lines: Vec::new(),
             current: Vec::new(),
+            prefix_span_count: 0,
             styles: Vec::new(),
             list_stack: Vec::new(),
             current_item: None,
@@ -74,7 +144,9 @@ impl MarkdownRenderer {
             heading_level: None,
             code_block: None,
             inline_targets: Vec::new(),
-            pending_table_cell_separator: false,
+            in_table_head: false,
+            table_state: None,
+            details_depth: 0,
         }
     }
 
@@ -117,9 +189,7 @@ impl MarkdownRenderer {
             Event::End(tag) => self.end_tag(tag),
             Event::Text(text) => self.push_text(&text),
             Event::Code(text) => self.push_inline_code(&text),
-            Event::Html(html) | Event::InlineHtml(html) => {
-                self.push_styled_text(&html, Style::default().fg(self.palette.muted))
-            }
+            Event::Html(html) | Event::InlineHtml(html) => self.handle_html(&html),
             Event::SoftBreak => self.line_break(),
             Event::HardBreak => self.line_break(),
             Event::Rule => self.push_rule(),
@@ -179,31 +249,39 @@ impl MarkdownRenderer {
                     is_image: false,
                 });
             }
-            Tag::Image { dest_url, .. } => {
-                self.push_styled_text("image: ", Style::default().fg(self.palette.muted));
+            Tag::Image { .. } => {
                 self.styles.push(
                     Style::default()
-                        .fg(self.palette.accent)
+                        .fg(self.palette.muted)
                         .add_modifier(Modifier::ITALIC),
                 );
                 self.inline_targets.push(InlineTarget {
-                    destination: dest_url.to_string(),
+                    destination: String::new(),
                     is_image: true,
                 });
             }
             Tag::Table(_) => {
                 self.ensure_block_gap();
-                self.pending_table_cell_separator = false;
+                self.table_state = Some(TableState::new());
             }
-            Tag::TableHead | Tag::TableRow => {
-                self.flush_line_if_content();
-                self.pending_table_cell_separator = false;
+            Tag::TableHead => {
+                self.in_table_head = true;
+                if let Some(ts) = &mut self.table_state {
+                    ts.in_head = true;
+                    ts.current_cells.clear();
+                }
+            }
+            Tag::TableRow => {
+                self.in_table_head = false;
+                if let Some(ts) = &mut self.table_state {
+                    ts.in_head = false;
+                    ts.current_cells.clear();
+                }
             }
             Tag::TableCell => {
-                if self.pending_table_cell_separator {
-                    self.push_styled_text(" | ", Style::default().fg(self.palette.border));
+                if let Some(ts) = &mut self.table_state {
+                    ts.current_cell_spans.clear();
                 }
-                self.pending_table_cell_separator = true;
             }
             _ => {}
         }
@@ -246,14 +324,38 @@ impl MarkdownRenderer {
                     self.push_inline_destination(&target);
                 }
             }
-            TagEnd::Table | TagEnd::TableHead | TagEnd::TableRow => {
-                self.flush_line_if_content();
-                self.pending_table_cell_separator = false;
-                if matches!(tag, TagEnd::Table) {
-                    self.push_blank_line();
+            TagEnd::TableCell => {
+                if let Some(ts) = &mut self.table_state {
+                    let spans = std::mem::take(&mut ts.current_cell_spans);
+                    ts.current_cells.push(CellContent { spans });
                 }
             }
-            TagEnd::TableCell => {}
+            TagEnd::TableHead => {
+                self.in_table_head = false;
+                if let Some(ts) = &mut self.table_state {
+                    ts.in_head = false;
+                    let cells = std::mem::take(&mut ts.current_cells);
+                    ts.rows.push(TableRowBuffer {
+                        cells,
+                        is_head: true,
+                    });
+                }
+            }
+            TagEnd::TableRow => {
+                if let Some(ts) = &mut self.table_state {
+                    let cells = std::mem::take(&mut ts.current_cells);
+                    ts.rows.push(TableRowBuffer {
+                        cells,
+                        is_head: false,
+                    });
+                }
+            }
+            TagEnd::Table => {
+                if let Some(table_state) = self.table_state.take() {
+                    self.render_table(table_state);
+                }
+                self.push_blank_line();
+            }
             _ => {}
         }
     }
@@ -301,14 +403,19 @@ impl MarkdownRenderer {
     }
 
     fn push_inline_code(&mut self, text: &str) {
-        self.ensure_prefix();
-        self.current.push(Span::styled(
+        let span = Span::styled(
             text.to_string(),
             Style::default()
                 .fg(self.palette.accent_text)
                 .bg(self.palette.accent_soft)
                 .add_modifier(Modifier::BOLD),
-        ));
+        );
+        if let Some(ts) = &mut self.table_state {
+            ts.current_cell_spans.push(span);
+            return;
+        }
+        self.ensure_prefix();
+        self.current.push(span);
     }
 
     fn push_text(&mut self, text: &str) {
@@ -324,6 +431,11 @@ impl MarkdownRenderer {
     }
 
     fn push_styled_text(&mut self, text: &str, style: Style) {
+        if let Some(ts) = &mut self.table_state {
+            ts.current_cell_spans
+                .push(Span::styled(text.to_string(), style));
+            return;
+        }
         self.ensure_prefix();
         self.current.push(Span::styled(text.to_string(), style));
     }
@@ -335,6 +447,9 @@ impl MarkdownRenderer {
         }
         if self.blockquote_depth > 0 {
             style = style.patch(Style::default().fg(self.palette.muted));
+        }
+        if self.in_table_head {
+            style = style.patch(Style::default().add_modifier(Modifier::BOLD));
         }
         for extra in &self.styles {
             style = style.patch(*extra);
@@ -352,6 +467,11 @@ impl MarkdownRenderer {
                 .push(Span::styled("▎ ", Style::default().fg(self.palette.accent)));
         }
 
+        for _ in 0..self.details_depth {
+            self.current
+                .push(Span::styled("╎ ", Style::default().fg(self.palette.muted)));
+        }
+
         if let Some(item) = &mut self.current_item {
             let prefix = if item.used_prefix {
                 item.continuation.clone()
@@ -366,6 +486,8 @@ impl MarkdownRenderer {
                 ));
             }
         }
+
+        self.prefix_span_count = self.current.len();
     }
 
     fn ensure_block_gap(&mut self) {
@@ -393,35 +515,86 @@ impl MarkdownRenderer {
     }
 
     fn push_inline_destination(&mut self, target: &InlineTarget) {
+        // Images: never show path, alt text is enough
+        if target.is_image {
+            return;
+        }
+        // Inside table cells: suppress link URLs to keep cells compact
+        if self.table_state.is_some() {
+            return;
+        }
         let destination = target.destination.trim();
         if destination.is_empty() {
             return;
         }
-
         self.push_styled_text(" ", Style::default().fg(self.palette.muted));
         self.push_styled_text(
             &format!("({destination})"),
             Style::default()
-                .fg(if target.is_image {
-                    self.palette.muted
-                } else {
-                    self.palette.accent
-                })
-                .add_modifier(if target.is_image {
-                    Modifier::ITALIC
-                } else {
-                    Modifier::UNDERLINED
-                }),
+                .fg(self.palette.accent)
+                .add_modifier(Modifier::UNDERLINED),
         );
     }
 
     fn line_break(&mut self) {
-        self.flush_line();
+        // Inside a table cell, soft/hard breaks become a space
+        if let Some(ts) = &mut self.table_state {
+            if !ts.current_cell_spans.is_empty() {
+                ts.current_cell_spans.push(Span::raw(" "));
+            }
+            return;
+        }
+        if !self.current.is_empty() {
+            self.flush_wrapped_prose();
+        } else {
+            self.flush_line();
+        }
     }
 
     fn flush_line_if_content(&mut self) {
         if !self.current.is_empty() {
+            self.flush_wrapped_prose();
+        }
+    }
+
+    fn flush_wrapped_prose(&mut self) {
+        let total_width: usize = self.current.iter().map(|s| s.content.chars().count()).sum();
+
+        if total_width <= MARKDOWN_CONTENT_WIDTH {
             self.flush_line();
+            return;
+        }
+
+        let prefix_count = self.prefix_span_count.min(self.current.len());
+        let all_spans = std::mem::take(&mut self.current);
+        let prefix_spans = all_spans[..prefix_count].to_vec();
+        let content_spans = all_spans[prefix_count..].to_vec();
+
+        let prefix_width: usize = prefix_spans.iter().map(|s| s.content.chars().count()).sum();
+        let first_max = MARKDOWN_CONTENT_WIDTH.saturating_sub(prefix_width).max(20);
+
+        let mut cont_spans = self.gutter_prefix_spans();
+        if let Some(item) = &self.current_item {
+            let cont = item.continuation.clone();
+            if !cont.is_empty() {
+                cont_spans.push(Span::styled(cont, Style::default().fg(self.palette.accent)));
+            }
+        }
+        let cont_width: usize = cont_spans.iter().map(|s| s.content.chars().count()).sum();
+        let rest_max = MARKDOWN_CONTENT_WIDTH.saturating_sub(cont_width).max(20);
+
+        let wrapped = word_wrap_spans(content_spans, first_max, rest_max);
+        for (i, line_spans) in wrapped.into_iter().enumerate() {
+            if self.is_full() {
+                break;
+            }
+            let mut spans = if i == 0 {
+                prefix_spans.clone()
+            } else {
+                cont_spans.clone()
+            };
+            spans.extend(line_spans);
+            self.push_line(Line::from(spans));
         }
     }
 
@@ -443,6 +616,148 @@ impl MarkdownRenderer {
             return;
         }
         self.lines.push(line);
+    }
+
+    fn gutter_prefix_spans(&self) -> Vec<Span<'static>> {
+        let mut spans = Vec::new();
+        for _ in 0..self.blockquote_depth {
+            spans.push(Span::styled("▎ ", Style::default().fg(self.palette.accent)));
+        }
+        for _ in 0..self.details_depth {
+            spans.push(Span::styled("╎ ", Style::default().fg(self.palette.muted)));
+        }
+        spans
+    }
+
+    fn push_line_with_gutter(&mut self, line_spans: Vec<Span<'static>>) {
+        let mut spans = self.gutter_prefix_spans();
+        spans.extend(line_spans);
+        self.push_line(Line::from(spans));
+    }
+
+    fn render_table(&mut self, table: TableState) {
+        if table.rows.is_empty() {
+            return;
+        }
+        let col_count = table.rows.iter().map(|r| r.cells.len()).max().unwrap_or(0);
+        if col_count == 0 {
+            return;
+        }
+
+        // Pass 1: measure column widths
+        let mut col_widths: Vec<usize> = vec![0usize; col_count];
+        for row in &table.rows {
+            for (i, cell) in row.cells.iter().enumerate() {
+                col_widths[i] = col_widths[i].max(cell.visual_width().min(MAX_TABLE_COL_WIDTH));
+            }
+        }
+
+        let border_style = Style::default().fg(self.palette.border);
+
+        let make_rule = |left: &'static str,
+                         mid: &'static str,
+                         right: &'static str,
+                         widths: &[usize]|
+         -> Vec<Span<'static>> {
+            let mut spans = vec![Span::styled(left, border_style)];
+            for (i, &w) in widths.iter().enumerate() {
+                spans.push(Span::styled("─".repeat(w + 2), border_style));
+                if i + 1 < widths.len() {
+                    spans.push(Span::styled(mid, border_style));
+                }
+            }
+            spans.push(Span::styled(right, border_style));
+            spans
+        };
+
+        // Pass 2: render
+        self.push_line_with_gutter(make_rule("┌", "┬", "┐", &col_widths));
+
+        for row in table.rows {
+            if self.is_full() {
+                break;
+            }
+            let is_head = row.is_head;
+            let cell_count = row.cells.len();
+            let mut spans = vec![Span::styled("│", border_style)];
+
+            for (i, cell) in row.cells.into_iter().enumerate() {
+                let col_w = col_widths.get(i).copied().unwrap_or(0);
+                spans.push(Span::raw(" "));
+                spans.extend(cell.into_padded(col_w));
+                spans.push(Span::raw(" "));
+                spans.push(Span::styled("│", border_style));
+            }
+            // Pad any missing cells
+            for &col_w in col_widths.iter().take(col_count).skip(cell_count) {
+                spans.push(Span::raw(" "));
+                spans.push(Span::raw(" ".repeat(col_w)));
+                spans.push(Span::raw(" "));
+                spans.push(Span::styled("│", border_style));
+            }
+            self.push_line_with_gutter(spans);
+
+            if is_head {
+                self.push_line_with_gutter(make_rule("├", "┼", "┤", &col_widths));
+            }
+        }
+
+        self.push_line_with_gutter(make_rule("└", "┴", "┘", &col_widths));
+    }
+
+    fn handle_html(&mut self, html: &str) {
+        let lower = html.trim().to_lowercase();
+
+        if lower == "<br>" || lower == "<br/>" || lower == "<br />" {
+            self.line_break();
+            return;
+        }
+
+        if lower == "<details>" || lower.starts_with("<details ") {
+            return;
+        }
+
+        if lower == "</details>" {
+            self.details_depth = self.details_depth.saturating_sub(1);
+            return;
+        }
+
+        let text = strip_html_tags(html);
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            return;
+        }
+
+        if lower.contains("<summary") {
+            // Render summary at current depth (no gutter yet), then open the indented section.
+            self.ensure_block_gap();
+            self.push_styled_text(
+                "▶ ",
+                Style::default()
+                    .fg(self.palette.accent)
+                    .add_modifier(Modifier::BOLD),
+            );
+            self.push_styled_text(
+                &text,
+                Style::default()
+                    .fg(self.palette.text)
+                    .add_modifier(Modifier::BOLD),
+            );
+            self.flush_line_if_content();
+            self.details_depth += 1;
+            return;
+        }
+
+        let muted = Style::default().fg(self.palette.muted);
+        for (i, line) in text.lines().enumerate() {
+            if i > 0 {
+                self.line_break();
+            }
+            let line = line.trim();
+            if !line.is_empty() {
+                self.push_styled_text(line, muted);
+            }
+        }
     }
 
     fn render_code_block(&mut self, code_block: CodeBlockContext) {
@@ -498,6 +813,20 @@ fn heading_style(level: HeadingLevel, palette: theme::Palette) -> Style {
     Style::default().fg(color).add_modifier(Modifier::BOLD)
 }
 
+fn strip_html_tags(html: &str) -> String {
+    let mut result = String::new();
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => result.push(ch),
+            _ => {}
+        }
+    }
+    result
+}
+
 fn code_block_label(kind: CodeBlockKind<'_>) -> String {
     match kind {
         CodeBlockKind::Indented => "text".to_string(),
@@ -510,4 +839,86 @@ fn code_block_label(kind: CodeBlockKind<'_>) -> String {
             }
         }
     }
+}
+
+fn word_wrap_spans(
+    spans: Vec<Span<'static>>,
+    first_width: usize,
+    rest_width: usize,
+) -> Vec<Vec<Span<'static>>> {
+    let chars: Vec<(char, Style)> = spans
+        .iter()
+        .flat_map(|s| {
+            let style = s.style;
+            s.content
+                .chars()
+                .map(move |c| (c, style))
+                .collect::<Vec<_>>()
+        })
+        .collect();
+
+    if chars.is_empty() {
+        return vec![vec![]];
+    }
+
+    let total = chars.len();
+    let mut lines: Vec<Vec<Span<'static>>> = Vec::new();
+    let mut start = 0;
+
+    while start < total {
+        let max_w = if lines.is_empty() {
+            first_width
+        } else {
+            rest_width
+        };
+        let end = (start + max_w).min(total);
+
+        if end >= total {
+            lines.push(chars_to_spans(&chars[start..]));
+            break;
+        }
+
+        let break_pos = chars[start..end]
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, (c, _))| *c == ' ')
+            .map(|(i, _)| start + i);
+
+        start = if let Some(bp) = break_pos {
+            lines.push(chars_to_spans(&chars[start..bp]));
+            let mut next = bp + 1;
+            while next < total && chars[next].0 == ' ' {
+                next += 1;
+            }
+            next
+        } else {
+            lines.push(chars_to_spans(&chars[start..end]));
+            end
+        };
+    }
+
+    lines
+}
+
+fn chars_to_spans(chars: &[(char, Style)]) -> Vec<Span<'static>> {
+    if chars.is_empty() {
+        return vec![];
+    }
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    let mut text = String::new();
+    let mut style = chars[0].1;
+    for &(c, s) in chars {
+        if s == style {
+            text.push(c);
+        } else {
+            spans.push(Span::styled(std::mem::take(&mut text), style));
+            style = s;
+            text.push(c);
+        }
+    }
+    if !text.is_empty() {
+        spans.push(Span::styled(text, style));
+    }
+    spans
 }

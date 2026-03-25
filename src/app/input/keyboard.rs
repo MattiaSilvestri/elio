@@ -234,6 +234,12 @@ impl App {
                     }
                 }
             }
+            KeyCode::Char('<') => {
+                let _ = self.scroll_preview_columns(-1);
+            }
+            KeyCode::Char('>') => {
+                let _ = self.scroll_preview_columns(1);
+            }
             KeyCode::Char('f') => self.open_search_with_status(SearchScope::Folders),
             KeyCode::Char('o') => self.open_in_system()?,
             KeyCode::Char('y') => self.yank(),

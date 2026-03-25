@@ -586,7 +586,7 @@ impl App {
         previous != self.preview_state.scroll
     }
 
-    fn scroll_preview_columns(&mut self, delta: isize) -> bool {
+    pub(in crate::app) fn scroll_preview_columns(&mut self, delta: isize) -> bool {
         let previous = self.preview_state.horizontal_scroll;
         let step = self.preview_horizontal_scroll_step();
         if delta.is_negative() {

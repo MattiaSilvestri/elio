@@ -171,7 +171,6 @@ where
     })
 }
 
-
 fn static_image_render_cache_path(key: &StaticImageKey) -> Option<PathBuf> {
     let mut hasher = DefaultHasher::new();
     STATIC_IMAGE_RENDER_CACHE_VERSION.hash(&mut hasher);
