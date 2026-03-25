@@ -13,6 +13,7 @@ mod tests {
     use super::super::theme;
     use super::scrollbar::split_scrollbar_area;
     use crate::app::{App, FrameState};
+    use crate::preview::default_code_preview_line_limit;
     use crate::ui;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, layout::Rect, style::Modifier};
@@ -686,7 +687,8 @@ mod tests {
     fn preview_header_detail_uses_compact_labels_before_final_clamp() {
         let root = temp_path("preview-header-clamp");
         fs::create_dir_all(&root).expect("failed to create temp root");
-        let contents = (1..=300)
+        let total_lines = default_code_preview_line_limit() + 40;
+        let contents = (1..=total_lines)
             .map(|index| format!("line {index} {}", "word ".repeat(30)))
             .collect::<Vec<_>>()
             .join("\n");
@@ -706,12 +708,16 @@ mod tests {
             header_row.contains("Text"),
             "expected preview header row to contain the section label, got: {header_row:?}"
         );
+        let expected_line_coverage = format!(
+            "{} / {total_lines} lines shown",
+            default_code_preview_line_limit()
+        );
         assert!(
-            header_row.contains("240 / 300 lines shown"),
+            header_row.contains(&expected_line_coverage),
             "expected preview header row to show semantic line coverage, got: {header_row:?}"
         );
         assert!(
-            !header_row.contains("240-line cap"),
+            !header_row.contains(&format!("{}-line cap", default_code_preview_line_limit())),
             "expected preview header row to avoid internal cap wording, got: {header_row:?}"
         );
 

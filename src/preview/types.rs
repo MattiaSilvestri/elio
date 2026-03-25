@@ -14,7 +14,7 @@ use std::{
 use unicode_width::UnicodeWidthStr;
 
 pub(super) const PREVIEW_LIMIT_BYTES: usize = 64 * 1024;
-pub(super) const PREVIEW_RENDER_LINE_LIMIT: usize = 240;
+pub(super) const PREVIEW_RENDER_LINE_LIMIT: usize = 360;
 pub(crate) const MARKDOWN_CONTENT_WIDTH: usize = 100;
 pub(crate) const MIN_DYNAMIC_CODE_PREVIEW_LINE_LIMIT: usize = 80;
 pub(super) const PREVIEW_WRAPPED_LINE_LIMIT: usize = PREVIEW_RENDER_LINE_LIMIT;
@@ -791,11 +791,12 @@ mod tests {
         let preview = PreviewContent::new(PreviewKind::Text, vec![Line::from("a ".repeat(2_000))]);
 
         let wrapped = preview.wrapped_lines(4);
+        let expected = format!("first {PREVIEW_WRAPPED_LINE_LIMIT} wrapped");
 
         assert_eq!(wrapped.len(), PREVIEW_WRAPPED_LINE_LIMIT);
         assert_eq!(
             preview.wrapped_truncation_note(4).as_deref(),
-            Some("first 240 wrapped")
+            Some(expected.as_str())
         );
     }
 

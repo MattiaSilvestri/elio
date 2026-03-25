@@ -200,7 +200,8 @@ fn line_truncated_preview_reports_visible_limit() {
     let root = temp_path("line-truncated");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let path = root.join("long.txt");
-    let text = (1..=300)
+    let total_lines = PREVIEW_RENDER_LINE_LIMIT + 40;
+    let text = (1..=total_lines)
         .map(|index| format!("line {index}"))
         .collect::<Vec<_>>()
         .join("\n");
@@ -212,9 +213,9 @@ fn line_truncated_preview_reports_visible_limit() {
         .expect("header detail should be present");
 
     assert!(preview.truncated);
-    assert_eq!(preview.source_lines, Some(300));
-    assert!(header.contains("300 lines"));
-    assert!(header.contains("showing first 240 lines"));
+    assert_eq!(preview.source_lines, Some(total_lines));
+    assert!(header.contains(&format!("{total_lines} lines")));
+    assert!(header.contains(&format!("showing first {PREVIEW_RENDER_LINE_LIMIT} lines")));
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

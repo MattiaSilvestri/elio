@@ -527,10 +527,12 @@ mod tests {
 
     #[test]
     fn compact_preview_header_note_shortens_common_truncation_phrases() {
+        let line_limit = crate::preview::default_code_preview_line_limit();
+        let note = format!("truncated to 64 KiB  •  showing first {line_limit} lines");
+        let expected = format!("64 KiB cap • {line_limit}-line cap");
         assert_eq!(
-            compact_preview_header_note("truncated to 64 KiB  •  showing first 240 lines")
-                .as_deref(),
-            Some("64 KiB cap • 240-line cap")
+            compact_preview_header_note(&note).as_deref(),
+            Some(expected.as_str())
         );
     }
 
@@ -545,7 +547,10 @@ mod tests {
     #[test]
     fn fitted_preview_header_clamps_fallback_segment_when_nothing_fits() {
         let detail = header_segment(HEADER_SCORE_DETAIL, "Rust source file", Some("Rust"));
-        let lines = header_segment(HEADER_SCORE_CONTEXT, "240 lines shown", Some("240 shown"));
+        let line_limit = crate::preview::default_code_preview_line_limit();
+        let full = format!("{line_limit} lines shown");
+        let compact = format!("{line_limit} shown");
+        let lines = header_segment(HEADER_SCORE_CONTEXT, full.as_str(), Some(compact.as_str()));
 
         let fitted = fit_preview_header_segments(&[detail, lines], 3);
 

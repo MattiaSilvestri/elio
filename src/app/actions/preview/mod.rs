@@ -10,7 +10,9 @@ use super::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::preview::{PreviewContent, PreviewKind, PreviewRequestOptions};
+    use crate::preview::{
+        PreviewContent, PreviewKind, PreviewRequestOptions, default_code_preview_line_limit,
+    };
     use std::{
         fs,
         path::PathBuf,
@@ -116,7 +118,7 @@ mod tests {
         };
         app.preview_state.content =
             PreviewContent::new(PreviewKind::Code, vec![Line::from("fn main() {}")])
-                .with_line_coverage(240, None, true);
+                .with_line_coverage(default_code_preview_line_limit(), None, true);
         app.preview_state.content.set_total_line_count_pending(true);
         app.preview_state.pending_line_counts.insert(key.clone());
 
@@ -127,9 +129,10 @@ mod tests {
             Some(1_500)
         ));
         assert!(!app.preview_state.pending_line_counts.contains(&key));
+        let expected = format!("{} / 1,500 lines shown", default_code_preview_line_limit());
         assert_eq!(
             app.preview_header_detail_for_width(8, 40).as_deref(),
-            Some("240 / 1,500 lines shown")
+            Some(expected.as_str())
         );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
@@ -154,15 +157,16 @@ mod tests {
         };
         app.preview_state.content =
             PreviewContent::new(PreviewKind::Code, vec![Line::from("fn main() {}")])
-                .with_line_coverage(240, None, true);
+                .with_line_coverage(default_code_preview_line_limit(), None, true);
         app.preview_state.content.set_total_line_count_pending(true);
         app.preview_state.pending_line_counts.insert(key.clone());
 
         assert!(app.apply_preview_line_count_result(&entry.path, entry.size, entry.modified, None));
         assert!(!app.preview_state.pending_line_counts.contains(&key));
+        let expected = format!("{} lines shown", default_code_preview_line_limit());
         assert_eq!(
             app.preview_header_detail_for_width(8, 40).as_deref(),
-            Some("240 lines shown")
+            Some(expected.as_str())
         );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");

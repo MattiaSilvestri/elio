@@ -268,7 +268,7 @@ fn iso_preview_renders_metadata_and_tree() {
 
 #[test]
 fn iso_preview_reports_tree_truncation() {
-    let items = (0..320)
+    let items = (0..(PREVIEW_RENDER_LINE_LIMIT + 80))
         .map(|index| format!("dir/file-{index:03}.txt"))
         .collect::<Vec<_>>();
     let preview = container::render_iso_preview(

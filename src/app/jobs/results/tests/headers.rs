@@ -1,5 +1,6 @@
 use super::super::*;
 use super::helpers::*;
+use crate::preview::default_code_preview_line_limit;
 
 #[test]
 fn wrapped_text_header_reports_visual_cap_compactly() {
@@ -21,7 +22,10 @@ fn wrapped_text_header_reports_visual_cap_compactly() {
         .expect("header detail should be present");
 
     assert!(header.contains("1 lines"));
-    assert!(header.contains("first 240 wrapped"));
+    assert!(header.contains(&format!(
+        "first {} wrapped",
+        default_code_preview_line_limit()
+    )));
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -48,7 +52,10 @@ fn narrow_code_header_prefers_compact_subtype_and_drops_low_priority_notes() {
         .preview_header_detail_for_width(8, 20)
         .expect("header detail should be present");
 
-    assert_eq!(header, "Rust • 240 shown");
+    assert_eq!(
+        header,
+        format!("Rust • {} shown", default_code_preview_line_limit())
+    );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -71,12 +78,21 @@ fn byte_truncated_code_header_upgrades_to_exact_total_lines_after_background_cou
 
     let mut app = App::new_at(root.clone()).expect("failed to create app");
     wait_for_background_preview(&mut app);
+    let expected = format!("Rust • {} lines shown", default_code_preview_line_limit());
     assert_eq!(
         app.preview_header_detail_for_width(8, 40).as_deref(),
-        Some("Rust • 240 lines shown")
+        Some(expected.as_str())
     );
 
-    wait_for_preview_header(&mut app, 8, 40, "Rust • 240 / 1,500 lines shown");
+    wait_for_preview_header(
+        &mut app,
+        8,
+        40,
+        &format!(
+            "Rust • {} / 1,500 lines shown",
+            default_code_preview_line_limit()
+        ),
+    );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -86,8 +102,9 @@ fn source_truncated_text_header_prefers_line_limit_over_wrapped_cap_note() {
     let root = temp_path("source-truncated-text-header");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let text = root.join("long.txt");
-    let contents = (1..=300)
-        .map(|index| format!("line {index} {}", "word ".repeat(40)))
+    let total_lines = default_code_preview_line_limit() + 40;
+    let contents = (1..=total_lines)
+        .map(|index| format!("line {index} {}", "word ".repeat(20)))
         .collect::<Vec<_>>()
         .join("\n");
     fs::write(&text, contents).expect("failed to write text");
@@ -104,8 +121,11 @@ fn source_truncated_text_header_prefers_line_limit_over_wrapped_cap_note() {
         .preview_header_detail(8)
         .expect("header detail should be present");
 
-    assert!(header.contains("300 lines"));
-    assert!(header.contains("showing first 240 lines"));
+    assert!(header.contains(&format!("{total_lines} lines")));
+    assert!(header.contains(&format!(
+        "showing first {} lines",
+        default_code_preview_line_limit()
+    )));
     assert!(!header.contains("wrapped"));
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
