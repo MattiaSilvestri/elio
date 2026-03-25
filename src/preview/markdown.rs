@@ -6,8 +6,6 @@ use ratatui::{
     text::{Line, Span},
 };
 
-const MAX_TABLE_COL_WIDTH: usize = 40;
-
 #[derive(Clone, Debug, Default)]
 struct ListContext {
     next_index: Option<u64>,
@@ -38,37 +36,18 @@ struct CellContent {
 
 impl CellContent {
     fn visual_width(&self) -> usize {
-        self.spans.iter().map(|s| s.content.chars().count()).sum()
+        spans_visual_width(&self.spans)
     }
 
-    fn into_padded(self, width: usize) -> Vec<Span<'static>> {
-        let w = self.visual_width();
-        if w > width {
-            let mut remaining = width.saturating_sub(1);
-            let mut result = Vec::new();
-            for span in self.spans {
-                if remaining == 0 {
-                    break;
-                }
-                let char_count = span.content.chars().count();
-                if char_count <= remaining {
-                    remaining -= char_count;
-                    result.push(span);
-                } else {
-                    let truncated: String = span.content.chars().take(remaining).collect();
-                    result.push(Span::styled(truncated, span.style));
-                    remaining = 0;
-                }
-            }
-            result.push(Span::raw("…"));
-            result
+    fn into_wrapped_lines(self, width: usize) -> Vec<Vec<Span<'static>>> {
+        if width == 0 {
+            return vec![Vec::new()];
+        }
+        let wrapped = word_wrap_spans(self.spans, width, width);
+        if wrapped.is_empty() {
+            vec![Vec::new()]
         } else {
-            let padding = width.saturating_sub(w);
-            let mut spans = self.spans;
-            if padding > 0 {
-                spans.push(Span::raw(" ".repeat(padding)));
-            }
-            spans
+            wrapped
         }
     }
 }
@@ -250,6 +229,7 @@ impl MarkdownRenderer {
                 });
             }
             Tag::Image { .. } => {
+                self.push_inline_image_icon();
                 self.styles.push(
                     Style::default()
                         .fg(self.palette.muted)
@@ -440,6 +420,15 @@ impl MarkdownRenderer {
         self.current.push(Span::styled(text.to_string(), style));
     }
 
+    fn push_inline_image_icon(&mut self) {
+        let style = self.current_style().patch(
+            Style::default()
+                .fg(self.palette.accent)
+                .add_modifier(Modifier::BOLD),
+        );
+        self.push_styled_text("󰋩 ", style);
+    }
+
     fn current_style(&self) -> Style {
         let mut style = Style::default().fg(self.palette.text);
         if let Some(level) = self.heading_level {
@@ -515,7 +504,7 @@ impl MarkdownRenderer {
     }
 
     fn push_inline_destination(&mut self, target: &InlineTarget) {
-        // Images: never show path, alt text is enough
+        // Images: show an inline icon plus alt text, but never the path.
         if target.is_image {
             return;
         }
@@ -644,13 +633,7 @@ impl MarkdownRenderer {
             return;
         }
 
-        // Pass 1: measure column widths
-        let mut col_widths: Vec<usize> = vec![0usize; col_count];
-        for row in &table.rows {
-            for (i, cell) in row.cells.iter().enumerate() {
-                col_widths[i] = col_widths[i].max(cell.visual_width().min(MAX_TABLE_COL_WIDTH));
-            }
-        }
+        let col_widths = self.measure_table_column_widths(&table, col_count);
 
         let border_style = Style::default().fg(self.palette.border);
 
@@ -679,23 +662,40 @@ impl MarkdownRenderer {
             }
             let is_head = row.is_head;
             let cell_count = row.cells.len();
-            let mut spans = vec![Span::styled("│", border_style)];
+            let wrapped_cells: Vec<Vec<Vec<Span<'static>>>> = row
+                .cells
+                .into_iter()
+                .enumerate()
+                .map(|(i, cell)| {
+                    let col_w = col_widths.get(i).copied().unwrap_or(0);
+                    cell.into_wrapped_lines(col_w)
+                })
+                .collect();
+            let row_height = wrapped_cells.iter().map(Vec::len).max().unwrap_or(1);
 
-            for (i, cell) in row.cells.into_iter().enumerate() {
-                let col_w = col_widths.get(i).copied().unwrap_or(0);
-                spans.push(Span::raw(" "));
-                spans.extend(cell.into_padded(col_w));
-                spans.push(Span::raw(" "));
-                spans.push(Span::styled("│", border_style));
+            for line_index in 0..row_height {
+                if self.is_full() {
+                    break;
+                }
+                let mut spans = vec![Span::styled("│", border_style)];
+
+                for (i, cell_lines) in wrapped_cells.iter().enumerate() {
+                    let col_w = col_widths.get(i).copied().unwrap_or(0);
+                    let line = cell_lines.get(line_index).cloned().unwrap_or_default();
+                    spans.push(Span::raw(" "));
+                    spans.extend(pad_spans_to_width(line, col_w));
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::styled("│", border_style));
+                }
+                // Pad any missing cells
+                for &col_w in col_widths.iter().take(col_count).skip(cell_count) {
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::raw(" ".repeat(col_w)));
+                    spans.push(Span::raw(" "));
+                    spans.push(Span::styled("│", border_style));
+                }
+                self.push_line_with_gutter(spans);
             }
-            // Pad any missing cells
-            for &col_w in col_widths.iter().take(col_count).skip(cell_count) {
-                spans.push(Span::raw(" "));
-                spans.push(Span::raw(" ".repeat(col_w)));
-                spans.push(Span::raw(" "));
-                spans.push(Span::styled("│", border_style));
-            }
-            self.push_line_with_gutter(spans);
 
             if is_head {
                 self.push_line_with_gutter(make_rule("├", "┼", "┤", &col_widths));
@@ -703,6 +703,24 @@ impl MarkdownRenderer {
         }
 
         self.push_line_with_gutter(make_rule("└", "┴", "┘", &col_widths));
+    }
+
+    fn measure_table_column_widths(&self, table: &TableState, col_count: usize) -> Vec<usize> {
+        let mut natural_widths = vec![1usize; col_count];
+        for row in &table.rows {
+            for (i, cell) in row.cells.iter().enumerate() {
+                natural_widths[i] = natural_widths[i].max(cell.visual_width());
+            }
+        }
+
+        let border_width = col_count.saturating_mul(3).saturating_add(1);
+        let gutter_width = spans_visual_width(&self.gutter_prefix_spans());
+        let available_total_width = MARKDOWN_CONTENT_WIDTH
+            .saturating_sub(gutter_width)
+            .max(border_width.saturating_add(col_count));
+        let available_cell_width = available_total_width.saturating_sub(border_width);
+
+        fit_column_widths_to_total(natural_widths, available_cell_width)
     }
 
     fn handle_html(&mut self, html: &str) {
@@ -899,6 +917,48 @@ fn word_wrap_spans(
     }
 
     lines
+}
+
+fn spans_visual_width(spans: &[Span<'static>]) -> usize {
+    spans.iter().map(|span| span.content.chars().count()).sum()
+}
+
+fn pad_spans_to_width(mut spans: Vec<Span<'static>>, width: usize) -> Vec<Span<'static>> {
+    let padding = width.saturating_sub(spans_visual_width(&spans));
+    if padding > 0 {
+        spans.push(Span::raw(" ".repeat(padding)));
+    }
+    spans
+}
+
+fn fit_column_widths_to_total(mut widths: Vec<usize>, total: usize) -> Vec<usize> {
+    if widths.is_empty() {
+        return widths;
+    }
+
+    for width in &mut widths {
+        *width = (*width).max(1);
+    }
+
+    let min_total = widths.len();
+    let target = total.max(min_total);
+    let mut current_total: usize = widths.iter().sum();
+    while current_total > target {
+        let Some((_, width)) = widths
+            .iter_mut()
+            .enumerate()
+            .max_by_key(|(_, width)| **width)
+        else {
+            break;
+        };
+        if *width <= 1 {
+            break;
+        }
+        *width -= 1;
+        current_total -= 1;
+    }
+
+    widths
 }
 
 fn chars_to_spans(chars: &[(char, Style)]) -> Vec<Span<'static>> {

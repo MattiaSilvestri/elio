@@ -162,7 +162,7 @@ fn markdown_preview_renders_links() {
 }
 
 #[test]
-fn markdown_preview_renders_images_as_alt_text_only() {
+fn markdown_preview_renders_images_with_icon_and_alt_text() {
     let root = temp_path("markdown-images");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let path = root.join("README.md");
@@ -176,12 +176,11 @@ fn markdown_preview_renders_images_as_alt_text_only() {
 
     assert_eq!(preview.kind, PreviewKind::Markdown);
     let texts: Vec<String> = preview.lines.iter().map(line_text).collect();
+    assert!(texts.iter().any(|t| t.contains("󰋩 Catppuccin Mocha")));
     // Alt text shown
     assert!(texts.iter().any(|t| t.contains("Catppuccin Mocha")));
     // Path not shown
     assert!(!texts.iter().any(|t| t.contains("screenshot.png")));
-    // "image:" prefix not shown
-    assert!(!texts.iter().any(|t| t.contains("image:")));
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -324,6 +323,51 @@ fn markdown_preview_renders_table_with_header_separator() {
             .style
             .add_modifier
             .contains(ratatui::style::Modifier::BOLD)
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn markdown_preview_wraps_long_table_cells_without_ellipsis() {
+    let root = temp_path("markdown-table-wrapping");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    let path = root.join("README.md");
+    fs::write(
+        &path,
+        "| Key | Description |\n|---|---|\n| Enter | This description is deliberately longer than the markdown table preview column width so we can verify clipping behavior |\n",
+    )
+    .expect("failed to write markdown");
+
+    let preview = build_preview(&file_entry(path.clone()));
+
+    assert_eq!(preview.kind, PreviewKind::Markdown);
+    let texts: Vec<String> = preview.lines.iter().map(line_text).collect();
+    assert!(
+        texts.iter().any(|t| t.contains("This description")),
+        "expected wrapped table cell content to keep the leading text"
+    );
+    assert!(
+        texts.iter().any(|t| t.contains("behavior")),
+        "expected wrapped table cell content to keep the trailing text"
+    );
+    assert!(
+        !texts.iter().any(|t| t.contains('…')),
+        "wrapped table cells should not render an ellipsis"
+    );
+    assert!(
+        texts.iter().filter(|t| t.contains('│')).count() > 2,
+        "expected the long table row to wrap across multiple table lines"
+    );
+    let top_border = preview
+        .lines
+        .iter()
+        .find(|line| line_text(line).contains('┌'))
+        .expect("expected table top border");
+    assert_eq!(
+        top_border.width(),
+        MARKDOWN_CONTENT_WIDTH,
+        "wide markdown tables should use the same width budget as markdown prose"
     );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
