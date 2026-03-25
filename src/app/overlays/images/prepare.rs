@@ -12,9 +12,7 @@ use super::{
     StaticImageKey, StaticImageOverlayRequest,
 };
 use crate::app::jobs;
-use crate::app::overlays::inline_image::{
-    RenderedImageDimensions, encode_iterm_inline_payload, read_png_dimensions,
-};
+use crate::app::overlays::inline_image::encode_iterm_inline_payload;
 use image::{ImageFormat, ImageReader};
 use std::{
     collections::hash_map::DefaultHasher,
@@ -75,7 +73,7 @@ where
         if cache_path.exists() {
             let payload = inline_payload(&cache_path)?;
             return Some(PreparedStaticImageAsset {
-                dimensions: prepared_display_dimensions(&cache_path, source_dimensions),
+                dimensions: source_dimensions,
                 display_path: cache_path,
                 inline_payload: payload,
             });
@@ -102,7 +100,7 @@ where
             finalize_static_image_render(&temp_path, &cache_path)?;
             let payload = inline_payload(&cache_path)?;
             return Some(PreparedStaticImageAsset {
-                dimensions: prepared_display_dimensions(&cache_path, source_dimensions),
+                dimensions: source_dimensions,
                 display_path: cache_path,
                 inline_payload: payload,
             });
@@ -115,7 +113,7 @@ where
     if cache_path.exists() {
         let payload = inline_payload(&cache_path)?;
         return Some(PreparedStaticImageAsset {
-            dimensions: prepared_display_dimensions(&cache_path, source_dimensions),
+            dimensions: source_dimensions,
             display_path: cache_path,
             inline_payload: payload,
         });
@@ -139,7 +137,7 @@ where
         finalize_static_image_render(&temp_path, &cache_path)?;
         let payload = inline_payload(&cache_path)?;
         return Some(PreparedStaticImageAsset {
-            dimensions: prepared_display_dimensions(&cache_path, source_dimensions),
+            dimensions: source_dimensions,
             display_path: cache_path,
             inline_payload: payload,
         });
@@ -167,20 +165,12 @@ where
     let payload = inline_payload(&cache_path)?;
 
     Some(PreparedStaticImageAsset {
-        dimensions: prepared_display_dimensions(&cache_path, source_dimensions),
+        dimensions: source_dimensions,
         display_path: cache_path,
         inline_payload: payload,
     })
 }
 
-fn prepared_display_dimensions(
-    display_path: &Path,
-    fallback: RenderedImageDimensions,
-) -> RenderedImageDimensions {
-    read_png_dimensions(display_path)
-        .or_else(|| read_raster_dimensions(display_path))
-        .unwrap_or(fallback)
-}
 
 fn static_image_render_cache_path(key: &StaticImageKey) -> Option<PathBuf> {
     let mut hasher = DefaultHasher::new();
