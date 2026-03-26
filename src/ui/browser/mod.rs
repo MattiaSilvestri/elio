@@ -433,6 +433,50 @@ mod tests {
     }
 
     #[test]
+    fn goto_overlay_renders_expected_labels_and_hit_rects() {
+        let root = temp_path("goto-overlay-render");
+        fs::create_dir_all(root.join("docs")).expect("failed to create docs dir");
+        fs::write(root.join("docs/report.final.md"), "hello\n").expect("failed to write temp file");
+
+        let mut app = App::new_at(root.join("docs")).expect("app should load temp directory");
+        let mut terminal = Terminal::new(TestBackend::new(110, 24)).expect("terminal should init");
+
+        app.handle_event(Event::Key(KeyEvent::from(KeyCode::Char('g'))))
+            .expect("goto overlay should open");
+
+        let state = draw_ui(&mut terminal, &mut app);
+        let rendered = buffer_text(terminal.backend().buffer());
+
+        assert!(
+            state.goto_panel.is_some(),
+            "goto overlay should render a popup panel"
+        );
+        assert_eq!(
+            state.goto_hits.len(),
+            5,
+            "goto overlay should expose one hit rect per visible shortcut"
+        );
+        assert!(
+            rendered.contains("Go to"),
+            "expected goto overlay title to be rendered, got: {rendered:?}"
+        );
+        assert!(
+            rendered.contains("g -> top"),
+            "expected goto overlay to render the top shortcut row, got: {rendered:?}"
+        );
+        assert!(
+            rendered.contains("c -> .config"),
+            "expected goto overlay to render the .config shortcut row, got: {rendered:?}"
+        );
+        assert!(
+            rendered.contains("t -> trash"),
+            "expected goto overlay to render the trash shortcut row, got: {rendered:?}"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
     fn trash_overlay_tabs_focus_between_confirm_and_cancel_buttons() {
         let root = temp_path("trash-overlay-focus");
         fs::create_dir_all(&root).expect("failed to create temp root");

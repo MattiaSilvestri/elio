@@ -49,6 +49,47 @@ fn c_opens_and_esc_closes_copy_overlay() {
 }
 
 #[test]
+fn g_opens_goto_overlay_and_goto_shortcuts_keep_g_for_top() {
+    let root = temp_path("goto-overlay-shortcut");
+    fs::create_dir_all(&root).expect("failed to create temp root");
+    for name in ["a.txt", "b.txt", "c.txt"] {
+        fs::write(root.join(name), name).expect("failed to write temp file");
+    }
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    app.select_last();
+    assert_eq!(
+        app.selected, 2,
+        "G behavior should still reach the last item"
+    );
+
+    app.handle_event(Event::Key(KeyEvent::from(KeyCode::Char('g'))))
+        .expect("g should open go-to overlay");
+    assert!(app.goto_is_open());
+    assert_eq!(
+        app.selected, 2,
+        "opening the go-to overlay should not move selection"
+    );
+
+    app.handle_event(Event::Key(KeyEvent::from(KeyCode::Char('g'))))
+        .expect("g inside go-to overlay should jump to top");
+    assert!(!app.goto_is_open());
+    assert_eq!(
+        app.selected, 0,
+        "go-to g shortcut should move to the top item"
+    );
+
+    app.handle_event(Event::Key(KeyEvent::from(KeyCode::Char('G'))))
+        .expect("capital G should still move to the last item");
+    assert_eq!(
+        app.selected, 2,
+        "capital G should keep the old bottom-jump behavior"
+    );
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn repeated_down_arrow_is_throttled_without_starving_hold_repeat() {
     let root = temp_path("down-arrow-debounce");
     fs::create_dir_all(&root).expect("failed to create temp root");

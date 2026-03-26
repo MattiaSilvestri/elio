@@ -194,6 +194,26 @@ pub(super) struct CopyOverlay {
 }
 
 #[derive(Clone, Debug)]
+pub(super) enum GoToDestination {
+    Top,
+    Path(PathBuf),
+    Missing(String),
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct GoToOverlayRow {
+    pub(super) shortcut: char,
+    pub(super) label: String,
+    pub(super) destination: GoToDestination,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct GoToOverlay {
+    pub(super) title: String,
+    pub(super) rows: Vec<GoToOverlayRow>,
+}
+
+#[derive(Clone, Debug)]
 pub(super) struct SearchCache {
     pub(super) cwd: PathBuf,
     pub(super) scope: SearchScope,
@@ -425,6 +445,7 @@ pub struct App {
     pub(super) create: Option<CreateOverlay>,
     pub(super) rename: Option<RenameOverlay>,
     pub(super) bulk_rename: Option<BulkRenameOverlay>,
+    pub(super) goto_overlay: Option<GoToOverlay>,
     pub(super) copy_overlay: Option<CopyOverlay>,
     pub(super) search: Option<SearchOverlay>,
     pub(super) search_cache: Option<SearchCache>,
@@ -521,6 +542,7 @@ impl App {
             create: None,
             rename: None,
             bulk_rename: None,
+            goto_overlay: None,
             copy_overlay: None,
             search: None,
             search_cache: None,

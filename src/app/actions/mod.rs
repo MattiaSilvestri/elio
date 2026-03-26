@@ -1,4 +1,5 @@
 mod directory;
+mod goto;
 mod navigation;
 mod preview;
 

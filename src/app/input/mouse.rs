@@ -22,6 +22,10 @@ impl App {
             return self.handle_bulk_rename_mouse(mouse);
         }
 
+        if self.goto_overlay.is_some() {
+            return self.handle_goto_mouse(mouse);
+        }
+
         if self.copy_overlay.is_some() {
             return self.handle_copy_mouse(mouse);
         }

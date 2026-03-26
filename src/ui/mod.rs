@@ -17,6 +17,7 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
     state.sidebar_hits.clear();
     state.entry_hits.clear();
     state.search_hits.clear();
+    state.goto_hits.clear();
     state.copy_hits.clear();
     state.trash_panel = None;
     state.trash_confirm_btn = None;
@@ -30,6 +31,7 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
     state.create_scroll_top = 0;
     state.bulk_rename_list_area = None;
     state.bulk_rename_scroll_top = 0;
+    state.goto_panel = None;
     state.copy_panel = None;
     state.search_panel = None;
     state.help_panel = None;
@@ -90,6 +92,8 @@ pub fn render(frame: &mut Frame<'_>, app: &App, state: &mut FrameState) {
         overlay_manager::render_rename_overlay(frame, area, app, state, palette);
     } else if app.bulk_rename_is_open() {
         overlay_manager::render_bulk_rename_overlay(frame, area, app, state, palette);
+    } else if app.goto_is_open() {
+        overlay_manager::render_goto_overlay(frame, area, app, state, palette);
     } else if app.copy_is_open() {
         overlay_manager::render_copy_overlay(frame, area, app, state, palette);
     } else if app.search_is_open() {

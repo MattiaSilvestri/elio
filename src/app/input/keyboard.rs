@@ -36,6 +36,10 @@ impl App {
             return self.handle_bulk_rename_key(key);
         }
 
+        if self.goto_overlay.is_some() {
+            return self.handle_goto_key(key);
+        }
+
         if self.copy_overlay.is_some() {
             return self.handle_copy_key(key);
         }
@@ -208,7 +212,7 @@ impl App {
             KeyCode::PageDown => self.page(1),
             KeyCode::Home => self.select_index(0),
             KeyCode::End => self.select_last(),
-            KeyCode::Char('g') => self.select_index(0),
+            KeyCode::Char('g') => self.open_goto_overlay(),
             KeyCode::Char('G') => self.select_last(),
             KeyCode::Enter => self.open_selected()?,
             KeyCode::Backspace => self.go_parent()?,
@@ -290,7 +294,7 @@ impl App {
             KeyCode::Right | KeyCode::Char('l') => Some(NavigationRepeatKey::Right),
             KeyCode::PageUp => Some(NavigationRepeatKey::PageUp),
             KeyCode::PageDown => Some(NavigationRepeatKey::PageDown),
-            KeyCode::Home | KeyCode::Char('g') => Some(NavigationRepeatKey::Home),
+            KeyCode::Home => Some(NavigationRepeatKey::Home),
             KeyCode::End | KeyCode::Char('G') => Some(NavigationRepeatKey::End),
             _ => None,
         }

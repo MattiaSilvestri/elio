@@ -30,7 +30,7 @@ pub(super) fn render_help(
         },
         HelpEntry {
             key: "g / G",
-            action: "first / last item",
+            action: "go-to menu / last item",
         },
         HelpEntry {
             key: "PageUp / PageDown",
@@ -91,6 +91,10 @@ pub(super) fn render_help(
         HelpEntry {
             key: "c",
             action: "copy path details",
+        },
+        HelpEntry {
+            key: "g",
+            action: "go to top, home, downloads, .config, or trash",
         },
         HelpEntry {
             key: "x",

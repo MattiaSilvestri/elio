@@ -106,6 +106,7 @@ pub struct FrameState {
     pub sidebar_hits: Vec<PathHit>,
     pub entry_hits: Vec<EntryHit>,
     pub search_hits: Vec<SearchHit>,
+    pub goto_hits: Vec<GoToHit>,
     pub copy_hits: Vec<CopyHit>,
     pub trash_panel: Option<Rect>,
     pub trash_confirm_btn: Option<Rect>,
@@ -119,6 +120,7 @@ pub struct FrameState {
     pub create_scroll_top: usize,
     pub bulk_rename_list_area: Option<Rect>,
     pub bulk_rename_scroll_top: usize,
+    pub goto_panel: Option<Rect>,
     pub copy_panel: Option<Rect>,
     pub search_panel: Option<Rect>,
     pub help_panel: Option<Rect>,
@@ -152,6 +154,12 @@ pub struct EntryHit {
 
 #[derive(Clone, Debug)]
 pub struct SearchHit {
+    pub rect: Rect,
+    pub index: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct GoToHit {
     pub rect: Rect,
     pub index: usize,
 }

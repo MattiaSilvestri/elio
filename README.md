@@ -223,6 +223,8 @@ Alternate ready-to-use sample themes remain in [examples/themes/](examples/theme
 | `Backspace` · `Left` · `h` | Go to parent directory |
 | `Right` · `l` | Enter selected folder |
 | `Up` / `Down` · `j` / `k` | Move selection |
+| `g` | Open go-to menu (`g` top, `d` downloads, `h` home, `c` .config, `t` trash) |
+| `G` | Jump to last item |
 | `Tab` / `Shift+Tab` | Jump through pinned places |
 | `Alt+Left` / `Alt+Right` | Back / forward in history |
 | `v` | Toggle grid / list view |
@@ -242,6 +244,7 @@ Alternate ready-to-use sample themes remain in [examples/themes/](examples/theme
 | `Ctrl+A` | Select all visible items |
 | `a` | Create file or folder |
 | `c` | Copy file name / path details to the system clipboard |
+| `g` | Open go-to menu |
 | `d` | Move selected item(s) to trash; permanently delete when already in trash |
 | `r` | Restore in trash, or rename / bulk rename outside trash depending on selection |
 | `F2` | Rename current item or bulk rename selected items |

@@ -36,8 +36,8 @@ pub(crate) use crate::fs::{
 pub(crate) use self::types::ClipOp;
 pub(crate) use self::types::FileClass;
 pub use self::types::{
-    CopyHit, Entry, EntryHit, EntryKind, FrameState, PathHit, SearchHit, SearchRow, SearchScope,
-    SidebarItem, SortMode, ViewMetrics, ViewMode,
+    CopyHit, Entry, EntryHit, EntryKind, FrameState, GoToHit, PathHit, SearchHit, SearchRow,
+    SearchScope, SidebarItem, SortMode, ViewMetrics, ViewMode,
 };
 
 impl App {
