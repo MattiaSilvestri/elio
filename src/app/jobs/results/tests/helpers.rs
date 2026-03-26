@@ -292,18 +292,38 @@ pub(super) fn wait_for_preview_header(
     width: usize,
     expected: &str,
 ) {
+    let mut last_seen = None;
     for _ in 0..200 {
-        if app
-            .preview_header_detail_for_width(visible_rows, width)
-            .as_deref()
-            == Some(expected)
-        {
+        let current = app.preview_header_detail_for_width(visible_rows, width);
+        if current.as_deref() == Some(expected) {
             return;
         }
+        last_seen = current;
         let _ = app.process_background_jobs();
         thread::sleep(Duration::from_millis(10));
     }
-    panic!("timed out waiting for preview header {expected:?}");
+    panic!("timed out waiting for preview header {expected:?}; last seen: {last_seen:?}");
+}
+
+pub(super) fn wait_for_preview_total_line_count(app: &mut App, expected_total: usize) {
+    let mut last_seen = None;
+    for _ in 0..200 {
+        let current = app
+            .preview_state
+            .content
+            .line_coverage
+            .as_ref()
+            .and_then(|coverage| coverage.total_lines);
+        if current == Some(expected_total) {
+            return;
+        }
+        last_seen = current;
+        let _ = app.process_background_jobs();
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!(
+        "timed out waiting for preview total line count {expected_total}; last seen: {last_seen:?}"
+    );
 }
 
 pub(super) fn wait_for_directory_load(app: &mut App) {

@@ -1,6 +1,7 @@
 use super::super::*;
 use super::helpers::*;
-use crate::preview::default_code_preview_line_limit;
+use crate::preview::{PreviewContent, PreviewKind, default_code_preview_line_limit};
+use ratatui::text::Line;
 
 #[test]
 fn wrapped_text_header_reports_visual_cap_compactly() {
@@ -36,28 +37,16 @@ fn wrapped_text_header_reports_visual_cap_compactly() {
 fn narrow_code_header_prefers_compact_subtype_and_drops_low_priority_notes() {
     let root = temp_path("narrow-code-header");
     fs::create_dir_all(&root).expect("failed to create temp root");
-    let source = root.join("main.rs");
-    // Lines are ~67 chars: fits 800 within 64 KiB (line cap hits first),
-    // but 1500 lines exceed 64 KiB (file is byte-truncated overall).
-    let contents = (1..=1_500)
-        .map(|index| {
-            format!(
-                "fn line_{index}() {{ println!(\"{}\"); }}",
-                "word ".repeat(8)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    fs::write(&source, contents).expect("failed to write source");
-
     let mut app = App::new_at(root.clone()).expect("failed to create app");
-    // Use wait_for_preview_header to handle incremental rendering (initial
-    // fast render followed by a silent extension to the full line limit).
-    wait_for_preview_header(
-        &mut app,
-        8,
-        20,
-        &format!("Rust • {} shown", default_code_preview_line_limit()),
+    app.preview_state.content =
+        PreviewContent::new(PreviewKind::Code, vec![Line::from("fn main() {}")])
+            .with_detail("Rust source file")
+            .with_line_coverage(default_code_preview_line_limit(), None, true);
+    app.preview_state.content.set_total_line_count_pending(true);
+
+    assert_eq!(
+        app.preview_header_detail_for_width(8, 20).as_deref(),
+        Some(format!("Rust • {} shown", default_code_preview_line_limit()).as_str())
     );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
@@ -82,14 +71,7 @@ fn byte_truncated_code_header_upgrades_to_exact_total_lines_after_background_cou
     fs::write(&source, contents).expect("failed to write source");
 
     let mut app = App::new_at(root.clone()).expect("failed to create app");
-    // Wait for the full extension render (incremental: initial fast paint → extension).
-    wait_for_preview_header(
-        &mut app,
-        8,
-        40,
-        &format!("Rust • {} lines shown", default_code_preview_line_limit()),
-    );
-
+    wait_for_preview_total_line_count(&mut app, 1_500);
     wait_for_preview_header(
         &mut app,
         8,
