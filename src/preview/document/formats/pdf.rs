@@ -1,5 +1,5 @@
 use super::super::{
-    common::{present_str, push_count_stat, push_metadata_field},
+    common::{humanize_pdfinfo_datetime, present_str, push_count_stat, push_metadata_field},
     metadata::DocumentMetadata,
 };
 use std::{collections::BTreeMap, fs::File, io::Read, path::Path, process::Command};
@@ -39,10 +39,14 @@ pub(super) fn extract_pdf_metadata(path: &Path) -> Option<DocumentMetadata> {
         .and_then(|value| present_str(value, "Application"));
     metadata.created = fields
         .get("CreationDate")
-        .and_then(|value| present_str(value, "Created"));
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+        .map(humanize_pdfinfo_datetime);
     metadata.modified = fields
         .get("ModDate")
-        .and_then(|value| present_str(value, "Modified"));
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+        .map(humanize_pdfinfo_datetime);
 
     push_count_stat(
         &mut metadata,

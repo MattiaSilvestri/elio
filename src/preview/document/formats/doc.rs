@@ -1,5 +1,5 @@
 use super::super::{
-    common::{DOCUMENT_XML_ENTRY_LIMIT_BYTES, format_unix_utc, present_str, push_count_stat},
+    common::{DOCUMENT_XML_ENTRY_LIMIT_BYTES, format_unix_local, present_str, push_count_stat},
     metadata::DocumentMetadata,
 };
 use std::{collections::BTreeMap, fs::File, io::Read, path::Path};
@@ -164,7 +164,7 @@ fn parse_filetime(bytes: &[u8], offset: usize) -> Option<String> {
     }
     let unix_seconds =
         (ticks / WINDOWS_TICKS_PER_SECOND).checked_sub(WINDOWS_TO_UNIX_EPOCH_SECONDS)?;
-    format_unix_utc(unix_seconds)
+    format_unix_local(unix_seconds)
 }
 
 fn read_u16(bytes: &[u8], offset: usize) -> Option<u16> {

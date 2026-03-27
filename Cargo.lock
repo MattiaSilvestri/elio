@@ -331,6 +331,7 @@ dependencies = [
  "flate2",
  "image",
  "json5",
+ "libc",
  "lofty",
  "notify",
  "pulldown-cmark",
