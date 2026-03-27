@@ -315,17 +315,28 @@ fn unique_dest(dir: &Path, name: &str) -> PathBuf {
     let base = Path::new(name);
     let stem = base.file_stem().and_then(|s| s.to_str()).unwrap_or(name);
     let ext = base.extension().and_then(|s| s.to_str());
+    next_literal_dest(dir, stem, ext)
+}
+
+fn next_literal_dest(dir: &Path, stem: &str, ext: Option<&str>) -> PathBuf {
     for i in 1u32.. {
-        let candidate = match ext {
-            Some(e) => format!("{stem} ({i}).{e}"),
-            None => format!("{stem} ({i})"),
-        };
-        let path = dir.join(&candidate);
+        let path = dir.join(format_copy_name(stem, ext, Some(i)));
         if !path.exists() {
             return path;
         }
     }
-    first
+    dir.join(format_copy_name(stem, ext, None))
+}
+
+fn format_copy_name(stem: &str, ext: Option<&str>, suffix: Option<u32>) -> String {
+    let name = match suffix {
+        Some(index) => format!("{stem}_{index}"),
+        None => stem.to_string(),
+    };
+    match ext {
+        Some(ext) => format!("{name}.{ext}"),
+        None => name,
+    }
 }
 
 /// Recursively copy `src` to `dest`.
@@ -350,4 +361,66 @@ fn copy_recursive(src: &Path, dest: &Path) -> anyhow::Result<()> {
         })?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    fn temp_path(label: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("elio-paste-{label}-{unique}"))
+    }
+
+    #[test]
+    fn duplicate_plain_name_uses_underscore_suffixes() {
+        let dir = temp_path("plain");
+        fs::create_dir_all(&dir).expect("failed to create temp dir");
+        fs::write(dir.join("example"), "data").expect("failed to write source");
+
+        assert_eq!(unique_dest(&dir, "example"), dir.join("example_1"));
+
+        fs::remove_dir_all(&dir).expect("failed to remove temp dir");
+    }
+
+    #[test]
+    fn duplicate_original_skips_to_next_available_suffix() {
+        let dir = temp_path("next-available");
+        fs::create_dir_all(&dir).expect("failed to create temp dir");
+        fs::write(dir.join("example"), "base").expect("failed to write base file");
+        fs::write(dir.join("example_1"), "copy").expect("failed to write suffixed file");
+
+        assert_eq!(unique_dest(&dir, "example"), dir.join("example_2"));
+
+        fs::remove_dir_all(&dir).expect("failed to remove temp dir");
+    }
+
+    #[test]
+    fn duplicate_suffixed_name_stays_literal() {
+        let dir = temp_path("nested-suffix");
+        fs::create_dir_all(&dir).expect("failed to create temp dir");
+        fs::write(dir.join("aur_1"), "report").expect("failed to write source");
+
+        assert_eq!(unique_dest(&dir, "aur_1"), dir.join("aur_1_1"));
+
+        fs::remove_dir_all(&dir).expect("failed to remove temp dir");
+    }
+
+    #[test]
+    fn duplicate_suffixed_name_with_extension_stays_literal() {
+        let dir = temp_path("nested-suffix-ext");
+        fs::create_dir_all(&dir).expect("failed to create temp dir");
+        fs::write(dir.join("aur_1.txt"), "copy").expect("failed to write source");
+
+        assert_eq!(unique_dest(&dir, "aur_1.txt"), dir.join("aur_1_1.txt"));
+
+        fs::remove_dir_all(&dir).expect("failed to remove temp dir");
+    }
 }
