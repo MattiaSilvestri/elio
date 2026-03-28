@@ -10,6 +10,7 @@ pub(super) use self::layout::render_body;
 
 #[cfg(test)]
 mod tests {
+    use super::super::helpers;
     use super::super::theme;
     use super::entries::render_compact_list_row;
     use super::layout::resolve_body_layout;
@@ -1249,10 +1250,16 @@ mod tests {
         let detail_index = rendered
             .find("13 MB")
             .expect("wide compact row should keep the size metadata visible");
+        let detail_column = helpers::display_width(&rendered[..detail_index]);
+        let trailing_gap = 220usize.saturating_sub(helpers::display_width(&rendered));
 
         assert!(
-            detail_index < 90,
-            "expected compact-row metadata to stay near the name even on extreme widths, got: {rendered:?}"
+            detail_column > 90,
+            "expected wide compact-row metadata to move toward the right edge, got: {rendered:?}"
+        );
+        assert!(
+            trailing_gap <= 1,
+            "expected wide compact-row metadata to stay near the right edge, got trailing_gap={trailing_gap} row={rendered:?}"
         );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
@@ -1287,6 +1294,174 @@ mod tests {
         assert!(
             !rendered.contains("ago"),
             "expected the compact row to hide modified metadata first, got: {rendered:?}"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn compact_list_rows_hide_file_metadata_at_consistent_widths() {
+        let root = temp_path("compact-list-file-thresholds");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+
+        let small = root.join("small.bin");
+        let small_file = fs::File::create(&small).expect("failed to create small file");
+        small_file.set_len(512).expect("failed to size small file");
+
+        let large = root.join("large.cbz");
+        let large_file = fs::File::create(&large).expect("failed to create large file");
+        large_file
+            .set_len(13_000_000)
+            .expect("failed to size large file");
+
+        let app = App::new_at(root.clone()).expect("app should load temp directory");
+        let small_entry = app
+            .entries
+            .iter()
+            .find(|entry| entry.path == small)
+            .expect("small entry should be present");
+        let large_entry = app
+            .entries
+            .iter()
+            .find(|entry| entry.path == large)
+            .expect("large entry should be present");
+
+        let small_row = line_text(&render_compact_list_row(
+            &app,
+            small_entry,
+            true,
+            29,
+            theme::palette(),
+        ));
+        let large_row = line_text(&render_compact_list_row(
+            &app,
+            large_entry,
+            true,
+            29,
+            theme::palette(),
+        ));
+
+        assert!(
+            !small_row.contains("512 B") && !large_row.contains("13 MB"),
+            "expected file metadata to hide consistently at the same narrow width, got small={small_row:?} large={large_row:?}"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn compact_list_rows_hide_directory_metadata_at_consistent_widths() {
+        let root = temp_path("compact-list-directory-thresholds");
+        let short = root.join("short-count");
+        let long = root.join("long-count");
+        fs::create_dir_all(&short).expect("failed to create short-count dir");
+        fs::create_dir_all(&long).expect("failed to create long-count dir");
+
+        for index in 0..10 {
+            fs::write(short.join(format!("child-{index}.txt")), "x")
+                .expect("failed to write short-count child");
+        }
+        for index in 0..100 {
+            fs::write(long.join(format!("child-{index}.txt")), "x")
+                .expect("failed to write long-count child");
+        }
+
+        let mut app = App::new_at(root.clone()).expect("app should load temp directory");
+        let mut terminal = Terminal::new(TestBackend::new(90, 24)).expect("terminal should init");
+        draw_ui(&mut terminal, &mut app);
+        wait_for_directory_counts(&mut app);
+
+        let short_entry = app
+            .entries
+            .iter()
+            .find(|entry| entry.path == short)
+            .expect("short-count entry should be present");
+        let long_entry = app
+            .entries
+            .iter()
+            .find(|entry| entry.path == long)
+            .expect("long-count entry should be present");
+
+        let short_row = line_text(&render_compact_list_row(
+            &app,
+            short_entry,
+            true,
+            32,
+            theme::palette(),
+        ));
+        let long_row = line_text(&render_compact_list_row(
+            &app,
+            long_entry,
+            true,
+            32,
+            theme::palette(),
+        ));
+
+        assert!(
+            !short_row.contains("10 items") && !long_row.contains("100 items"),
+            "expected directory counts to hide consistently at the same narrow width, got short={short_row:?} long={long_row:?}"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn compact_list_rows_align_file_and_directory_metadata_columns() {
+        let root = temp_path("compact-list-alignment");
+        let folder = root.join("folder");
+        let file_path = root.join("movie.mkv");
+        fs::create_dir_all(&folder).expect("failed to create folder");
+        for index in 0..10 {
+            fs::write(folder.join(format!("child-{index}.txt")), "x")
+                .expect("failed to write folder child");
+        }
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = fs::File::create(&file_path).expect("failed to create file");
+        file.set_len(13_000_000).expect("failed to size file");
+
+        let mut app = App::new_at(root.clone()).expect("app should load temp directory");
+        let mut terminal = Terminal::new(TestBackend::new(90, 24)).expect("terminal should init");
+        draw_ui(&mut terminal, &mut app);
+        wait_for_directory_counts(&mut app);
+
+        let folder_entry = app
+            .entries
+            .iter()
+            .find(|entry| entry.path == folder)
+            .expect("folder entry should be present");
+        let file_entry = app
+            .entries
+            .iter()
+            .find(|entry| entry.path == file_path)
+            .expect("file entry should be present");
+
+        let folder_row = line_text(&render_compact_list_row(
+            &app,
+            folder_entry,
+            true,
+            90,
+            theme::palette(),
+        ));
+        let file_row = line_text(&render_compact_list_row(
+            &app,
+            file_entry,
+            true,
+            90,
+            theme::palette(),
+        ));
+
+        let folder_modified_index = folder_row
+            .find("ago")
+            .expect("folder row should show modified metadata");
+        let file_modified_index = file_row
+            .find("ago")
+            .expect("file row should show modified metadata");
+        let folder_modified_column = helpers::display_width(&folder_row[..folder_modified_index]);
+        let file_modified_column = helpers::display_width(&file_row[..file_modified_index]);
+
+        assert_eq!(
+            folder_modified_column, file_modified_column,
+            "expected file and directory modified columns to align, got folder={folder_row:?} file={file_row:?}"
         );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");

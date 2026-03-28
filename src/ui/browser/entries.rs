@@ -86,9 +86,11 @@ pub(super) fn render_compact_list_row(
     const COMPACT_PREFIX_WIDTH: usize = 4;
     const COMPACT_NAME_MIN_WIDTH: usize = 18;
     const COMPACT_NAME_SOFT_MAX_WIDTH: usize = 56;
-    const COMPACT_DETAIL_MAX_WIDTH: usize = 12;
-    const COMPACT_MODIFIED_MAX_WIDTH: usize = 10;
-    const COMPACT_METADATA_GAP: usize = 2;
+    const COMPACT_DETAIL_SLOT_WIDTH: usize = 9;
+    const COMPACT_MODIFIED_SLOT_WIDTH: usize = 10;
+    const COMPACT_METADATA_LEADING_GAP: usize = 2;
+    const COMPACT_METADATA_COLUMN_GAP: usize = 1;
+    const COMPACT_MAX_TRAILING_GAP: usize = 1;
 
     let multi_selected = app.is_selected(&entry.path);
     let clip_op = app.clipboard_op_for(&entry.path);
@@ -122,46 +124,56 @@ pub(super) fn render_compact_list_row(
     let available_width = row_width.saturating_sub(COMPACT_PREFIX_WIDTH as u16).max(1) as usize;
     let min_name_width = available_width.min(COMPACT_NAME_MIN_WIDTH);
     let detail_text = browser_entry_detail(app, entry).unwrap_or_default();
-    let detail_width = if detail_text.is_empty() {
+    let detail_slot_width = if detail_text.is_empty() {
         0
     } else {
-        helpers::display_width(&detail_text).min(COMPACT_DETAIL_MAX_WIDTH)
+        COMPACT_DETAIL_SLOT_WIDTH
     };
     let modified_text = browser_entry_modified(entry);
-    let modified_width = helpers::display_width(&modified_text).min(COMPACT_MODIFIED_MAX_WIDTH);
 
     let mut reserved_metadata_width = 0usize;
     let mut show_detail = false;
     let mut show_modified = false;
 
-    if detail_width > 0
+    if detail_slot_width > 0
         && available_width
             >= min_name_width
-                .saturating_add(COMPACT_METADATA_GAP)
-                .saturating_add(detail_width)
+                .saturating_add(COMPACT_METADATA_LEADING_GAP)
+                .saturating_add(detail_slot_width)
     {
         show_detail = true;
         reserved_metadata_width = reserved_metadata_width
-            .saturating_add(COMPACT_METADATA_GAP)
-            .saturating_add(detail_width);
+            .saturating_add(COMPACT_METADATA_LEADING_GAP)
+            .saturating_add(detail_slot_width);
     }
     if available_width
         >= min_name_width
             .saturating_add(reserved_metadata_width)
-            .saturating_add(COMPACT_METADATA_GAP)
-            .saturating_add(modified_width)
+            .saturating_add(if show_detail {
+                COMPACT_METADATA_COLUMN_GAP + 1
+            } else {
+                COMPACT_METADATA_LEADING_GAP
+            })
+            .saturating_add(COMPACT_MODIFIED_SLOT_WIDTH)
     {
         show_modified = true;
         reserved_metadata_width = reserved_metadata_width
-            .saturating_add(COMPACT_METADATA_GAP)
-            .saturating_add(modified_width);
+            .saturating_add(if show_detail {
+                COMPACT_METADATA_COLUMN_GAP + 1
+            } else {
+                COMPACT_METADATA_LEADING_GAP
+            })
+            .saturating_add(COMPACT_MODIFIED_SLOT_WIDTH);
     }
 
     let max_name_width = available_width
         .saturating_sub(reserved_metadata_width)
         .max(1);
+    let trailing_gap_width = max_name_width
+        .saturating_sub(COMPACT_NAME_SOFT_MAX_WIDTH)
+        .min(COMPACT_MAX_TRAILING_GAP);
     let name_width = max_name_width
-        .min(COMPACT_NAME_SOFT_MAX_WIDTH)
+        .saturating_sub(trailing_gap_width)
         .max(min_name_width);
     let name = helpers::clamp_label(&entry.name, name_width);
     let mut spans = vec![
@@ -179,16 +191,16 @@ pub(super) fn render_compact_list_row(
         Span::styled(pad_right(name, name_width), name_style),
     ];
     if show_detail {
-        spans.push(Span::raw("  "));
+        spans.push(Span::raw(if show_modified { "   " } else { "  " }));
         spans.push(Span::styled(
-            pad_left(detail_text, detail_width),
+            pad_left(detail_text, detail_slot_width),
             muted_style,
         ));
     }
     if show_modified {
-        spans.push(Span::raw("  "));
+        spans.push(Span::raw(if show_detail { " " } else { "  " }));
         spans.push(Span::styled(
-            pad_left(modified_text, modified_width),
+            pad_left(modified_text, COMPACT_MODIFIED_SLOT_WIDTH),
             muted_style,
         ));
     }
