@@ -335,6 +335,10 @@ fn terminal_supports_osc52_clipboard() -> bool {
         return true;
     }
 
+    if env::var_os("ELIO_CLIPBOARD_OSC52").is_some() {
+        return true;
+    }
+
     let term = env::var("TERM").unwrap_or_default().to_ascii_lowercase();
     let term_program = env::var("TERM_PROGRAM")
         .unwrap_or_default()
@@ -350,6 +354,9 @@ fn terminal_supports_osc52_clipboard() -> bool {
         || term_program == "iterm.app"
         || term_program.contains("warp")
         || env::var_os("WARP_SESSION_ID").is_some()
+        || term.contains("alacritty")
+        || term_program.contains("alacritty")
+        || env::var_os("ALACRITTY_SOCKET").is_some()
         || env::var_os("VTE_VERSION").is_some()
 }
 
