@@ -89,13 +89,7 @@ impl App {
         if self.static_image_can_display_directly_now(&request) {
             return None;
         }
-        if self.image_preview.dimensions.contains_key(&key) {
-            return None;
-        }
-        if self.image_preview.pending_prepares.contains(&key) {
-            return Some("Preparing image preview".to_string());
-        }
-        Some("Preparing image preview".to_string())
+        None
     }
 
     pub(in crate::app) fn active_static_image_overlay_request(

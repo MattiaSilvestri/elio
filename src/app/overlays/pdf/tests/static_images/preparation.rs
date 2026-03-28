@@ -22,10 +22,7 @@ fn current_small_jpeg_queues_background_prepare_for_overlay() {
         _ => panic!("small jpeg should prepare in the background"),
     }
     assert!(app.image_preview.pending_prepares.contains(&key));
-    assert_eq!(
-        app.preview_overlay_placeholder_message().as_deref(),
-        Some("Preparing image preview")
-    );
+    assert_eq!(app.preview_overlay_placeholder_message(), None);
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }
@@ -56,10 +53,7 @@ fn current_large_jpeg_queues_background_prepare_when_ffmpeg_is_available() {
         _ => panic!("large jpeg should prepare in the background when ffmpeg is available"),
     }
     assert!(app.image_preview.pending_prepares.contains(&key));
-    assert_eq!(
-        app.preview_overlay_placeholder_message().as_deref(),
-        Some("Preparing image preview")
-    );
+    assert_eq!(app.preview_overlay_placeholder_message(), None);
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

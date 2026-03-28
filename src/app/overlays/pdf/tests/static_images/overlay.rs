@@ -23,22 +23,19 @@ fn refresh_preview_uses_blank_static_image_surface_preview_when_backend_enabled(
 
 #[test]
 fn preview_prefers_image_surface_for_supported_static_images_when_backend_enabled() {
-    for (file_name, placeholder) in [
-        ("demo.png", None),
-        ("demo.ico", Some("Preparing image preview")),
-        ("demo.jpg", Some("Preparing image preview")),
-        ("demo.jpeg", Some("Preparing image preview")),
-        ("demo.gif", Some("Preparing image preview")),
-        ("demo.webp", Some("Preparing image preview")),
-        ("demo.svg", Some("Preparing image preview")),
+    for file_name in [
+        "demo.png",
+        "demo.ico",
+        "demo.jpg",
+        "demo.jpeg",
+        "demo.gif",
+        "demo.webp",
+        "demo.svg",
     ] {
         let (app, root) = build_selected_static_image_app("image-surface", file_name);
 
         assert!(app.preview_prefers_image_surface());
-        assert_eq!(
-            app.preview_overlay_placeholder_message().as_deref(),
-            placeholder
-        );
+        assert_eq!(app.preview_overlay_placeholder_message(), None);
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
