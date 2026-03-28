@@ -364,7 +364,7 @@ fn document_overlay_keeps_previous_page_visible_while_next_page_waits() {
 }
 
 #[test]
-fn iterm_popup_clear_defers_page_image_erase_until_next_draw() {
+fn iterm_popup_keeps_the_displayed_image_visible() {
     let root = temp_root("iterm-popup-deferred-erase");
     fs::create_dir_all(&root).expect("failed to create temp root");
     let page = root.join("page.png");
@@ -409,15 +409,29 @@ fn iterm_popup_clear_defers_page_image_erase_until_next_draw() {
     assert!(app.static_image_overlay_displayed());
 
     app.help_open = true;
-    app.present_preview_overlay()
-        .expect("iTerm popup clear should not fail");
-
-    assert!(!app.static_image_overlay_displayed());
-    let erase = String::from_utf8(app.iterm_pre_draw_erase())
-        .expect("iTerm erase output should be valid utf8");
-    assert!(erase.contains("\x1b[23;3H"));
-    assert!(!erase.contains("\x1b[2;2H"));
     assert!(app.iterm_pre_draw_erase().is_empty());
+    let out = app
+        .present_preview_overlay()
+        .expect("iTerm popup redraw should not fail");
+
+    assert!(out.is_empty());
+    assert!(app.static_image_overlay_displayed());
+    assert!(app.iterm_pre_draw_erase().is_empty());
+
+    app.help_open = false;
+    let restore = String::from_utf8(
+        app.present_preview_overlay()
+            .expect("closing the popup should redraw the image"),
+    )
+    .expect("restored iTerm image output should be valid utf8");
+
+    assert!(restore.contains("\x1b]1337;File=inline=1;"));
+    assert!(app.static_image_overlay_displayed());
+    assert!(
+        app.present_preview_overlay()
+            .expect("steady-state redraw should succeed")
+            .is_empty()
+    );
 
     fs::remove_dir_all(root).expect("failed to remove temp root");
 }

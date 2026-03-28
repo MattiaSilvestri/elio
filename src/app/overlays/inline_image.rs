@@ -30,6 +30,7 @@ pub(in crate::app) struct TerminalImageState {
     pub(super) window: Option<TerminalWindowSize>,
     pending_iterm_erase: Vec<Rect>,
     pending_kitty_resize_clear: bool,
+    pending_iterm_popup_restore: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -204,22 +205,16 @@ impl App {
             return self.clear_preview_overlay();
         }
 
-        let any_overlay_open = self.trash.is_some()
-            || self.restore.is_some()
-            || self.create.is_some()
-            || self.rename.is_some()
-            || self.bulk_rename.is_some()
-            || self.goto_overlay.is_some()
-            || self.copy_overlay.is_some()
-            || self.search.is_some()
-            || self.help_open;
-
-        // Non-Kitty protocols (e.g. iTerm2) have no unicode placeholder support —
-        // clear the image when any popup is open.
-        if any_overlay_open && protocol != ImageProtocol::KittyGraphics {
-            self.queue_forced_iterm_preview_erase();
-            return self.clear_preview_overlay();
+        let popup_open = self.any_modal_overlay_open();
+        if protocol == ImageProtocol::ItermInline
+            && popup_open
+            && (self.static_image_overlay_displayed() || self.pdf_overlay_displayed())
+        {
+            self.terminal_images.pending_iterm_popup_restore = true;
         }
+        let force_iterm_popup_repaint = protocol == ImageProtocol::ItermInline
+            && self.terminal_images.pending_iterm_popup_restore
+            && !popup_open;
 
         // For Kitty, collect rects occupied by open popups so the image can be
         // rendered only in cells not covered by any popup.
@@ -240,7 +235,12 @@ impl App {
             out.extend(self.clear_preview_overlay()?);
         }
 
-        let static_state = self.present_static_image_overlay(protocol, &excluded, &mut out)?;
+        let static_state = self.present_static_image_overlay(
+            protocol,
+            &excluded,
+            force_iterm_popup_repaint,
+            &mut out,
+        )?;
         preview_log(format_args!(
             "present_preview_overlay: protocol={protocol:?} static={static_state:?} out_len={}",
             out.len()
@@ -250,7 +250,8 @@ impl App {
             OverlayPresentState::NotRequested => {}
         }
 
-        let pdf_state = self.present_pdf_overlay(protocol, &excluded, &mut out)?;
+        let pdf_state =
+            self.present_pdf_overlay(protocol, &excluded, force_iterm_popup_repaint, &mut out)?;
         preview_log(format_args!(
             "present_preview_overlay: pdf={pdf_state:?} out_len={}",
             out.len()
@@ -260,7 +261,12 @@ impl App {
             OverlayPresentState::NotRequested => {}
         }
 
-        let visual_state = self.present_preview_visual_overlay(protocol, &excluded, &mut out)?;
+        let visual_state = self.present_preview_visual_overlay(
+            protocol,
+            &excluded,
+            force_iterm_popup_repaint,
+            &mut out,
+        )?;
         preview_log(format_args!(
             "present_preview_overlay: visual={visual_state:?} out_len={}",
             out.len()
@@ -269,6 +275,7 @@ impl App {
             OverlayPresentState::Displayed | OverlayPresentState::Waiting => Ok(out),
             OverlayPresentState::NotRequested if keep_stale_page_preview_overlay => Ok(out),
             OverlayPresentState::NotRequested => {
+                self.terminal_images.pending_iterm_popup_restore = false;
                 out.extend(self.clear_preview_overlay()?);
                 Ok(out)
             }
@@ -304,6 +311,22 @@ impl App {
         rects
     }
 
+    fn any_modal_overlay_open(&self) -> bool {
+        self.trash.is_some()
+            || self.restore.is_some()
+            || self.create.is_some()
+            || self.rename.is_some()
+            || self.bulk_rename.is_some()
+            || self.goto_overlay.is_some()
+            || self.copy_overlay.is_some()
+            || self.search.is_some()
+            || self.help_open
+    }
+
+    pub(in crate::app) fn clear_pending_iterm_popup_restore(&mut self) {
+        self.terminal_images.pending_iterm_popup_restore = false;
+    }
+
     pub(crate) fn clear_preview_overlay(&mut self) -> Result<Vec<u8>> {
         if !self.static_image_overlay_displayed() && !self.pdf_overlay_displayed() {
             return Ok(Vec::new());
@@ -313,6 +336,7 @@ impl App {
         // iTerm2 erase is emitted by iterm_pre_draw_erase() *before* terminal.draw(),
         // so ratatui naturally overpaints with the correct panel background. Nothing
         // extra needed here.
+        self.clear_pending_iterm_popup_restore();
         self.clear_displayed_static_image();
         self.clear_displayed_pdf_overlay();
         Ok(bytes)

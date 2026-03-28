@@ -11,6 +11,7 @@ impl App {
         &mut self,
         protocol: ImageProtocol,
         excluded: &[Rect],
+        force_repaint: bool,
         out: &mut Vec<u8>,
     ) -> Result<OverlayPresentState> {
         let Some(request) = self.active_pdf_overlay_request() else {
@@ -50,7 +51,8 @@ impl App {
         let displayed = DisplayedPdfPreview::from_request(&request, placement);
         let image_changed = self.pdf_preview.displayed.as_ref() != Some(&displayed);
         let excluded_changed = excluded != self.pdf_preview.displayed_excluded.as_slice();
-        if !image_changed && !excluded_changed {
+        let needs_repaint = force_repaint && protocol == ImageProtocol::ItermInline;
+        if !image_changed && !excluded_changed && !needs_repaint {
             preview_log("present_pdf_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
         }
@@ -66,6 +68,7 @@ impl App {
         out.extend(bytes);
         self.pdf_preview.displayed = Some(displayed);
         self.pdf_preview.displayed_excluded = excluded.to_vec();
+        self.clear_pending_iterm_popup_restore();
         Ok(OverlayPresentState::Displayed)
     }
 

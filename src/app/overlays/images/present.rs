@@ -16,6 +16,7 @@ impl App {
         &mut self,
         protocol: ImageProtocol,
         excluded: &[Rect],
+        force_repaint: bool,
         out: &mut Vec<u8>,
     ) -> Result<OverlayPresentState> {
         let Some(request) = self.active_static_image_overlay_request() else {
@@ -62,7 +63,8 @@ impl App {
         );
         let image_changed = self.image_preview.displayed.as_ref() != Some(&displayed);
         let excluded_changed = excluded != self.image_preview.displayed_excluded.as_slice();
-        if !image_changed && !excluded_changed {
+        let needs_repaint = force_repaint && protocol == ImageProtocol::ItermInline;
+        if !image_changed && !excluded_changed && !needs_repaint {
             preview_log("present_static_image_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
         }
@@ -98,6 +100,7 @@ impl App {
 
         self.image_preview.displayed = Some(displayed);
         self.image_preview.displayed_excluded = excluded.to_vec();
+        self.clear_pending_iterm_popup_restore();
         Ok(OverlayPresentState::Displayed)
     }
 
@@ -105,6 +108,7 @@ impl App {
         &mut self,
         protocol: ImageProtocol,
         excluded: &[Rect],
+        force_repaint: bool,
         out: &mut Vec<u8>,
     ) -> Result<OverlayPresentState> {
         let Some(request) = self.active_preview_visual_overlay_request() else {
@@ -149,7 +153,8 @@ impl App {
         );
         let image_changed = self.image_preview.displayed.as_ref() != Some(&displayed);
         let excluded_changed = excluded != self.image_preview.displayed_excluded.as_slice();
-        if !image_changed && !excluded_changed {
+        let needs_repaint = force_repaint && protocol == ImageProtocol::ItermInline;
+        if !image_changed && !excluded_changed && !needs_repaint {
             preview_log("present_preview_visual_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
         }
@@ -182,6 +187,7 @@ impl App {
         self.image_preview.displayed = Some(displayed);
         self.record_comic_page_image_displayed();
         self.image_preview.displayed_excluded = excluded.to_vec();
+        self.clear_pending_iterm_popup_restore();
         Ok(OverlayPresentState::Displayed)
     }
 

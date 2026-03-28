@@ -287,7 +287,7 @@ mod tests {
 
         let mut first = Vec::new();
         let first_state = app
-            .present_static_image_overlay(ImageProtocol::KittyGraphics, &[], &mut first)
+            .present_static_image_overlay(ImageProtocol::KittyGraphics, &[], false, &mut first)
             .expect("first static image presentation should succeed");
         assert_eq!(first_state, OverlayPresentState::Displayed);
         assert!(!first.is_empty());
@@ -295,7 +295,7 @@ mod tests {
 
         let mut second = Vec::new();
         let second_state = app
-            .present_static_image_overlay(ImageProtocol::KittyGraphics, &[], &mut second)
+            .present_static_image_overlay(ImageProtocol::KittyGraphics, &[], false, &mut second)
             .expect("repeat static image presentation should succeed");
         assert_eq!(second_state, OverlayPresentState::Displayed);
         assert!(second.is_empty(), "unchanged image should not redraw");
@@ -358,7 +358,7 @@ mod tests {
         app.sync_image_preview_selection_activation();
 
         let mut initial = Vec::new();
-        app.present_static_image_overlay(ImageProtocol::KittyGraphics, &[], &mut initial)
+        app.present_static_image_overlay(ImageProtocol::KittyGraphics, &[], false, &mut initial)
             .expect("initial static image presentation should succeed");
 
         let excluded = [Rect {
@@ -369,7 +369,12 @@ mod tests {
         }];
         let mut updated = Vec::new();
         let state = app
-            .present_static_image_overlay(ImageProtocol::KittyGraphics, &excluded, &mut updated)
+            .present_static_image_overlay(
+                ImageProtocol::KittyGraphics,
+                &excluded,
+                false,
+                &mut updated,
+            )
             .expect("excluded-only redraw should succeed");
         let output = String::from_utf8(updated).expect("kitty redraw should be utf8");
 
