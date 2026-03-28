@@ -83,10 +83,12 @@ pub(super) fn render_compact_list_row(
     row_width: u16,
     palette: Palette,
 ) -> Line<'static> {
-    const COMPACT_PREFIX_WIDTH: u16 = 4;
+    const COMPACT_PREFIX_WIDTH: usize = 4;
     const COMPACT_NAME_MIN_WIDTH: usize = 18;
+    const COMPACT_NAME_SOFT_MAX_WIDTH: usize = 56;
     const COMPACT_DETAIL_MAX_WIDTH: usize = 12;
     const COMPACT_MODIFIED_MAX_WIDTH: usize = 10;
+    const COMPACT_METADATA_GAP: usize = 2;
 
     let multi_selected = app.is_selected(&entry.path);
     let clip_op = app.clipboard_op_for(&entry.path);
@@ -117,7 +119,7 @@ pub(super) fn render_compact_list_row(
         Style::default().fg(palette.text)
     };
     let muted_style = Style::default().fg(palette.muted);
-    let available_width = row_width.saturating_sub(COMPACT_PREFIX_WIDTH).max(1) as usize;
+    let available_width = row_width.saturating_sub(COMPACT_PREFIX_WIDTH as u16).max(1) as usize;
     let min_name_width = available_width.min(COMPACT_NAME_MIN_WIDTH);
     let detail_text = browser_entry_detail(app, entry).unwrap_or_default();
     let detail_width = if detail_text.is_empty() {
@@ -132,22 +134,35 @@ pub(super) fn render_compact_list_row(
     let mut show_detail = false;
     let mut show_modified = false;
 
-    if detail_width > 0 && available_width >= min_name_width.saturating_add(detail_width) {
+    if detail_width > 0
+        && available_width
+            >= min_name_width
+                .saturating_add(COMPACT_METADATA_GAP)
+                .saturating_add(detail_width)
+    {
         show_detail = true;
-        reserved_metadata_width = reserved_metadata_width.saturating_add(detail_width);
+        reserved_metadata_width = reserved_metadata_width
+            .saturating_add(COMPACT_METADATA_GAP)
+            .saturating_add(detail_width);
     }
     if available_width
         >= min_name_width
             .saturating_add(reserved_metadata_width)
+            .saturating_add(COMPACT_METADATA_GAP)
             .saturating_add(modified_width)
     {
         show_modified = true;
-        reserved_metadata_width = reserved_metadata_width.saturating_add(modified_width);
+        reserved_metadata_width = reserved_metadata_width
+            .saturating_add(COMPACT_METADATA_GAP)
+            .saturating_add(modified_width);
     }
 
-    let name_width = available_width
+    let max_name_width = available_width
         .saturating_sub(reserved_metadata_width)
         .max(1);
+    let name_width = max_name_width
+        .min(COMPACT_NAME_SOFT_MAX_WIDTH)
+        .max(min_name_width);
     let name = helpers::clamp_label(&entry.name, name_width);
     let mut spans = vec![
         Span::styled(
@@ -164,12 +179,14 @@ pub(super) fn render_compact_list_row(
         Span::styled(pad_right(name, name_width), name_style),
     ];
     if show_detail {
+        spans.push(Span::raw("  "));
         spans.push(Span::styled(
             pad_left(detail_text, detail_width),
             muted_style,
         ));
     }
     if show_modified {
+        spans.push(Span::raw("  "));
         spans.push(Span::styled(
             pad_left(modified_text, modified_width),
             muted_style,

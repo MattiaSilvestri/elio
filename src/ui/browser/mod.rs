@@ -1186,6 +1186,35 @@ mod tests {
     }
 
     #[test]
+    fn compact_list_rows_do_not_push_metadata_into_a_far_right_column() {
+        let root = temp_path("wide-list-column-spacing");
+        let file_path = root.join("north-star-chronicles-deluxe-edition-volume-13.cbz");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        let file = fs::File::create(&file_path).expect("failed to create test file");
+        file.set_len(13_000_000).expect("failed to size test file");
+
+        let app = App::new_at(root.clone()).expect("app should load temp directory");
+        let entry = app.entries.first().expect("entry should be present");
+        let rendered = line_text(&render_compact_list_row(
+            &app,
+            entry,
+            true,
+            220,
+            theme::palette(),
+        ));
+        let detail_index = rendered
+            .find("13 MB")
+            .expect("wide compact row should keep the size metadata visible");
+
+        assert!(
+            detail_index < 90,
+            "expected compact-row metadata to stay near the name even on extreme widths, got: {rendered:?}"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
     fn compact_list_rows_hide_metadata_early_on_tight_widths() {
         let root = temp_path("compact-list-priority");
         let file_path = root.join("north-star-chronicles-deluxe-edition.cbz");

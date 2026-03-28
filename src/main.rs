@@ -279,3 +279,27 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use ratatui::{buffer::Buffer, layout::Rect, style::Style};
+
+    #[test]
+    fn ratatui_diff_preserves_positions_beyond_u16_max_cells() {
+        let area = Rect::new(0, 0, 400, 200);
+        let previous = Buffer::empty(area);
+        let mut next = Buffer::empty(area);
+        next.set_string(123, 180, "X", Style::default());
+
+        let diff = previous.diff(&next);
+
+        assert!(
+            diff.iter()
+                .any(|(x, y, cell)| *x == 123 && *y == 180 && cell.symbol() == "X"),
+            "expected diff to keep the changed cell at (123, 180), got: {:?}",
+            diff.iter()
+                .map(|(x, y, cell)| (*x, *y, cell.symbol().to_string()))
+                .collect::<Vec<_>>()
+        );
+    }
+}
