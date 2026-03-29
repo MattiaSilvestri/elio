@@ -1,32 +1,8 @@
-# elio
+<h1 align="left"><img src="assets/logo.png" width="85" alt="elio logo" align="absmiddle" />&nbsp;elio</h1>
 
-A terminal-native, mouse-capable file manager with a soft folder-first layout and rich previews.
+A terminal-native, mouse-capable file manager with rich previews and inline images.
 
 ![elio — default theme](examples/themes/default/screenshot.png)
-
-Three panes, strong keyboard and mouse support, and built-in previews for the file types you hit most often.
-
----
-
-## Why Elio
-
-Elio is designed to feel terminal-native rather than like a GUI file manager squeezed into a TUI: keyboard and mouse navigation are both first-class, common previews are built in, and richer preview features layer on through optional external tools instead of forcing a heavy baseline install.
-
----
-
-## Features
-
-- **Terminal-native navigation** — keyboard and mouse are both first-class
-- **Rich previews** — text, code, structured data, archives, EPUB, comics, images, and PDFs
-- **Inline image support** — rendered images and PDF pages in supported terminals
-- **Fast browsing** — grid/list views, fuzzy search, history, sorting, and hidden-file toggle
-- **Live updates** — watches the current directory with a polling fallback
-- **Configurable** — behavior via `config.toml`, appearance via `theme.toml`
-
----
-
-<details>
-<summary><strong>Screenshots</strong></summary>
 
 | Catppuccin Mocha | Tokyo Night |
 |---|---|
@@ -35,26 +11,28 @@ Elio is designed to feel terminal-native rather than like a GUI file manager squ
 | Amber Dusk | Blush Light |
 |---|---|
 | ![Amber Dusk](examples/themes/amber-dusk/screenshot.png) | ![Blush Light](examples/themes/blush-light/screenshot.png) |
-</details>
 
+---
+
+## Features
+
+- **Three-pane layout** — Places, Files, and Preview side by side
+- **Keyboard and mouse** — both are first-class; navigate however you prefer
+- **Rich previews** — text, code with syntax highlighting, structured data, archives, EPUB, comics, images, and PDFs
+- **Inline images** — rendered directly in the terminal on supported terminals
+- **Grid and list views** — switch with `v`, zoom the grid with `+` / `-`
+- **Fuzzy search** — find folders and files quickly
+- **Live updates** — watches the current directory with a polling fallback
+- **Theming** — full palette and file-class control via `theme.toml`
+
+---
 
 ## Installation
 
-Requirements:
-- Rust (stable toolchain) to build from source
-- A terminal that supports 24-bit color and mouse reporting
-
-**Run directly from the repository:**
+Requires a Rust stable toolchain and a terminal with 24-bit color and mouse support.
 
 ```bash
 cargo run --release
-```
-
-**Install to your PATH:**
-
-```bash
-cargo install --path .
-elio
 ```
 
 `elio` starts in your current working directory.
@@ -63,128 +41,78 @@ elio
 
 ## Image Previews
 
-`elio` renders inline images and PDF pages directly in the terminal using the native graphics protocol of the detected terminal. Detection is automatic — no configuration needed in supported terminals.
+Inline image and PDF previews work automatically on supported terminals — no configuration needed.
 
-### Terminal Compatibility
-
-| Terminal | Protocol | Image previews |
+| Terminal | Protocol | Status |
 |---|---|---|
-| [Kitty](https://sw.kovidgoyal.net/kitty/) | Kitty Graphics Protocol | Enabled by default |
-| [Ghostty](https://ghostty.org/) | Kitty Graphics Protocol | Enabled by default |
-| [Warp](https://www.warp.dev/) | Kitty Graphics Protocol | Enabled by default |
-| [WezTerm](https://wezfurlong.org/wezterm/) | iTerm2 Inline Protocol | Enabled by default |
+| [Kitty](https://sw.kovidgoyal.net/kitty/) | Kitty Graphics Protocol | ✓ Auto-detected |
+| [Ghostty](https://ghostty.org/) | Kitty Graphics Protocol | ✓ Auto-detected |
+| [Warp](https://www.warp.dev/) | Kitty Graphics Protocol | ✓ Auto-detected |
+| [WezTerm](https://wezfurlong.org/wezterm/) | iTerm2 Inline Protocol | ✓ Auto-detected |
 | Alacritty | — | Not supported |
-| Other | Kitty Graphics Protocol | Disabled by default (see below) |
-
-### Environment Variables
+| Other | Kitty Graphics Protocol | Set `ELIO_IMAGE_PREVIEWS=1` to enable |
 
 | Variable | Effect |
 |---|---|
-| `ELIO_IMAGE_PREVIEWS=1` | Force-enable image previews on unrecognized terminals that support the Kitty Graphics Protocol |
+| `ELIO_IMAGE_PREVIEWS=1` | Force-enable on unrecognized terminals that support the Kitty Graphics Protocol |
 | `ELIO_DEBUG_PREVIEW` | Log image preview activity to `/tmp/elio-preview.log` |
 | `ELIO_LOG_MOUSE` | Log raw mouse events to `/tmp/elio-mouse.log` |
 
 ---
 
-## Preview Notes
-
-> Inline image and PDF page previews depend on terminal graphics protocol support. Some preview types also use optional external tools for richer coverage or better fallback behavior. `elio` still works without them, but preview coverage is reduced when they are missing.
-
----
-
 ## Optional Tools
 
-`elio` works without extra setup. These tools unlock additional behavior when present:
+`elio` works without any extra setup. These tools unlock richer previews and additional features when installed:
 
-### PDF
-
-| Package / Tool | Commands | What it enables |
-|---|---|---|
-| Poppler utilities | `pdfinfo`, `pdftocairo` | PDF metadata and rendered PDF page previews |
-
-### Images
-
-| Package / Tool | Commands | What it enables |
-|---|---|---|
-| `ffmpeg` | `ffmpeg` | Broader raster image format rendering |
-| `resvg` | `resvg` | Preferred SVG rasterization for image previews |
-| ImageMagick | `magick` | SVG rasterization fallback and broader image format rendering |
-
-### Archives
-
-| Package / Tool | Commands | What it enables |
-|---|---|---|
-| 7-Zip | `7z` | Comic archive preview and broad edge-case archive fallback |
-| libarchive / bsdtar | `bsdtar` | Rare archive-family listing and ISO fallback |
-| An `isoinfo` provider | `isoinfo` | Additional ISO listing fallback |
-
-### External Open
-
-| Package / Tool | Commands | What it enables |
-|---|---|---|
-| Desktop opener | `gio open` or `xdg-open` | Open files externally with `o` |
-
-### Clipboard
-
-| Package / Tool | Commands | What it enables |
-|---|---|---|
-| Wayland clipboard | `wl-copy` | Copy file metadata to the system clipboard with `c` |
-| X11 clipboard | `xclip` or `xsel` | Copy file metadata to the system clipboard with `c` |
-| macOS clipboard | `pbcopy` | Copy file metadata to the system clipboard with `c` |
-| Windows clipboard | `clip` | Copy file metadata to the system clipboard with `c` |
+| Category | Tool | Command(s) | What it enables |
+|---|---|---|---|
+| PDF | Poppler | `pdfinfo`, `pdftocairo` | PDF metadata and rendered page previews |
+| Images | ffmpeg | `ffmpeg` | Broader raster image format support |
+| Images | resvg | `resvg` | SVG rasterization (preferred) |
+| Images | ImageMagick | `magick` | SVG rasterization fallback |
+| Archives | 7-Zip | `7z` | Comic archive preview and edge-case archive fallback |
+| Archives | libarchive | `bsdtar` | Rare archive types and ISO fallback |
+| Archives | isoinfo | `isoinfo` | Additional ISO listing fallback |
+| External open | Desktop opener | `gio open` or `xdg-open` | Open files externally with `o` or `Enter` |
+| Clipboard | Wayland | `wl-copy` | Copy file metadata to clipboard with `c` |
+| Clipboard | X11 | `xclip` or `xsel` | Copy file metadata to clipboard with `c` |
+| Clipboard | macOS | `pbcopy` | Copy file metadata to clipboard with `c` |
+| Clipboard | Windows | `clip` | Copy file metadata to clipboard with `c` |
 
 ---
 
 ## Configuration
 
-```bash
-~/.config/elio/config.toml
-```
+`~/.config/elio/config.toml`
 
 ```toml
 [ui]
 show_top_bar = false
-grid_zoom = 1
+# grid_zoom = 1   # starting grid zoom: 0, 1, or 2
 
-# Optional wide-layout pane weights. Set a pane to 0 to hide it.
-#
 # [layout.panes]
-# places = 10
-# files = 45
+# places  = 10
+# files   = 45
 # preview = 45
 ```
 
 | Key | Default | Description |
 |---|---|---|
 | `ui.show_top_bar` | `false` | Show or hide the toolbar at the top of the screen |
-| `ui.grid_zoom` | `1` | Starting zoom level for grid view (`0`, `1`, or `2`; values outside range are clamped) |
-| `layout.panes.places` | unset | Relative width weight for the Places pane in custom layouts; `0` hides it |
-| `layout.panes.files` | unset | Relative width weight for the Files pane in custom layouts; must be greater than `0` |
-| `layout.panes.preview` | unset | Relative width weight for the Preview pane in custom layouts; `0` hides it |
+| `ui.grid_zoom` | `1` | Starting grid zoom level (`0`, `1`, or `2`; values outside range are clamped) |
+| `layout.panes.places` | unset | Relative width weight for the Places pane; `0` hides it |
+| `layout.panes.files` | unset | Relative width weight for the Files pane |
+| `layout.panes.preview` | unset | Relative width weight for the Preview pane; `0` hides it |
 
-If the file does not exist, `elio` uses built-in defaults. If `[layout.panes]` is omitted, Elio keeps the current built-in responsive layout:
-
-- Horizontal layout: Places prefers `24` columns, then Files / Preview use a `54 / 46` split of the remaining width
-- Tighter windows: Places can shrink to `18` columns before Preview stacks below Files
-- Height-constrained windows: Preview drops out instead of stacking too early when there is not enough vertical space
-
-`layout.panes` values are relative weights across the browser body's horizontal space rather than strict percentages, so `10/45/45` and `20/90/90` produce the same split. Custom layouts keep panes side by side whenever the visible panes can still meet minimum usable widths. When Preview cannot fit horizontally but there is enough height, it stacks below Files; when space is extremely constrained, Preview may temporarily drop out to keep the browser usable.
-
-See [examples/config.toml](examples/config.toml) for an annotated reference.
+Pane weights are relative — `10/45/45` and `20/90/90` produce the same split. If `[layout.panes]` is omitted, elio uses a built-in responsive layout. See [examples/config.toml](examples/config.toml) for an annotated reference.
 
 ---
 
 ## Theming
 
-```bash
-~/.config/elio/theme.toml
-```
+`~/.config/elio/theme.toml`
 
-Theme files layer on top of the built-in defaults — only the keys you set are overridden. If the file is missing or unparseable, `elio` falls back to the built-in theme silently (parse errors are reported to `stderr`).
-
-The built-in default theme source is [`assets/themes/default/theme.toml`](assets/themes/default/theme.toml). Use it as the reference if you want to start from the shipped default and customize it.
-
-### Supported Sections
+Theme files layer on top of the built-in defaults — only the keys you provide are overridden. If the file is missing or cannot be parsed, elio falls back silently (parse errors are reported to stderr).
 
 | Section | Controls |
 |---|---|
@@ -197,131 +125,96 @@ The built-in default theme source is [`assets/themes/default/theme.toml`](assets
 
 Rule resolution order: exact name → extension → class fallback. Matching is case-insensitive.
 
-### Built-in File Classes
-
-`directory` · `code` · `config` · `document` · `image` · `audio` · `video` · `archive` · `font` · `data` · `file`
-
-Aliases: `dir`/`folder` → `directory`, `doc`/`text` → `document`, `img` → `image`, `compressed` → `archive`, `plain` → `file`
-
-### Minimal Example
+**Built-in file classes:** `directory` · `code` · `config` · `document` · `image` · `audio` · `video` · `archive` · `font` · `data` · `file`
 
 ```toml
 [palette]
 bg = "#020304"
-chrome = "#07090c"
-panel = "#101419"
-text = "#e7edf5"
-muted = "#8c97a8"
 accent = "#7aaeff"
 selected_bg = "#243758"
 
 [preview.code]
 keyword = "#ff78c6"
 function = "#36d7ff"
-type = "#b38cff"
-string = "#79e7d5"
-comment = "#6f8399"
+string  = "#79e7d5"
 
 [extensions.lock]
 class = "data"
-icon = "󰌾"
+icon  = "󰌾"
 color = "#59de94"
 ```
 
-Alternate ready-to-use sample themes remain in [examples/themes/](examples/themes/). Copy any of those `theme.toml` files to `~/.config/elio/theme.toml` to apply them.
+The full default theme is at [`assets/themes/default/theme.toml`](assets/themes/default/theme.toml). Ready-to-use themes are in [`examples/themes/`](examples/themes/) — copy any `theme.toml` to `~/.config/elio/theme.toml` to apply it.
 
 ---
 
 <details>
-<summary><strong>Controls and Navigation</strong></summary>
+<summary><strong>Controls</strong></summary>
 
-### Browser
+### Navigation
 
-| Key / Action | Description |
+| Key | Action |
 |---|---|
-| `Enter` | Open selected folder or file |
-| `Backspace` · `Left` · `h` | Go to parent directory |
-| `Right` · `l` | Enter selected folder |
-| `Up` / `Down` · `j` / `k` | Move selection |
-| `g` | Open go-to menu (`g` top, `d` downloads, `h` home, `c` .config, `t` trash) |
+| `↑` / `↓` · `j` / `k` | Move selection |
+| `←` · `h` · `Backspace` | Go to parent directory |
+| `→` · `l` · `Enter` | Enter folder / open file |
+| `g` | Go-to menu (`g` top, `d` downloads, `h` home, `c` .config, `t` trash) |
 | `G` | Jump to last item |
-| `Tab` / `Shift+Tab` | Jump through pinned places |
-| `Alt+Left` / `Alt+Right` | Back / forward in history |
+| `PageUp` / `PageDown` | Page up / down |
+| `Tab` / `Shift+Tab` | Cycle places |
+| `Alt+←` / `Alt+→` | Back / forward in history |
+
+### View
+
+| Key | Action |
+|---|---|
 | `v` | Toggle grid / list view |
-| `.` | Show or hide dotfiles |
-| `s` | Cycle sort mode (Name → Modified → Size) |
-| `o` | Open selected item externally |
-| `f` | Fuzzy-find folders in the current tree |
-| `Ctrl+F` | Fuzzy-find files in the current tree |
-| `?` | Open help overlay |
-| `q` | Quit |
+| `+` / `-` | Grid zoom in / out |
+| `.` | Show / hide dotfiles |
+| `s` | Cycle sort (Name → Modified → Size) |
+| `<` / `>` | Scroll preview left / right |
 
-### File Actions
+### Files and Clipboard
 
-| Key / Action | Description |
+| Key | Action |
 |---|---|
 | `Space` | Toggle selection |
-| `Ctrl+A` | Select all visible items |
+| `Ctrl+A` | Select all |
+| `y` | Yank (copy) |
+| `x` | Cut |
+| `p` | Paste |
 | `a` | Create file or folder |
-| `c` | Copy file name / path details to the system clipboard |
-| `g` | Open go-to menu |
-| `d` | Move selected item(s) to trash; permanently delete when already in trash |
-| `r` | Restore in trash, or rename / bulk rename outside trash depending on selection |
-| `F2` | Rename current item or bulk rename selected items |
-| `Enter` | Confirm create, rename, bulk rename, trash, or restore prompts |
-| `Esc` | Cancel active prompt, clear selection, close overlays, or quit |
-| `Alt+Enter` / `Ctrl+J` | Add another line in the create prompt |
+| `d` | Trash; permanently delete if already in trash |
+| `r` | Rename / bulk rename / restore from trash |
+| `F2` | Rename / bulk rename |
+| `o` | Open externally |
+| `c` | Copy path details to clipboard |
+
+### Search
+
+| Key | Action |
+|---|---|
+| `f` | Fuzzy-find folders in the current tree |
+| `Ctrl+F` | Fuzzy-find files in the current tree |
 
 ### Mouse
 
 | Action | Description |
 |---|---|
 | Click | Select item |
-| Double-click | Open folder or file |
-| Scroll | Scroll browser or preview pane depending on cursor position |
-| `Shift+Scroll` | Scroll sideways in code previews |
+| Double-click | Open item |
+| Scroll | Scroll browser or preview |
+| `Shift+Scroll` | Scroll preview sideways |
 
-### Fuzzy Finder
+### General
 
-| Key | Description |
+| Key | Action |
 |---|---|
-| `Left` / `Right` | Move text cursor |
-| `Home` / `End` | Jump to start / end of query |
-| `Backspace` / `Delete` | Edit at cursor |
-| `Up` / `Down` | Move through results |
-| `Enter` | Open selected result |
-| `Esc` | Close finder |
+| `?` | Open help overlay |
+| `Esc` | Cancel / clear selection / close overlay |
+| `q` | Quit |
+
 </details>
-
----
-
-## Code Preview Support
-
-Code preview is now split into one central language registry plus multiple rendering backends:
-
-- `src/preview/code/registry.rs` resolves extensions, exact filenames, shebangs, modelines, and Markdown fence aliases from one source of truth.
-- `src/preview/code/render.rs` is the single preview entrypoint used by both file previews and Markdown fenced code blocks.
-- `src/preview/code/backends/syntect.rs` handles generic syntax-highlighted languages with Elio theme colors and a shell-aware fallback renderer.
-- `src/preview/code/custom/` keeps the semantic renderers that are better than generic syntax highlighting.
-
-Structured and specialized previews take priority over generic syntax highlighting for Markdown, JSON, JSONC / JSON5, TOML, YAML, `.env`, logs, directive configs, and INI / Desktop Entry files.
-
-The current curated syntect bundle explicitly supports these code syntaxes:
-
-- `html`, `xml`, `css`, `scss`, `sass`, `less`
-- `javascript`, `jsx`, `typescript`, `tsx`
-- `sql`, `diff`, `dockerfile`, `hcl`, `terraform`
-- `rust`, `go`, `c`, `cpp`, `cs`, `java`, `dart`, `fortran`, `cobol`, `zig`, `php`, `swift`, `kotlin`, `elixir`, `clojure`, `ruby`, `python`, `lua`
-- `groovy`, `scala`, `perl`, `haskell`, `julia`, `r`
-- `make`, `just`, `sh`, `bash`, `zsh`, `ksh`, `fish`, `powershell`, `nix`, `cmake`
-
-Anything outside that matrix falls back to plain code preview instead of advertising unsupported highlighting.
-
-`clojure` support also covers the common Clojure-family aliases and file shapes used in practice: `clj`, `cljs`, `cljc`, `edn`, `project.clj`, `deps.edn`, `bb.edn`, and `shadow-cljs.edn`.
-
-`fortran` support covers the common source extensions used in practice: `f`, `for`, `f90`, `f95`, `f03`, `f08`, and `fpp`.
-
-`cobol` support covers the common source and copybook extensions used in practice: `cbl`, `cob`, `cobol`, and `cpy`.
 
 ---
 
