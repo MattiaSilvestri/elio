@@ -2,7 +2,7 @@
 
 A terminal-native, mouse-capable file manager with rich previews and inline images.
 
-![elio — default theme](examples/themes/default/screenshot.png)
+![elio — default theme](examples/themes/default/screenshot.webp)
 
 | Catppuccin Mocha | Tokyo Night |
 |---|---|
