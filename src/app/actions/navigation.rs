@@ -370,21 +370,9 @@ impl App {
         };
 
         let target = entry.path.clone();
-        for (program, args) in [("gio", vec!["open"]), ("xdg-open", Vec::new())] {
-            match crate::fs::detached_open(program, &args, &target) {
-                Ok(()) => {
-                    self.status = format!("Opened {}", target.display());
-                    return Ok(());
-                }
-                Err(error) => {
-                    self.status = format!(
-                        "Failed to open {} with {}: {}",
-                        target.display(),
-                        program,
-                        error
-                    );
-                }
-            }
+        match crate::fs::open_in_system(&target) {
+            Ok(()) => self.status = format!("Opened {}", target.display()),
+            Err(e) => self.status = e,
         }
         Ok(())
     }

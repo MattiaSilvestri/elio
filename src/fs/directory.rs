@@ -1,5 +1,7 @@
 use crate::app::{Entry, EntryKind, SortMode};
 use anyhow::{Context, Result};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::{
     cmp::Ordering,
     collections::hash_map::DefaultHasher,
@@ -227,6 +229,48 @@ fn compare_entry_names(left: &Entry, right: &Entry) -> Ordering {
     super::natural_cmp(&left.name_key, &right.name_key).then_with(|| left.name.cmp(&right.name))
 }
 
+pub(crate) fn open_in_system(target: &Path) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        detached_open("open", &[], target).map_err(|e| format!("open: {e}"))
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const DETACHED_PROCESS: u32 = 0x00000008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
+
+        Command::new("cmd")
+            .args(["/c", "start", ""])
+            .arg(target)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| format!("cmd: {e}"))
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        open_with_unix_backends(target, &[("xdg-open", &[][..]), ("gio", &["open"][..])])
+    }
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn open_with_unix_backends(target: &Path, backends: &[(&str, &[&str])]) -> Result<(), String> {
+    for &(program, args) in backends {
+        match detached_open(program, args, target) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(format!("{program}: {e}")),
+        }
+    }
+    Err(String::from("No desktop opener available in this session"))
+}
+
 pub(crate) fn detached_open(program: &str, args: &[&str], target: &Path) -> io::Result<()> {
     let mut command = Command::new(program);
     command.args(args);
@@ -234,6 +278,8 @@ pub(crate) fn detached_open(program: &str, args: &[&str], target: &Path) -> io::
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
     command.stderr(Stdio::null());
+    #[cfg(unix)]
+    command.process_group(0);
     command.spawn()?;
     Ok(())
 }
@@ -552,6 +598,61 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
+    fn detached_open_moves_child_into_its_own_process_group() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_path("detached-open");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+
+        let tool = root.join("fake-open");
+        fs::write(
+            &tool,
+            "#!/bin/sh\npgid=$(ps -o pgid= -p $$ | tr -d ' ')\nprintf '%s %s\\n' \"$$\" \"$pgid\" > \"$1\"\n",
+        )
+        .expect("failed to write fake opener");
+        let mut permissions = fs::metadata(&tool)
+            .expect("fake opener metadata should exist")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&tool, permissions).expect("failed to chmod fake opener");
+
+        let capture = root.join("capture.txt");
+        detached_open(
+            tool.to_str()
+                .expect("fake opener path should be valid utf-8"),
+            &[],
+            &capture,
+        )
+        .expect("failed to spawn fake opener");
+
+        for _ in 0..100 {
+            if capture.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        let capture = fs::read_to_string(&capture).expect("fake opener should record pid and pgid");
+        let mut parts = capture.split_whitespace();
+        let pid = parts
+            .next()
+            .expect("capture should contain pid")
+            .parse::<i32>()
+            .expect("pid should be numeric");
+        let pgid = parts
+            .next()
+            .expect("capture should contain pgid")
+            .parse::<i32>()
+            .expect("pgid should be numeric");
+
+        assert_eq!(pgid, pid);
+        assert_ne!(pgid, unsafe { libc::getpgrp() });
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
     fn fingerprint_changes_when_visible_directory_entries_change() {
         let root = temp_path("fingerprint");
         fs::create_dir_all(&root).expect("failed to create temp root");
@@ -614,6 +715,142 @@ mod tests {
             .expect("should be after epoch")
             .as_secs();
         assert_eq!(secs, 1_710_498_600);
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    #[cfg(all(unix, not(target_os = "macos")))]
+    fn open_with_unix_backends_uses_first_available_backend() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_path("open-backends-first");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+
+        let capture = root.join("capture.txt");
+
+        let script = root.join("fake-xdg-open");
+        fs::write(&script, "#!/bin/sh\nprintf 'xdg-open' > \"$1\"\n")
+            .expect("failed to write script");
+        let mut perms = fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script, perms).unwrap();
+
+        let result = open_with_unix_backends(
+            &capture,
+            &[
+                (script.to_str().unwrap(), &[][..]),
+                ("this-program-does-not-exist-elio", &[][..]),
+            ],
+        );
+
+        assert!(result.is_ok(), "expected Ok, got {result:?}");
+
+        for _ in 0..100 {
+            if capture.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        let recorded = fs::read_to_string(&capture).expect("capture should exist");
+        assert_eq!(recorded.trim(), "xdg-open");
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    #[cfg(all(unix, not(target_os = "macos")))]
+    fn open_with_unix_backends_skips_missing_backend_and_tries_next() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_path("open-backends-fallback");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+
+        let capture = root.join("capture.txt");
+
+        let script = root.join("fake-gio");
+        fs::write(&script, "#!/bin/sh\nprintf 'gio' > \"$1\"\n").expect("failed to write script");
+        let mut perms = fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&script, perms).unwrap();
+
+        let result = open_with_unix_backends(
+            &capture,
+            &[
+                ("this-program-does-not-exist-elio", &[][..]),
+                (script.to_str().unwrap(), &[][..]),
+            ],
+        );
+
+        assert!(result.is_ok(), "expected Ok after fallback, got {result:?}");
+
+        for _ in 0..100 {
+            if capture.exists() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        let recorded = fs::read_to_string(&capture).expect("capture should exist");
+        assert_eq!(recorded.trim(), "gio");
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    #[cfg(all(unix, not(target_os = "macos")))]
+    fn open_with_unix_backends_returns_session_error_when_all_missing() {
+        let result = open_with_unix_backends(
+            Path::new("/tmp/anything"),
+            &[
+                ("this-program-does-not-exist-elio-a", &[][..]),
+                ("this-program-does-not-exist-elio-b", &[][..]),
+            ],
+        );
+
+        assert_eq!(
+            result.unwrap_err(),
+            "No desktop opener available in this session"
+        );
+    }
+
+    #[test]
+    #[cfg(all(unix, not(target_os = "macos")))]
+    fn open_with_unix_backends_propagates_non_notfound_errors_immediately() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = temp_path("open-backends-permerror");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+
+        // A file that exists but is not executable — spawn returns PermissionDenied.
+        let not_executable = root.join("not-executable");
+        fs::write(&not_executable, "#!/bin/sh\n").expect("failed to write file");
+        let mut perms = fs::metadata(&not_executable).unwrap().permissions();
+        perms.set_mode(0o644);
+        fs::set_permissions(&not_executable, perms).unwrap();
+
+        let script = root.join("should-not-run");
+        fs::write(&script, "#!/bin/sh\n").expect("failed to write script");
+
+        let result = open_with_unix_backends(
+            Path::new("/tmp/anything"),
+            &[
+                (not_executable.to_str().unwrap(), &[][..]),
+                (script.to_str().unwrap(), &[][..]),
+            ],
+        );
+
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("not-executable"),
+            "error should name the failing backend, got: {err}"
+        );
+        // The second backend should never have been tried.
+        assert!(
+            !err.contains("should-not-run"),
+            "second backend should not appear in error, got: {err}"
+        );
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }

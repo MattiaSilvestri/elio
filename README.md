@@ -73,11 +73,12 @@ Inline image and PDF previews work automatically on supported terminals — no c
 | Archives | 7-Zip | `7z` | Comic archive preview and edge-case archive fallback |
 | Archives | libarchive | `bsdtar` | Rare archive types and ISO fallback |
 | Archives | isoinfo | `isoinfo` | Additional ISO listing fallback |
-| External open | Desktop opener | `gio open` or `xdg-open` | Open files externally with `o` or `Enter` |
 | Clipboard | Wayland | `wl-copy` | Copy file metadata to clipboard with `c` |
 | Clipboard | X11 | `xclip` or `xsel` | Copy file metadata to clipboard with `c` |
 | Clipboard | macOS | `pbcopy` | Copy file metadata to clipboard with `c` |
 | Clipboard | Windows | `clip` | Copy file metadata to clipboard with `c` |
+
+Opening files externally (`o` / `Enter`) uses the system launcher: `open` on macOS, `cmd /c start` on Windows, and `xdg-open` or `gio` on Linux and BSD desktop sessions.
 
 ---
 

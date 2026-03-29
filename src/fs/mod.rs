@@ -12,7 +12,7 @@ fn is_hidden(file_name: &std::ffi::OsStr) -> bool {
 }
 
 pub(crate) use directory::{
-    DirectoryFingerprint, DirectorySnapshot, detached_open, load_directory_snapshot,
+    DirectoryFingerprint, DirectorySnapshot, load_directory_snapshot, open_in_system,
     restore_trash_item, scan_directory_fingerprint,
 };
 pub(crate) use format::{
