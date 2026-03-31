@@ -96,6 +96,11 @@ pub(super) struct TrashProgress {
     pub(super) completed: usize,
     pub(super) total: usize,
     pub(super) permanent: bool,
+    /// Path of the entry to select after deletion completes: the first
+    /// surviving entry at or after the cursor, falling back to the last entry
+    /// before the cursor.  Stored as a path (not name) so it takes priority
+    /// over the stale remembered-view for this directory.
+    pub(super) next_selection: Option<std::path::PathBuf>,
 }
 
 #[derive(Clone, Debug)]

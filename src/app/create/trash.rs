@@ -267,12 +267,32 @@ impl App {
         }
         self.selected_paths.clear();
 
+        // Compute which entry to land on after deletion: first surviving entry
+        // at or after the current cursor, falling back to the last surviving
+        // entry before it.
+        let deleted_paths: std::collections::HashSet<_> =
+            t.targets.iter().map(|tgt| &tgt.path).collect();
+        let next_selection = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| !deleted_paths.contains(&e.path))
+            .find(|(i, _)| *i >= self.selected)
+            .or_else(|| {
+                self.entries
+                    .iter()
+                    .enumerate()
+                    .rfind(|(_, e)| !deleted_paths.contains(&e.path))
+            })
+            .map(|(_, e)| e.path.clone());
+
         let token = self.trash_token.wrapping_add(1);
         self.trash_token = token;
         self.trash_progress = Some(TrashProgress {
             completed: 0,
             total: t.targets.len(),
             permanent: t.permanent,
+            next_selection,
         });
         self.trash_source_cwd = Some(self.cwd.clone());
 

@@ -303,6 +303,118 @@ mod tests {
     }
 
     #[test]
+    fn after_delete_cursor_moves_to_next_surviving_entry() {
+        // Deleting a middle entry should leave the cursor on what was the
+        // entry immediately below it (now occupying the same visual row).
+        let root = temp_path("cursor-next-after-delete");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("alpha.txt"), "a").expect("failed to write alpha");
+        fs::write(root.join("beta.txt"), "b").expect("failed to write beta");
+        fs::write(root.join("gamma.txt"), "c").expect("failed to write gamma");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        // entries are sorted by name: alpha=0, beta=1, gamma=2
+        app.in_trash = true;
+        app.selected = 1; // cursor on beta.txt
+        app.remember_current_directory_view(); // simulate a rendered frame committing the position
+        app.open_trash_prompt();
+        app.confirm_trash().expect("trash should succeed");
+
+        wait_for_trash_and_reload(&mut app);
+
+        assert!(!root.join("beta.txt").exists());
+        assert_eq!(
+            app.selected_entry().map(|e| e.name.as_str()),
+            Some("gamma.txt"),
+            "cursor should land on gamma.txt (next surviving entry)"
+        );
+
+        app.directory_runtime.watch = None;
+        drop(app);
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn after_delete_cursor_falls_back_to_previous_entry_when_last_is_deleted() {
+        // Deleting the last entry should leave the cursor on the entry above it.
+        let root = temp_path("cursor-prev-after-delete");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("alpha.txt"), "a").expect("failed to write alpha");
+        fs::write(root.join("beta.txt"), "b").expect("failed to write beta");
+        fs::write(root.join("gamma.txt"), "c").expect("failed to write gamma");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        // entries are sorted by name: alpha=0, beta=1, gamma=2
+        app.in_trash = true;
+        app.selected = 2; // cursor on gamma.txt
+        app.remember_current_directory_view(); // simulate a rendered frame committing the position
+        app.open_trash_prompt();
+        app.confirm_trash().expect("trash should succeed");
+
+        wait_for_trash_and_reload(&mut app);
+
+        assert!(!root.join("gamma.txt").exists());
+        assert_eq!(
+            app.selected_entry().map(|e| e.name.as_str()),
+            Some("beta.txt"),
+            "cursor should fall back to beta.txt (last surviving entry before cursor)"
+        );
+
+        app.directory_runtime.watch = None;
+        drop(app);
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn cancelled_delete_does_not_move_cursor_away_from_surviving_entry() {
+        // When permanent delete is cancelled before any item is removed, the
+        // cursor must not jump away — the targeted entry is still present.
+        let root = temp_path("cursor-cancel-delete");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        fs::write(root.join("alpha.txt"), "a").expect("failed to write alpha");
+        fs::write(root.join("beta.txt"), "b").expect("failed to write beta");
+        fs::write(root.join("gamma.txt"), "c").expect("failed to write gamma");
+
+        let mut app = App::new_at(root.clone()).expect("failed to create app");
+        app.in_trash = true;
+        app.selected = 1; // cursor on beta.txt
+        app.remember_current_directory_view(); // simulate a rendered frame committing the position
+        app.open_trash_prompt();
+        app.confirm_trash().expect("trash should succeed");
+
+        // Cancel before the worker starts processing.
+        app.scheduler.cancel_trash(app.trash_token);
+
+        wait_for_trash_and_reload(&mut app);
+
+        // beta.txt may or may not have been deleted depending on race, but the
+        // cursor must not have jumped to an entry other than what was at index 1.
+        // If the file still exists, the cursor must be on it (not on gamma.txt).
+        if root.join("beta.txt").exists() {
+            assert_eq!(
+                app.selected_entry().map(|e| e.name.as_str()),
+                Some("beta.txt"),
+                "cursor must stay on beta.txt when cancel won the race"
+            );
+        }
+        // If the cancel lost the race and beta.txt was deleted, the cursor
+        // should have moved to gamma.txt (completed == total == 1).
+        // Either outcome is valid; the key invariant is that we never land
+        // on a position whose entry no longer exists.
+        assert!(
+            app.selected_entry().is_none()
+                || root
+                    .join(app.selected_entry().unwrap().name.as_str())
+                    .exists(),
+            "cursor must point to a surviving entry"
+        );
+
+        app.directory_runtime.watch = None;
+        drop(app);
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
     fn confirm_trash_batch_trashes_multiple_files_and_reports_count() {
         let root = temp_path("trash-batch-multi");
         fs::create_dir_all(&root).expect("failed to create temp root");

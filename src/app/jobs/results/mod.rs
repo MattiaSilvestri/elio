@@ -227,7 +227,16 @@ impl App {
                         continue;
                     }
                     if build.done {
-                        self.trash_progress = None;
+                        // Only reposition the cursor when every target was
+                        // actually removed.  Cancelled or partially-failed
+                        // operations leave some entries intact, so using the
+                        // pre-computed survivor path would move the cursor
+                        // away from entries that are still present.
+                        let next_selection = self.trash_progress.take().and_then(|p| {
+                            (build.completed == p.total)
+                                .then_some(p.next_selection)
+                                .flatten()
+                        });
                         let source_cwd = self
                             .trash_source_cwd
                             .take()
@@ -249,7 +258,7 @@ impl App {
                                 previous_cwd: self.cwd.clone(),
                                 previous_selected_path: None,
                                 previous_selection_name: None,
-                                reselect_path: None,
+                                reselect_path: next_selection,
                                 history_mode: DirectoryHistoryMode::None,
                                 refresh_search: false,
                                 completion: DirectoryLoadCompletion::Status(status),
