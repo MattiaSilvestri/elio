@@ -7,6 +7,7 @@ static ACTIVE_CONFIG: OnceLock<Config> = OnceLock::new();
 pub(crate) struct UiConfig {
     pub show_top_bar: bool,
     pub grid_zoom: u8,
+    pub show_hidden: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -37,6 +38,7 @@ struct ConfigFile {
 struct UiConfigOverride {
     show_top_bar: Option<bool>,
     grid_zoom: Option<i64>,
+    show_hidden: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
@@ -119,6 +121,7 @@ impl Config {
             ui: UiConfig {
                 show_top_bar: false,
                 grid_zoom: 1,
+                show_hidden: false,
             },
             layout: LayoutConfig { panes: None },
         }
@@ -133,6 +136,9 @@ impl Config {
             }
             if let Some(zoom) = ui.grid_zoom {
                 resolved.ui.grid_zoom = zoom.clamp(0, 2) as u8;
+            }
+            if let Some(show_hidden) = ui.show_hidden {
+                resolved.ui.show_hidden = show_hidden;
             }
         }
         if let Some(layout) = parsed.layout {
@@ -188,6 +194,18 @@ mod tests {
         let config = Config::default_config();
         assert!(!config.ui.show_top_bar);
         assert_eq!(config.layout.panes, None);
+    }
+
+    #[test]
+    fn config_default_hides_hidden_files() {
+        let config = Config::default_config();
+        assert!(!config.ui.show_hidden);
+    }
+
+    #[test]
+    fn config_can_enable_show_hidden() {
+        let config = Config::from_str("[ui]\nshow_hidden = true").expect("config should parse");
+        assert!(config.ui.show_hidden);
     }
 
     #[test]

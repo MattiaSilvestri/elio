@@ -93,7 +93,8 @@ Opening files externally (`o` / `Enter`) uses the system launcher: `open` on mac
 ```toml
 [ui]
 show_top_bar = false
-# grid_zoom = 1   # starting grid zoom: 0, 1, or 2
+# grid_zoom = 1       # starting grid zoom: 0, 1, or 2
+# show_hidden = false # show dotfiles on startup (toggle at runtime with .)
 
 # [layout.panes]
 # places  = 10
@@ -105,6 +106,7 @@ show_top_bar = false
 |---|---|---|
 | `ui.show_top_bar` | `false` | Show or hide the toolbar at the top of the screen |
 | `ui.grid_zoom` | `1` | Starting grid zoom level (`0`, `1`, or `2`; values outside range are clamped) |
+| `ui.show_hidden` | `false` | Show dotfiles and hidden files on startup; can still be toggled at runtime with `.` |
 | `layout.panes.places` | unset | Relative width weight for the Places pane; `0` hides it |
 | `layout.panes.files` | unset | Relative width weight for the Files pane |
 | `layout.panes.preview` | unset | Relative width weight for the Preview pane; `0` hides it |
