@@ -405,6 +405,10 @@ impl JobScheduler {
     }
 
     fn with_config(config: SchedulerConfig) -> Self {
+        // Reclaim any staging directories left behind by a previous session
+        // that was killed before staged-directory cleanup could finish.
+        tasks::trash::sweep_staging_on_startup();
+
         let (result_tx, result_rx) = mpsc::channel();
         let metrics = Arc::new(Mutex::new(SchedulerMetrics::default()));
         Self {

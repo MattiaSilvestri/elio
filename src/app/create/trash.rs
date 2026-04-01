@@ -296,6 +296,16 @@ impl App {
         });
         self.trash_source_cwd = Some(self.cwd.clone());
 
+        // Best-effort cross-device detection: if the source appears to be on a
+        // different device than the home data dir (where the trash usually lives),
+        // the trash crate will fall back to a copy+delete instead of a fast
+        // rename.  Show a more informative status in that case.  This is UI-only
+        // — behaviour is unchanged regardless of the heuristic's outcome.
+        #[cfg(unix)]
+        if !t.permanent && likely_cross_device_trash(&t.targets) {
+            self.status = "Copying to trash…".to_string();
+        }
+
         self.scheduler.submit_trash(TrashRequest {
             token,
             targets: t.targets,
@@ -303,5 +313,30 @@ impl App {
         });
 
         Ok(())
+    }
+}
+
+/// Returns `true` when the first trash target appears to be on a different
+/// device than `dirs::data_dir()` (i.e. `~/.local/share` on Linux), which is
+/// where the home trash typically lives.
+///
+/// This is a best-effort heuristic.  The freedesktop trash spec may use a
+/// per-mount `.Trash-UID` directory instead of the home trash, so false
+/// positives are possible — in that case the user sees "Copying to trash…"
+/// briefly before the fast rename completes.  The heuristic is UI-only and
+/// never affects behaviour.
+#[cfg(unix)]
+fn likely_cross_device_trash(targets: &[crate::app::state::TrashTarget]) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let source_dev = targets
+        .first()
+        .and_then(|t| std::fs::metadata(&t.path).ok())
+        .map(|m| m.dev());
+    let data_dev = dirs::data_dir()
+        .and_then(|d| std::fs::metadata(&d).ok())
+        .map(|m| m.dev());
+    match (source_dev, data_dev) {
+        (Some(s), Some(d)) => s != d,
+        _ => false,
     }
 }
