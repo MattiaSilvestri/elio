@@ -227,6 +227,33 @@ pub(super) struct GoToOverlay {
 }
 
 #[derive(Clone, Debug)]
+pub(super) struct OpenWithApp {
+    pub(super) display_name: String,
+    // Reserved for a future "set as default" action; not yet read at launch time.
+    #[allow(dead_code)]
+    pub(super) desktop_id: Option<String>,
+    pub(super) program: String,
+    pub(super) args: Vec<String>,
+    pub(super) is_default: bool,
+    /// True when the .desktop file has `Terminal=true` — the app must be run
+    /// inside a terminal emulator, not launched detached.
+    pub(super) requires_terminal: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct OpenWithRow {
+    pub(super) shortcut: char,
+    pub(super) label: String,
+    pub(super) app: OpenWithApp,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct OpenWithOverlay {
+    pub(super) title: String,
+    pub(super) rows: Vec<OpenWithRow>,
+}
+
+#[derive(Clone, Debug)]
 pub(super) struct SearchCache {
     pub(super) cwd: PathBuf,
     pub(super) scope: SearchScope,
@@ -489,6 +516,7 @@ pub(crate) struct OverlayState {
     pub(in crate::app) bulk_rename: Option<BulkRenameOverlay>,
     pub(in crate::app) goto: Option<GoToOverlay>,
     pub(in crate::app) copy: Option<CopyOverlay>,
+    pub(in crate::app) open_with: Option<OpenWithOverlay>,
     pub(in crate::app) search: Option<SearchOverlay>,
     pub(crate) help: bool,
 }
@@ -550,6 +578,10 @@ pub struct App {
     pub(in crate::app) input: InputRuntime,
     pub(in crate::app) status: String,
     pub(crate) should_quit: bool,
+    /// Set by open-with when the chosen app has `Terminal=true`.  The event
+    /// loop in `lib.rs` drains this, suspends the TUI, runs the command
+    /// blocking in the current terminal, then restores the TUI.
+    pub(crate) pending_terminal_command: Option<(String, Vec<String>)>,
 }
 
 impl App {
@@ -659,6 +691,7 @@ impl App {
             },
             status: String::new(),
             should_quit: false,
+            pending_terminal_command: None,
         };
         app.navigation.in_trash = App::path_is_trash(&app.navigation.cwd);
         let snapshot = crate::fs::load_directory_snapshot(

@@ -1,5 +1,7 @@
 use crate::core::{Entry, EntryKind, SortMode};
 use anyhow::{Context, Result};
+#[cfg(test)]
+use std::cell::RefCell;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 use std::{
@@ -12,6 +14,11 @@ use std::{
     process::{Command, Stdio},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(test)]
+thread_local! {
+    static TEST_OPEN_IN_SYSTEM_CAPTURE: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct DirectoryFingerprint {
@@ -230,6 +237,11 @@ fn compare_entry_names(left: &Entry, right: &Entry) -> Ordering {
 }
 
 pub(crate) fn open_in_system(target: &Path) -> Result<(), String> {
+    #[cfg(test)]
+    if let Some(capture) = TEST_OPEN_IN_SYSTEM_CAPTURE.with(|slot| slot.borrow().clone()) {
+        return fs::write(&capture, target.display().to_string()).map_err(|e| e.to_string());
+    }
+
     #[cfg(target_os = "macos")]
     {
         detached_open("open", &[], target).map_err(|e| format!("open: {e}"))
@@ -259,6 +271,11 @@ pub(crate) fn open_in_system(target: &Path) -> Result<(), String> {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn set_open_in_system_capture_for_test(path: Option<PathBuf>) {
+    TEST_OPEN_IN_SYSTEM_CAPTURE.with(|slot| *slot.borrow_mut() = path);
+}
+
 #[cfg(all(unix, not(target_os = "macos")))]
 fn open_with_unix_backends(target: &Path, backends: &[(&str, &[&str])]) -> Result<(), String> {
     for &(program, args) in backends {
@@ -275,6 +292,31 @@ pub(crate) fn detached_open(program: &str, args: &[&str], target: &Path) -> io::
     let mut command = Command::new(program);
     command.args(args);
     command.arg(target);
+
+    #[cfg(target_os = "macos")]
+    if program == "open" {
+        return status_spawn(&mut command);
+    }
+
+    detached_spawn(&mut command)
+}
+
+/// Spawns `program` with the given `args` detached from the terminal.
+/// Unlike [`detached_open`], the target path is not appended — it must
+/// already be present in `args` (as produced by the Exec= expansion).
+pub(crate) fn detached_open_command(program: &str, args: &[String]) -> io::Result<()> {
+    let mut command = Command::new(program);
+    command.args(args);
+
+    #[cfg(target_os = "macos")]
+    if program == "open" {
+        return status_spawn(&mut command);
+    }
+
+    detached_spawn(&mut command)
+}
+
+fn detached_spawn(command: &mut Command) -> io::Result<()> {
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
     command.stderr(Stdio::null());
@@ -282,6 +324,19 @@ pub(crate) fn detached_open(program: &str, args: &[&str], target: &Path) -> io::
     command.process_group(0);
     command.spawn()?;
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn status_spawn(command: &mut Command) -> io::Result<()> {
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::null());
+    command.stderr(Stdio::null());
+    let status = command.status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!("process exited with {status}")))
+    }
 }
 
 fn entry_details(path: &Path, metadata: &fs::Metadata) -> EntryDetails {

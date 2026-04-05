@@ -38,3 +38,9 @@ syntect = { version = "5.2", default-features = false, features = ["default-synt
 strip = true
 lto = "thin"
 codegen-units = 1
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# Foundation types for path/string handling, display names, and bundle IDs.
+# CoreServices (linked inline in macos.rs) provides the Launch Services C API
+# used for app discovery — the same API Finder uses for its "Open With" menu.
+objc2-foundation = { version = "0.3", features = ["NSBundle", "NSFileManager", "NSString", "NSURL"] }

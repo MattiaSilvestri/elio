@@ -44,6 +44,10 @@ impl App {
             return self.handle_copy_key(key);
         }
 
+        if self.overlays.open_with.is_some() {
+            return self.handle_open_with_key(key);
+        }
+
         if self.overlays.search.is_some() {
             return self.handle_search_key(key);
         }
@@ -211,7 +215,7 @@ impl App {
             KeyCode::End => self.select_last(),
             KeyCode::Char('g') => self.open_goto_overlay(),
             KeyCode::Char('G') => self.select_last(),
-            KeyCode::Enter => self.open_selected()?,
+            KeyCode::Enter | KeyCode::Char('\n') | KeyCode::Char('\r') => self.open_selected()?,
             KeyCode::Backspace => self.go_parent()?,
             KeyCode::Char(' ') => self.toggle_selection(),
             KeyCode::Char('+') | KeyCode::Char('=')
@@ -264,6 +268,7 @@ impl App {
             Action::CopyPath => self.open_copy_overlay(),
             Action::SearchFolders => self.open_search_with_status(SearchScope::Folders),
             Action::Open => self.open_in_system()?,
+            Action::OpenWith => self.open_open_with_overlay(),
             Action::Sort => self.cycle_sort_mode()?,
             Action::ToggleView => self.toggle_view_mode(),
             Action::ToggleHidden => self.toggle_hidden_files()?,
@@ -326,7 +331,7 @@ impl App {
         if entry.is_dir() {
             self.set_dir(entry.path.clone())
         } else {
-            self.open_in_system()
+            self.dispatch_action(crate::config::Action::Open)
         }
     }
 }
