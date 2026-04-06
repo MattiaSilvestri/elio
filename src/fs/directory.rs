@@ -4,13 +4,15 @@ use anyhow::{Context, Result};
 use std::cell::RefCell;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(test)]
+use std::path::PathBuf;
 use std::{
     cmp::Ordering,
     collections::hash_map::DefaultHasher,
     fs,
     hash::{Hash, Hasher},
     io,
-    path::{Path, PathBuf},
+    path::Path,
     process::{Command, Stdio},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -390,103 +392,6 @@ fn fingerprint_time(time: Option<SystemTime>) -> Option<(u64, u32)> {
             .map(|duration| (duration.as_secs(), duration.subsec_nanos()))
     })
 }
-
-// ---------------------------------------------------------------------------
-// Restore from trash
-// ---------------------------------------------------------------------------
-
-/// Restores a trashed item to its original location.
-///
-/// Only supported on **freedesktop trash** layouts (Linux, BSD). `entry_path` must
-/// be a file inside a `Trash/files/` directory; the sibling `Trash/info/<name>.trashinfo`
-/// file is used to recover the original path.
-///
-/// On macOS (`~/.Trash`) and Windows (Recycle Bin) there is no `.trashinfo` metadata,
-/// so this function returns an error with a clear message rather than a confusing
-/// "file not found".
-pub(crate) fn restore_trash_item(entry_path: &Path) -> anyhow::Result<PathBuf> {
-    let name = entry_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| anyhow::anyhow!("cannot determine file name for {:?}", entry_path))?;
-
-    // Derive the `info/` dir: Trash/files/../info == Trash/info
-    let info_dir = entry_path
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|trash_root| trash_root.join("info"))
-        .ok_or_else(|| anyhow::anyhow!("cannot determine trash info dir for {:?}", entry_path))?;
-
-    // The info/ sibling directory only exists in a FreeDesktop trash layout.
-    // macOS ~/.Trash and Windows Recycle Bin do not have it, so we give a
-    // clear error rather than a confusing "file not found" message.
-    if !info_dir.is_dir() {
-        anyhow::bail!("restore is not supported for this trash location");
-    }
-
-    let info_path = info_dir.join(format!("{name}.trashinfo"));
-    let content =
-        fs::read_to_string(&info_path).with_context(|| format!("cannot read {:?}", info_path))?;
-
-    let original = parse_trashinfo_original_path(&content)
-        .ok_or_else(|| anyhow::anyhow!("cannot parse original path from {:?}", info_path))?;
-
-    if original.exists() {
-        anyhow::bail!("destination already exists: {:?}", original);
-    }
-
-    if let Some(parent) = original.parent()
-        && !parent.exists()
-    {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("cannot create parent dir {:?}", parent))?;
-    }
-
-    fs::rename(entry_path, &original)
-        .with_context(|| format!("cannot move {:?} to {:?}", entry_path, original))?;
-
-    let _ = fs::remove_file(&info_path);
-
-    Ok(original)
-}
-
-fn parse_trashinfo_original_path(content: &str) -> Option<PathBuf> {
-    for line in content.lines() {
-        if let Some(encoded) = line.trim().strip_prefix("Path=") {
-            return Some(PathBuf::from(percent_decode(encoded)));
-        }
-    }
-    None
-}
-
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%'
-            && i + 2 < bytes.len()
-            && let (Some(hi), Some(lo)) = (hex_nibble(bytes[i + 1]), hex_nibble(bytes[i + 2]))
-        {
-            out.push(hi << 4 | lo);
-            i += 3;
-            continue;
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8(out).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
-}
-
-fn hex_nibble(b: u8) -> Option<u8> {
-    match b {
-        b'0'..=b'9' => Some(b - b'0'),
-        b'a'..=b'f' => Some(b - b'a' + 10),
-        b'A'..=b'F' => Some(b - b'A' + 10),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

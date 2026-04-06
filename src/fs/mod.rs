@@ -6,6 +6,7 @@ pub(crate) mod watch;
 
 mod directory;
 mod directory_stats;
+mod restore;
 mod sort;
 
 fn is_hidden(file_name: &std::ffi::OsStr) -> bool {
@@ -35,7 +36,7 @@ fn is_hidden_entry(entry: &std::fs::DirEntry) -> bool {
 pub(crate) use directory::set_open_in_system_capture_for_test;
 pub(crate) use directory::{
     DirectoryFingerprint, DirectorySnapshot, detached_open_command, load_directory_snapshot,
-    open_in_system, restore_trash_item, scan_directory_fingerprint,
+    open_in_system, scan_directory_fingerprint,
 };
 pub(crate) use directory_stats::{DirectoryStats, DirectoryStatsScanResult, scan_directory_stats};
 pub(crate) use format::{
@@ -44,6 +45,9 @@ pub(crate) use format::{
 };
 pub(crate) use item_count::count_directory_items;
 pub(crate) use places::{build_sidebar_rows, home_dir, trash_dir};
+pub(crate) use restore::restore_trash_item;
+#[cfg(target_os = "macos")]
+pub(crate) use restore::{remove_restore_origins, save_restore_origins};
 pub(crate) use sort::natural_cmp;
 pub(crate) use watch::{
     DirectoryWatchEvent, DirectoryWatcher, directory_watch_debounce, event_affects_visible_entries,
