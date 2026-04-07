@@ -37,7 +37,7 @@ cargo run --release
 
 ## Example Themes
 
-A few bundled themes are shown below. More are available in [`examples/themes/`](examples/themes/) — copy any `theme.toml` to your platform's theme path in the [Theming](#theming) section to apply it.
+A few bundled themes are shown below. More are available in [`examples/themes/`](examples/themes/) — copy any `theme.toml` to your platform's theme path to apply it. See [Theming](#theming) for the paths and override rules.
 
 | Catppuccin Mocha | Tokyo Night |
 |---|---|
@@ -51,7 +51,7 @@ A few bundled themes are shown below. More are available in [`examples/themes/`]
 
 ## Image Previews
 
-Inline image and PDF previews work automatically on supported terminals — no configuration needed.
+Inline visual previews, including images, covers, thumbnails, and rendered pages, work automatically on supported terminals.
 
 | Terminal | Protocol | Status |
 |---|---|---|
@@ -63,11 +63,18 @@ Inline image and PDF previews work automatically on supported terminals — no c
 | Alacritty | — | Not supported |
 | Other | Kitty Graphics Protocol | Set `ELIO_IMAGE_PREVIEWS=1` to enable |
 
+Useful environment variables:
+
+<details>
+<summary><strong>Environment Variables</strong></summary>
+
 | Variable | Effect |
 |---|---|
 | `ELIO_IMAGE_PREVIEWS=1` | Force-enable on unrecognized terminals that support the Kitty Graphics Protocol |
 | `ELIO_DEBUG_PREVIEW` | Log image preview activity to `elio-preview.log` in the system temp directory |
 | `ELIO_LOG_MOUSE` | Log raw mouse events to `elio-mouse.log` in the system temp directory |
+
+</details>
 
 ---
 
@@ -90,7 +97,7 @@ For `c`, elio copies file metadata to the clipboard using OSC52 on supported ter
 
 ---
 
-## Behavioral Notes
+## Workflow
 
 ### Opening Files
 
@@ -104,18 +111,18 @@ For `c`, elio copies file metadata to the clipboard using OSC52 on supported ter
 
 ---
 
-## Preview Types
+## Preview Coverage
 
-`elio` can preview a broad mix of content directly in the Preview pane, including the categories below. Some previews are text- or metadata-based; others can include inline images, covers, or rendered pages when the needed tools are available.
+`elio` can preview a broad range of content in the Preview pane, including text, structured data, document details, archive contents, and media metadata with covers or thumbnails when available.
 
 - **Text and code** — plain text, source code with syntax highlighting, and Markdown
 - **Structured data** — JSON, JSONC, JSON5, YAML, TOML, `.env`, logs, CSV/TSV, and SQLite
 - **Documents** — PDF, EPUB, DOC, DOCX, DOCM, ODT, Pages, XLSX, XLSM, ODS, PPTX, PPTM, and ODP
-- **Media** — images, audio, and video
+- **Media** — image metadata and inline previews, audio metadata and covers, and video metadata and thumbnails
 - **Folders and archives** — directories, ZIP/TAR-family archives, comic archives, torrents, ISO images, and other disk-image-style containers
-- **Binary files** — binary metadata previews for non-text files
+- **Binary files** — metadata previews for non-text files
 
-See [Optional Tools](#optional-tools) for the extra helpers that unlock richer metadata, rendered page previews, thumbnails, and broader format coverage.
+See [Optional Tools](#optional-tools) for helpers that unlock richer metadata, thumbnails, and rendered previews.
 
 ---
 
@@ -127,87 +134,28 @@ See [Optional Tools](#optional-tools) for the extra helpers that unlock richer m
 | macOS | `~/Library/Application Support/elio/config.toml` |
 | Windows | `%APPDATA%\elio\config.toml` |
 
-```toml
-[ui]
-show_top_bar = false
-# grid_zoom = 1       # starting grid zoom: 0, 1, or 2
-# show_hidden = false # show dotfiles on startup (toggle at runtime with .)
-# start_in_grid = false # open in grid view on startup (toggle at runtime with v)
+See [examples/config.toml](examples/config.toml) for a complete annotated example.
 
-# [places]
-# show_devices = true
-# entries = [
-#   "home",
-#   "desktop",
-#   "documents",
-#   { builtin = "downloads", icon = "" },
-#   "pictures",
-#   "music",
-#   "videos",
-#   "root",
-#   { title = "Projects", path = "~/workspace", icon = "󰚝" },
-#   "trash",
-# ]
+Supported sections:
 
-# [layout.panes]
-# places  = 10
-# files   = 45
-# preview = 45
+- `[ui]`: startup UI options like top bar, hidden files, and initial grid view
+- `[places]`: pinned sidebar entries and the `Devices` section
+- `[layout.panes]`: relative pane widths for Places, Files, and Preview
+- `[keys]`: single-character key rebinding for browser actions
 
-# [keys]
-# yank = "y"   # and so on for any action you want to rebind
-```
+Notes:
 
-| Key | Default | Description |
-|---|---|---|
-| `ui.show_top_bar` | `false` | Show or hide the toolbar at the top of the screen |
-| `ui.grid_zoom` | `1` | Starting grid zoom level (`0`, `1`, or `2`; values outside range are clamped) |
-| `ui.show_hidden` | `false` | Show dotfiles and hidden files on startup; can still be toggled at runtime with `.` |
-| `ui.start_in_grid` | `false` | Start the file browser in grid view; can still be toggled at runtime with `v` |
-| `places.show_devices` | `true` | Show the auto-detected `Devices` section at the bottom of Places |
-| `places.entries` | built-in pinned list | Ordered list of pinned Places entries; accepts built-in names, `{ builtin, icon? }`, or custom `{ title, path, icon? }` objects |
-| `layout.panes.places` | unset | Relative width weight for the Places pane; `0` hides it |
-| `layout.panes.files` | unset | Relative width weight for the Files pane |
-| `layout.panes.preview` | unset | Relative width weight for the Preview pane; `0` hides it |
-
-Pane weights are relative — `10/45/45` and `20/90/90` produce the same split. If `[layout.panes]` is omitted, elio uses a built-in responsive layout.
-
-Omit `[places]` entirely to keep the exact default sidebar.
-
-`places.entries` supports three forms:
-
-- `"downloads"`: use the built-in entry with its default icon
-- `{ builtin = "downloads", icon = "" }`: use a built-in entry with a custom icon
-- `{ title = "Projects", path = "~/workspace", icon = "󰚝" }`: add a custom entry
-
-Built-in names are: `home`, `desktop`, `documents`, `downloads`, `pictures`, `music`, `videos`, `root`, and `trash`. These are stable config ids, not localized display names: for example, use `"downloads"` even if your actual folder is named `Descargas`. In the UI, built-in user folders are shown using the resolved folder name when available. Missing built-ins are skipped automatically; custom entries stay visible even if the target path does not exist yet. Entries are deduped by resolved path, so the first matching path wins. `icon` accepts any non-empty string, but a single Nerd Font glyph usually looks best.
-
-### Key bindings
-
-Any browser action key can be rebound in the `[keys]` section. Each value must be a **single character**. Duplicate bindings and reserved characters are rejected at startup with an error to stderr; the affected key falls back to its default.
-
-| Key | Default | Action |
-|---|---|---|
-| `keys.quit` | `q` | Quit |
-| `keys.yank` | `y` | Yank (copy) |
-| `keys.cut` | `x` | Cut |
-| `keys.paste` | `p` | Paste |
-| `keys.trash` | `d` | Trash / permanent delete in trash |
-| `keys.create` | `a` | Create file or folder |
-| `keys.rename` | `r` | Rename / bulk rename / restore from trash |
-| `keys.copy_path` | `c` | Copy path details to clipboard |
-| `keys.search_folders` | `f` | Fuzzy-find folders |
-| `keys.open` | `o` | Open externally |
-| `keys.open_with` | `O` | Open With chooser |
-| `keys.sort` | `s` | Cycle sort mode |
-| `keys.toggle_view` | `v` | Toggle grid / list view |
-| `keys.toggle_hidden` | `.` | Toggle dotfiles visibility |
-| `keys.scroll_preview_left` | `<` | Scroll preview left |
-| `keys.scroll_preview_right` | `>` | Scroll preview right |
-
-**Reserved** (cannot be rebound): `h` `j` `k` `l` `g` `G` `?` `[` `]` `+` `=` `-` `_` `Space`
-
-See [examples/config.toml](examples/config.toml) for an annotated reference.
+- Omit `[places]` to keep the default sidebar.
+- Omit `[layout.panes]` to use the built-in responsive layout.
+- If `[layout.panes]` is set, all three pane weights must be provided.
+- `places = 0` hides the Places pane, and `preview = 0` hides the Preview pane.
+- `files` must be greater than `0`.
+- Pane weights are relative, so `10/45/45` and `20/90/90` produce the same split.
+- `places.entries` accepts built-in names, `{ builtin, icon? }`, or `{ title, path, icon? }`.
+- Custom `places` paths must be absolute or start with `~/`.
+- Invalid `places` entries are skipped with a warning.
+- Invalid or conflicting key bindings fall back to defaults with a warning.
+- Invalid TOML falls back to the built-in defaults.
 
 ---
 
@@ -219,46 +167,34 @@ See [examples/config.toml](examples/config.toml) for an annotated reference.
 | macOS | `~/Library/Application Support/elio/theme.toml` |
 | Windows | `%APPDATA%\elio\theme.toml` |
 
-Theme files layer on top of the built-in defaults — only the keys you provide are overridden. If the file is missing or cannot be parsed, elio falls back silently (parse errors are reported to stderr).
+Theme files layer on top of the built-in defaults, so you only need to set the keys you want to change.
 
-| Section | Controls |
-|---|---|
-| `[palette]` | App-wide colors |
-| `[preview.code]` | Syntax highlight colors |
-| `[classes.<name>]` | Default icon and color per file class |
-| `[extensions.<ext>]` | Overrides by file extension |
-| `[files."<name>"]` | Overrides by exact filename |
-| `[directories."<name>"]` | Overrides by exact directory name |
+Supported sections:
 
-Rule resolution order: exact name → extension → class fallback. Matching is case-insensitive.
+- `[palette]`: app-wide colors
+- `[preview.code]`: syntax highlight colors for code previews
+- `[classes.<name>]`: default icon and color for a file class
+- `[extensions.<ext>]`: overrides by file extension
+- `[files."<name>"]`: overrides by exact filename
+- `[directories."<name>"]`: overrides by exact directory name
 
-**Built-in file classes:** `directory` · `code` · `config` · `document` · `image` · `audio` · `video` · `archive` · `font` · `data` · `file`
+Rules:
 
-```toml
-[palette]
-bg = "#020304"
-accent = "#7aaeff"
-selected_bg = "#243758"
+- Exact filename or directory rules win over extension rules.
+- Extension rules win over class defaults.
+- Matching is case-insensitive.
+- Invalid theme files fall back to the built-in defaults, with errors reported to stderr.
 
-[preview.code]
-keyword = "#ff78c6"
-function = "#36d7ff"
-string  = "#79e7d5"
+**Built-in file classes:** `directory` · `code` · `config` · `document` · `license` · `image` · `audio` · `video` · `archive` · `font` · `data` · `file`
 
-[extensions.lock]
-class = "data"
-icon  = "󰌾"
-color = "#59de94"
-```
-
-The full default theme is at [`assets/themes/default/theme.toml`](assets/themes/default/theme.toml).
+See [`assets/themes/default/theme.toml`](assets/themes/default/theme.toml) for the full default theme.
 
 ---
 
 <details>
 <summary><strong>Controls</strong></summary>
 
-Keys marked with `*` are rebindable via `[keys]` in `config.toml` — the defaults are shown. See the [Key bindings](#key-bindings) section for the full list of configurable actions.
+Keys marked with `*` are configurable in `[keys]` in `config.toml`; the defaults are shown here.
 
 ### Navigation
 
@@ -273,12 +209,23 @@ Keys marked with `*` are rebindable via `[keys]` in `config.toml` — the defaul
 | `Tab` / `Shift+Tab` | Cycle places |
 | `Alt+←` / `Alt+→` | Back / forward in history |
 
-### Actions
+### Search
 
 | Key | Action |
 |---|---|
-| `o` | Open with the system default application |
-| `O`* | Open With chooser |
+| `f` `*` | Fuzzy-find folders in the current tree |
+| `Ctrl+F` | Fuzzy-find files in the current tree |
+
+### File Actions
+
+| Key | Action |
+|---|---|
+| `o` `*` | Open with the system default application |
+| `O` `*` | Open With chooser |
+| `a` `*` | Create file or folder |
+| `d` `*` | Trash; permanently delete if already in trash |
+| `r` `*` | Rename / bulk rename / restore from trash |
+| `F2` | Rename / bulk rename |
 
 ### View
 
@@ -290,7 +237,7 @@ Keys marked with `*` are rebindable via `[keys]` in `config.toml` — the defaul
 | `s` `*` | Cycle sort (Name → Modified → Size) |
 | `<` / `>` `*` | Scroll preview left / right |
 
-### Files and Clipboard
+### Selection and Clipboard
 
 | Key | Action |
 |---|---|
@@ -299,19 +246,7 @@ Keys marked with `*` are rebindable via `[keys]` in `config.toml` — the defaul
 | `y` `*` | Yank (copy) |
 | `x` `*` | Cut |
 | `p` `*` | Paste |
-| `a` `*` | Create file or folder |
-| `d` `*` | Trash; permanently delete if already in trash |
-| `r` `*` | Rename / bulk rename / restore from trash |
-| `F2` | Rename / bulk rename |
-| `o` `*` | Open externally |
 | `c` `*` | Copy path details to clipboard |
-
-### Search
-
-| Key | Action |
-|---|---|
-| `f` `*` | Fuzzy-find folders in the current tree |
-| `Ctrl+F` | Fuzzy-find files in the current tree |
 
 ### Mouse
 
