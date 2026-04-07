@@ -240,6 +240,26 @@ fn narrow_browser_layout_stacks_preview_below_entries() {
 }
 
 #[test]
+fn wide_browser_layout_uses_the_narrower_default_sidebar_width() {
+    let layout = resolve_body_layout(
+        Rect {
+            x: 0,
+            y: 0,
+            width: 140,
+            height: 20,
+        },
+        None,
+    );
+
+    let sidebar = layout.sidebar.expect("sidebar should be visible");
+    let entries = layout.entries.expect("entries should be visible");
+    let preview = layout.preview.expect("preview should be visible");
+
+    assert_eq!(sidebar.width, 20);
+    assert_eq!(sidebar.width + entries.width + preview.width, 140);
+}
+
+#[test]
 fn narrow_browser_layout_drops_preview_when_height_is_too_limited() {
     let layout = resolve_body_layout(
         Rect {

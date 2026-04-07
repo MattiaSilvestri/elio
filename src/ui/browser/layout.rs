@@ -8,7 +8,7 @@ use crate::{
 };
 use ratatui::{Frame, layout::Rect};
 
-const LEGACY_WIDE_SIDEBAR_WIDTH: u16 = 24;
+const LEGACY_WIDE_SIDEBAR_WIDTH: u16 = 20;
 const LEGACY_NARROW_SIDEBAR_WIDTH: u16 = 22;
 const LEGACY_NARROW_PREVIEW_HEIGHT: u16 = 11;
 const LEGACY_HORIZONTAL_SIDEBAR_MIN_WIDTH: u16 = 18;

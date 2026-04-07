@@ -39,7 +39,7 @@ show_top_bar = false
 # the horizontal space. Set a pane to 0 to hide it.
 #
 # If this table is omitted, Elio keeps the built-in responsive layout:
-# - horizontal layout: Places prefers 24 cols, Files / Preview use a 54 / 46
+# - horizontal layout: Places prefers 20 cols, Files / Preview use a 54 / 46
 #   split of the remaining width
 # - tighter windows: Places can shrink to 18 cols before Preview stacks
 # - height-constrained windows: Preview drops out instead of stacking too early
