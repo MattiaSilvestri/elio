@@ -13,9 +13,9 @@ cfb = "0.10"
 crossterm = "0.28"
 flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
 image = { version = "0.25", default-features = false, features = ["gif", "ico", "jpeg", "png", "webp"] }
-notify = "7.0"
+notify = "8.2"
 json5 = "0.4"
-lofty = "0.22"
+lofty = "0.23"
 pulldown-cmark = "0.13"
 quick-xml = "0.38"
 ratatui = { version = "0.30", default-features = false, features = ["crossterm", "crossterm_0_29"] }
