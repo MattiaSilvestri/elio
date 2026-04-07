@@ -25,7 +25,7 @@ pub(super) fn render_help(
         e("G", "last item"),
         e("PageUp / PageDown", "page up / down"),
         e("Tab / Shift+Tab", "cycle places"),
-        e("Alt+← / →", "back / forward"),
+        e("Alt+← / Alt+→", "back / forward"),
     ];
     let search_entries = vec![
         e(&kb.search_folders.to_string(), "search folders"),
@@ -52,7 +52,7 @@ pub(super) fn render_help(
         e(&kb.trash.to_string(), "trash (delete if in trash)"),
         e(&rename_key, "rename (bulk if selection)"),
         e(&rename_trash_key, "restore from trash"),
-        e(&kb.open.to_string(), "open externally"),
+        e(&kb.open.to_string(), "open with default app"),
         e(&kb.open_with.to_string(), "open with"),
     ];
     let scroll_key = format!("{} / {}", kb.scroll_preview_left, kb.scroll_preview_right);
@@ -66,8 +66,8 @@ pub(super) fn render_help(
     let mouse_entries = vec![
         e("Click", "select item"),
         e("Double-click", "open item"),
-        e("Wheel", "move selection"),
-        e("Shift+Wheel", "scroll preview"),
+        e("Wheel", "scroll"),
+        e("Shift+Wheel", "scroll sideways"),
     ];
     let left_sections = vec![
         HelpSection {
@@ -85,7 +85,7 @@ pub(super) fn render_help(
     ];
     let right_sections = vec![
         HelpSection {
-            title: "Files",
+            title: "File Actions",
             entries: files_entries,
         },
         HelpSection {
@@ -142,7 +142,7 @@ pub(super) fn render_help(
             Span::raw(" "),
             helpers::chip_span("mouse", palette.accent_soft, palette.accent_text, true),
             Span::raw(" "),
-            helpers::chip_span("files", palette.accent_soft, palette.accent_text, true),
+            helpers::chip_span("actions", palette.accent_soft, palette.accent_text, true),
             Span::raw(" "),
             helpers::chip_span("selection", palette.accent_soft, palette.accent_text, true),
             Span::raw(" "),
