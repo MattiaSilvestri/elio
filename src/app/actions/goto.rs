@@ -194,7 +194,7 @@ fn build_goto_row(shortcut: char, label: &str, destination: GoToDestination) -> 
 
 fn config_label() -> &'static str {
     if cfg!(target_os = "macos") {
-        "Application Support"
+        "App Support"
     } else if cfg!(windows) {
         "AppData"
     } else {
