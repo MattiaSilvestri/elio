@@ -68,24 +68,15 @@ jobs:
       - name: cargo doc --locked --no-deps
         run: cargo doc --locked --no-deps
 
-  cross-platform-build:
-    name: build and test (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            name: macOS
-          - os: windows-latest
-            name: Windows
+  macos-build:
+    name: build and test (macOS)
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install preview test tooling (macOS)
-        if: runner.os == 'macOS'
+      - name: Install preview test tooling
         run: |
           set -euxo pipefail
           brew install ffmpeg imagemagick poppler sevenzip cdrtools
@@ -98,6 +89,26 @@ jobs:
           if ! command -v genisoimage >/dev/null 2>&1 && command -v mkisofs >/dev/null 2>&1; then
             ln -sf "$(command -v mkisofs)" /usr/local/bin/genisoimage
           fi
+
+      - name: Install Rust 1.93.0
+        uses: dtolnay/rust-toolchain@1.93.0
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: cargo build --locked
+        run: cargo build --locked
+
+      - name: cargo test --locked
+        run: cargo test --locked
+
+  windows-build:
+    name: build and test (Windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Install Rust 1.93.0
         uses: dtolnay/rust-toolchain@1.93.0
