@@ -10,9 +10,10 @@ Before opening a PR, run the same checks enforced in CI:
 
 ```bash
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo test
-RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
+cargo test --locked --test architecture_guardrails
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+RUSTDOCFLAGS="-D warnings" cargo doc --locked --no-deps
 ```
 
 ## Optional Preview Tooling
