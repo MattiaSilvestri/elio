@@ -14,14 +14,17 @@ use super::inline_image::read_png_dimensions;
 use ratatui::layout::Rect;
 
 pub(crate) use self::prepare::prepare_static_image_asset;
+pub(in crate::app) use self::types::SixelDcsKey;
 pub(in crate::app) use self::types::{
     ImagePreviewState, PreparedStaticImage, PreparedStaticImageAsset, StaticImageKey,
     StaticImageOverlayMode, StaticImageOverlayPreparation, StaticImageOverlayRequest,
 };
 
-const STATIC_IMAGE_RENDER_CACHE_LIMIT: usize = 24;
-const STATIC_IMAGE_INLINE_PAYLOAD_CACHE_LIMIT: usize = 10;
-const STATIC_IMAGE_PRELOAD_LIMIT: usize = 6;
+const STATIC_IMAGE_RENDER_CACHE_LIMIT: usize = 64;
+const STATIC_IMAGE_INLINE_PAYLOAD_CACHE_LIMIT: usize = 16;
+const SIXEL_DCS_CACHE_LIMIT: usize = 128;
+const STATIC_IMAGE_PRELOAD_LIMIT: usize = 12;
+const STATIC_IMAGE_PRELOAD_LIMIT_SLOW_SIXEL: usize = 2;
 const STATIC_IMAGE_INLINE_FALLBACK_PREPARE_MAX_BYTES: u64 = 512 * 1024;
 const STATIC_IMAGE_INLINE_EXTERNAL_PREPARE_MAX_BYTES: u64 = 16 * 1024 * 1024;
 const STATIC_IMAGE_RENDER_CACHE_VERSION: usize = 3;
@@ -280,6 +283,284 @@ mod tests {
     }
 
     #[test]
+    fn cold_sixel_jpeg_selection_defers_first_keyboard_preview_refresh() {
+        let root = temp_root("cold-sixel-jpeg-preview-defer");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        for name in ["a.txt", "b.jpg", "c.txt"] {
+            let path = root.join(name);
+            if name.ends_with(".jpg") {
+                write_test_raster_image(&path, ImageFormat::Jpeg, 1600, 900);
+            } else {
+                fs::write(path, name).expect("failed to write temp file");
+            }
+        }
+
+        let mut app = App::new_at(root.clone()).expect("app should initialize");
+        configure_terminal_image_support(&mut app);
+        app.preview.terminal_images.protocol = ImageProtocol::Sixel;
+        app.preview.pdf.pdf_tools_available = true;
+        app.navigation.view_mode = ViewMode::List;
+        app.set_ffmpeg_available_for_tests(true);
+        app.navigation.entries = ["a.txt", "b.jpg", "c.txt"]
+            .into_iter()
+            .map(|name| {
+                let path = root.join(name);
+                let metadata = fs::metadata(&path).expect("test file metadata should exist");
+                Entry {
+                    path,
+                    name: name.to_string(),
+                    name_key: name.to_ascii_lowercase(),
+                    kind: EntryKind::File,
+                    size: metadata.len(),
+                    modified: metadata.modified().ok(),
+                    readonly: false,
+                }
+            })
+            .collect();
+        app.navigation.selected = 0;
+        app.refresh_preview();
+
+        let token_before = app.preview.state.token;
+        app.move_vertical_keyboard(1);
+
+        assert_eq!(app.navigation.selected, 1);
+        assert_eq!(
+            app.preview.state.token, token_before,
+            "cold sixel jpeg should defer the first keyboard refresh"
+        );
+        assert!(
+            app.preview.state.deferred_refresh_at.is_some(),
+            "cold sixel jpeg should schedule a deferred refresh"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn cold_sixel_comic_selection_defers_first_keyboard_preview_refresh() {
+        let root = temp_root("cold-sixel-comic-preview-defer");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        for name in ["a.txt", "b.cbz", "c.txt"] {
+            let path = root.join(name);
+            fs::write(path, name).expect("failed to write temp file");
+        }
+
+        let mut app = App::new_at(root.clone()).expect("app should initialize");
+        configure_terminal_image_support(&mut app);
+        app.preview.terminal_images.protocol = ImageProtocol::Sixel;
+        app.preview.pdf.pdf_tools_available = true;
+        app.navigation.view_mode = ViewMode::List;
+        app.navigation.entries = ["a.txt", "b.cbz", "c.txt"]
+            .into_iter()
+            .map(|name| {
+                let path = root.join(name);
+                let metadata = fs::metadata(&path).expect("test file metadata should exist");
+                Entry {
+                    path,
+                    name: name.to_string(),
+                    name_key: name.to_ascii_lowercase(),
+                    kind: EntryKind::File,
+                    size: metadata.len(),
+                    modified: metadata.modified().ok(),
+                    readonly: false,
+                }
+            })
+            .collect();
+        app.navigation.selected = 0;
+        app.refresh_preview();
+
+        let token_before = app.preview.state.token;
+        app.move_vertical_keyboard(1);
+
+        assert_eq!(app.navigation.selected, 1);
+        assert_eq!(
+            app.preview.state.token, token_before,
+            "cold sixel comic should defer the first keyboard refresh"
+        );
+        assert!(
+            app.preview.state.deferred_refresh_at.is_some(),
+            "cold sixel comic should schedule a deferred refresh"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn sixel_preloads_visible_static_images_before_selection_lands_on_them() {
+        let root = temp_root("sixel-visible-static-preload");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        for name in ["a.txt", "b.jpg", "c.txt"] {
+            let path = root.join(name);
+            if name.ends_with(".jpg") {
+                write_test_raster_image(&path, ImageFormat::Jpeg, 1600, 900);
+            } else {
+                fs::write(path, name).expect("failed to write temp file");
+            }
+        }
+
+        let mut app = App::new_at(root.clone()).expect("app should initialize");
+        configure_terminal_image_support(&mut app);
+        app.preview.terminal_images.protocol = ImageProtocol::Sixel;
+        app.preview.pdf.pdf_tools_available = true;
+        app.navigation.view_mode = ViewMode::List;
+        app.set_ffmpeg_available_for_tests(true);
+        app.navigation.entries = ["a.txt", "b.jpg", "c.txt"]
+            .into_iter()
+            .map(|name| {
+                let path = root.join(name);
+                let metadata = fs::metadata(&path).expect("test file metadata should exist");
+                Entry {
+                    path,
+                    name: name.to_string(),
+                    name_key: name.to_ascii_lowercase(),
+                    kind: EntryKind::File,
+                    size: metadata.len(),
+                    modified: metadata.modified().ok(),
+                    readonly: false,
+                }
+            })
+            .collect();
+        app.navigation.selected = 0;
+        app.input.frame_state.preview_content_area = Some(Rect {
+            x: 2,
+            y: 3,
+            width: 48,
+            height: 20,
+        });
+        app.input.frame_state.metrics.cols = 1;
+        app.input.frame_state.metrics.rows_visible = 6;
+        app.refresh_preview();
+        app.refresh_static_image_preloads();
+
+        let image_entry = &app.navigation.entries[1];
+        let request = app
+            .static_image_overlay_request_for_entry(image_entry)
+            .expect("visible jpeg should have a static image overlay request");
+        let key = StaticImageKey::from_request(&request);
+
+        assert!(
+            app.preview.image.pending_prepares.contains(&key),
+            "visible sixel image should be preloaded even before selection reaches it"
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn foot_sixel_limits_nearby_static_image_preloads() {
+        let root = temp_root("foot-sixel-preload-limit");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        for name in ["a.txt", "b.jpg", "c.jpg", "d.jpg", "e.jpg"] {
+            let path = root.join(name);
+            if name.ends_with(".jpg") {
+                write_test_raster_image(&path, ImageFormat::Jpeg, 1600, 900);
+            } else {
+                fs::write(path, name).expect("failed to write temp file");
+            }
+        }
+
+        let mut app = App::new_at(root.clone()).expect("app should initialize");
+        configure_terminal_image_support(&mut app);
+        app.preview.terminal_images.protocol = ImageProtocol::Sixel;
+        app.preview.terminal_images.identity =
+            crate::app::overlays::inline_image::TerminalIdentity::Foot;
+        app.preview.pdf.pdf_tools_available = true;
+        app.navigation.view_mode = ViewMode::List;
+        app.set_ffmpeg_available_for_tests(true);
+        app.navigation.entries = ["a.txt", "b.jpg", "c.jpg", "d.jpg", "e.jpg"]
+            .into_iter()
+            .map(|name| {
+                let path = root.join(name);
+                let metadata = fs::metadata(&path).expect("test file metadata should exist");
+                Entry {
+                    path,
+                    name: name.to_string(),
+                    name_key: name.to_ascii_lowercase(),
+                    kind: EntryKind::File,
+                    size: metadata.len(),
+                    modified: metadata.modified().ok(),
+                    readonly: false,
+                }
+            })
+            .collect();
+        app.navigation.selected = 0;
+        app.input.frame_state.preview_content_area = Some(Rect {
+            x: 2,
+            y: 3,
+            width: 48,
+            height: 20,
+        });
+        app.input.frame_state.metrics.cols = 1;
+        app.input.frame_state.metrics.rows_visible = 10;
+        app.refresh_preview();
+        app.refresh_static_image_preloads();
+
+        assert_eq!(
+            app.preview.image.pending_prepares.len(),
+            STATIC_IMAGE_PRELOAD_LIMIT_SLOW_SIXEL
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn windows_terminal_sixel_limits_nearby_static_image_preloads() {
+        let root = temp_root("wt-sixel-preload-limit");
+        fs::create_dir_all(&root).expect("failed to create temp root");
+        for name in ["a.txt", "b.jpg", "c.jpg", "d.jpg", "e.jpg"] {
+            let path = root.join(name);
+            if name.ends_with(".jpg") {
+                write_test_raster_image(&path, ImageFormat::Jpeg, 1600, 900);
+            } else {
+                fs::write(path, name).expect("failed to write temp file");
+            }
+        }
+
+        let mut app = App::new_at(root.clone()).expect("app should initialize");
+        configure_terminal_image_support(&mut app);
+        app.preview.terminal_images.protocol = ImageProtocol::Sixel;
+        app.preview.terminal_images.identity =
+            crate::app::overlays::inline_image::TerminalIdentity::WindowsTerminal;
+        app.preview.pdf.pdf_tools_available = true;
+        app.navigation.view_mode = ViewMode::List;
+        app.set_ffmpeg_available_for_tests(true);
+        app.navigation.entries = ["a.txt", "b.jpg", "c.jpg", "d.jpg", "e.jpg"]
+            .into_iter()
+            .map(|name| {
+                let path = root.join(name);
+                let metadata = fs::metadata(&path).expect("test file metadata should exist");
+                Entry {
+                    path,
+                    name: name.to_string(),
+                    name_key: name.to_ascii_lowercase(),
+                    kind: EntryKind::File,
+                    size: metadata.len(),
+                    modified: metadata.modified().ok(),
+                    readonly: false,
+                }
+            })
+            .collect();
+        app.navigation.selected = 0;
+        app.input.frame_state.preview_content_area = Some(Rect {
+            x: 2,
+            y: 3,
+            width: 48,
+            height: 20,
+        });
+        app.input.frame_state.metrics.cols = 1;
+        app.input.frame_state.metrics.rows_visible = 10;
+        app.refresh_preview();
+        app.refresh_static_image_preloads();
+
+        assert_eq!(
+            app.preview.image.pending_prepares.len(),
+            STATIC_IMAGE_PRELOAD_LIMIT_SLOW_SIXEL
+        );
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
     fn repeated_present_static_image_overlay_is_a_noop_when_nothing_changed() {
         let (mut app, root, _image_path) =
             build_selected_static_image_app("no-op-render", "demo.png");
@@ -323,10 +604,10 @@ mod tests {
 
         app.handle_terminal_image_resize();
 
-        assert!(app.take_pending_kitty_resize_clear());
+        assert!(app.take_pending_resize_clear());
         assert!(!app.static_image_overlay_displayed());
         assert!(app.preview.image.displayed_excluded.is_empty());
-        assert!(!app.take_pending_kitty_resize_clear());
+        assert!(!app.take_pending_resize_clear());
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }
@@ -345,8 +626,36 @@ mod tests {
 
         app.handle_terminal_image_resize();
 
-        assert!(!app.take_pending_kitty_resize_clear());
+        assert!(!app.take_pending_resize_clear());
         assert!(app.static_image_overlay_displayed());
+
+        fs::remove_dir_all(root).expect("failed to remove temp root");
+    }
+
+    #[test]
+    fn sixel_resize_requests_full_screen_clear_for_displayed_overlay() {
+        let (mut app, root, _image_path) =
+            build_selected_static_image_app("sixel-resize-clear", "demo.png");
+        let request = ready_static_image_overlay(&mut app);
+        app.preview.terminal_images.protocol = ImageProtocol::Sixel;
+        app.preview.image.displayed = Some(types::DisplayedStaticImagePreview::from_request(
+            &request,
+            request.area,
+            request.area,
+        ));
+        app.preview.image.displayed_excluded = vec![Rect {
+            x: 2,
+            y: 3,
+            width: 4,
+            height: 2,
+        }];
+
+        app.handle_terminal_image_resize();
+
+        assert!(app.take_pending_resize_clear());
+        assert!(!app.static_image_overlay_displayed());
+        assert!(app.preview.image.displayed_excluded.is_empty());
+        assert!(!app.take_pending_resize_clear());
 
         fs::remove_dir_all(root).expect("failed to remove temp root");
     }

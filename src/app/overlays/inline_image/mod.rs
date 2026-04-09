@@ -2,6 +2,7 @@ mod geometry;
 mod iterm;
 mod kitty;
 mod protocol;
+mod sixel;
 mod window;
 
 use anyhow::{Context, Result};
@@ -10,10 +11,13 @@ use std::{env, io::Write as _, path::Path};
 
 use crate::app::App;
 
-pub(in crate::app) use self::geometry::{fit_image_area, fit_image_pixels, read_png_dimensions};
+pub(in crate::app) use self::geometry::{
+    area_pixel_size, fit_image_area, fit_image_pixels, read_png_dimensions,
+};
 pub(in crate::app) use self::iterm::encode_iterm_inline_payload;
 pub(in crate::app) use self::protocol::{command_exists, select_image_protocol};
 use self::protocol::{detect_terminal_identity, pdf_preview_tools_available};
+pub(in crate::app) use self::sixel::{encode_sixel_dcs, place_sixel_from_dcs};
 use self::window::query_terminal_window_size;
 
 /// Write a line to `<temp>/elio-preview.log` when `ELIO_DEBUG_PREVIEW` is set.
@@ -32,10 +36,12 @@ pub(in crate::app) fn preview_log(msg: impl std::fmt::Display) {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(in crate::app) struct TerminalImageState {
     pub(super) protocol: ImageProtocol,
+    pub(super) identity: TerminalIdentity,
     pub(super) window: Option<TerminalWindowSize>,
     pending_iterm_erase: Vec<Rect>,
-    pending_kitty_resize_clear: bool,
+    pending_resize_clear: bool,
     pending_iterm_popup_restore: bool,
+    pending_sixel_repaint: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -45,7 +51,7 @@ pub(in crate::app) enum OverlayPresentState {
     Displayed,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(in crate::app) enum TerminalIdentity {
     Kitty,
     Ghostty,
@@ -53,6 +59,9 @@ pub(in crate::app) enum TerminalIdentity {
     WezTerm,
     ITerm2,
     Alacritty,
+    Foot,
+    WindowsTerminal,
+    #[default]
     Other,
 }
 
@@ -66,11 +75,23 @@ pub(in crate::app) enum ImageProtocol {
     KittyGraphics,
     /// iTerm2 inline image protocol (OSC 1337). Used by WezTerm and iTerm2.
     ItermInline,
+    /// Sixel graphics protocol (DCS). Used by Windows Terminal (≥ 1.22).
+    Sixel,
     #[default]
     None,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+impl ImageProtocol {
+    /// Returns `true` for pixel-buffer protocols that write directly into the
+    /// terminal framebuffer and have no dedicated clear command (iTerm2 and
+    /// Sixel).  These protocols require a pre-draw cell-erase pass before
+    /// ratatui can safely overpaint stale image content.
+    pub(in crate::app) fn is_raster(self) -> bool {
+        matches!(self, ImageProtocol::ItermInline | ImageProtocol::Sixel)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(in crate::app) struct TerminalWindowSize {
     pub(super) cells_width: u16,
     pub(super) cells_height: u16,
@@ -90,12 +111,14 @@ impl App {
         let image_previews_override = env::var_os("ELIO_IMAGE_PREVIEWS").is_some();
         let protocol = select_image_protocol(identity, image_previews_override);
         preview_log(format_args!(
-            "enable_terminal_image_previews:\n  TERM={}\n  TERM_PROGRAM={}\n  KITTY_WINDOW_ID={}\n  WARP_SESSION_ID={}\n  identity={identity:?}\n  override={image_previews_override}\n  protocol={protocol:?}",
+            "enable_terminal_image_previews:\n  TERM={}\n  TERM_PROGRAM={}\n  KITTY_WINDOW_ID={}\n  WARP_SESSION_ID={}\n  WT_SESSION={}\n  identity={identity:?}\n  override={image_previews_override}\n  protocol={protocol:?}",
             env::var("TERM").unwrap_or_default(),
             env::var("TERM_PROGRAM").unwrap_or_default(),
             env::var_os("KITTY_WINDOW_ID").is_some(),
             env::var_os("WARP_SESSION_ID").is_some(),
+            env::var_os("WT_SESSION").is_some(),
         ));
+        self.preview.terminal_images.identity = identity;
         self.preview.terminal_images.protocol = protocol;
         self.preview.pdf.pdf_tools_available = pdf_preview_tools_available();
         self.refresh_terminal_image_window_size();
@@ -108,25 +131,26 @@ impl App {
 
     pub(crate) fn handle_terminal_image_resize(&mut self) {
         self.refresh_terminal_image_window_size();
-        if self.preview.terminal_images.protocol == ImageProtocol::KittyGraphics
-            && (self.static_image_overlay_displayed() || self.pdf_overlay_displayed())
+        if matches!(
+            self.preview.terminal_images.protocol,
+            ImageProtocol::KittyGraphics | ImageProtocol::Sixel
+        ) && (self.static_image_overlay_displayed() || self.pdf_overlay_displayed())
         {
-            // Kitty/Ghostty unicode placeholders are normal terminal cells. During
-            // a live resize the terminal can reflow those cells before we redraw,
-            // so erasing only the old image rect is not enough — some placeholder
-            // text may survive outside the previous bounds. Force a full-screen
-            // clear on the next draw so ratatui repaints the entire alt screen.
-            self.preview.terminal_images.pending_kitty_resize_clear = true;
+            // Kitty unicode placeholders can reflow on resize, while Sixel can
+            // leave stale framebuffer pixels outside the new bounds in Foot.
+            // Force a full-screen clear on the next draw so ratatui repaints
+            // the entire alt screen before the image is re-rendered.
+            self.preview.terminal_images.pending_resize_clear = true;
         }
         self.handle_pdf_overlay_resize();
     }
 
-    pub(crate) fn take_pending_kitty_resize_clear(&mut self) -> bool {
-        if !self.preview.terminal_images.pending_kitty_resize_clear {
+    pub(crate) fn take_pending_resize_clear(&mut self) -> bool {
+        if !self.preview.terminal_images.pending_resize_clear {
             return false;
         }
 
-        self.preview.terminal_images.pending_kitty_resize_clear = false;
+        self.preview.terminal_images.pending_resize_clear = false;
         self.clear_displayed_static_image();
         self.clear_displayed_pdf_overlay();
         true
@@ -134,6 +158,37 @@ impl App {
 
     pub(in crate::app) fn terminal_image_overlay_available(&self) -> bool {
         self.preview.terminal_images.protocol != ImageProtocol::None
+    }
+
+    pub(in crate::app) fn uses_sixel_image_protocol(&self) -> bool {
+        self.preview.terminal_images.protocol == ImageProtocol::Sixel
+    }
+
+    pub(crate) fn is_windows_terminal(&self) -> bool {
+        self.preview.terminal_images.identity == TerminalIdentity::WindowsTerminal
+    }
+
+    pub(in crate::app) fn needs_sixel_repaint_workaround(&self) -> bool {
+        self.preview.terminal_images.protocol == ImageProtocol::Sixel
+            && self.preview.terminal_images.identity == TerminalIdentity::Foot
+    }
+
+    pub(in crate::app) fn needs_slow_sixel_navigation_workaround(&self) -> bool {
+        self.preview.terminal_images.protocol == ImageProtocol::Sixel
+            && matches!(
+                self.preview.terminal_images.identity,
+                TerminalIdentity::Foot | TerminalIdentity::WindowsTerminal
+            )
+    }
+
+    #[cfg(test)]
+    pub(in crate::app) fn set_terminal_image_protocol_for_tests(
+        &mut self,
+        protocol: ImageProtocol,
+        identity: TerminalIdentity,
+    ) {
+        self.preview.terminal_images.protocol = protocol;
+        self.preview.terminal_images.identity = identity;
     }
 
     pub(in crate::app) fn cached_terminal_window(&self) -> Option<TerminalWindowSize> {
@@ -175,7 +230,7 @@ impl App {
     /// erased cells with the correct panel background in the same render pass,
     /// avoiding the black-background artifact that occurs when erasing after draw.
     pub(crate) fn iterm_pre_draw_erase(&mut self) -> Vec<u8> {
-        if self.preview.terminal_images.protocol != ImageProtocol::ItermInline {
+        if !self.preview.terminal_images.protocol.is_raster() {
             return Vec::new();
         }
         let mut areas = std::mem::take(&mut self.preview.terminal_images.pending_iterm_erase);
@@ -200,7 +255,13 @@ impl App {
         for area in areas {
             geometry::push_unique_rect(
                 &mut expanded_areas,
-                iterm::expand_iterm_erase_area(&self.input.frame_state, area),
+                if self.preview.terminal_images.identity == TerminalIdentity::WindowsTerminal
+                    && self.preview.terminal_images.protocol == ImageProtocol::Sixel
+                {
+                    iterm::expand_raster_erase_area(&self.input.frame_state, area, 1, 1)
+                } else {
+                    iterm::expand_raster_erase_area(&self.input.frame_state, area, 0, 2)
+                },
             );
         }
         expanded_areas
@@ -221,15 +282,18 @@ impl App {
         }
 
         let popup_open = self.any_modal_overlay_open();
-        if protocol == ImageProtocol::ItermInline
+        if protocol.is_raster()
             && popup_open
             && (self.static_image_overlay_displayed() || self.pdf_overlay_displayed())
         {
             self.preview.terminal_images.pending_iterm_popup_restore = true;
         }
-        let force_iterm_popup_repaint = protocol == ImageProtocol::ItermInline
+        let force_sixel_repaint = protocol == ImageProtocol::Sixel
+            && std::mem::take(&mut self.preview.terminal_images.pending_sixel_repaint);
+        let force_iterm_popup_repaint = protocol.is_raster()
             && self.preview.terminal_images.pending_iterm_popup_restore
             && !popup_open;
+        let force_protocol_repaint = force_iterm_popup_repaint || force_sixel_repaint;
 
         // For Kitty, collect rects occupied by open popups so the image can be
         // rendered only in cells not covered by any popup.
@@ -253,7 +317,7 @@ impl App {
         let static_state = self.present_static_image_overlay(
             protocol,
             &excluded,
-            force_iterm_popup_repaint,
+            force_protocol_repaint,
             &mut out,
         )?;
         preview_log(format_args!(
@@ -266,7 +330,7 @@ impl App {
         }
 
         let pdf_state =
-            self.present_pdf_overlay(protocol, &excluded, force_iterm_popup_repaint, &mut out)?;
+            self.present_pdf_overlay(protocol, &excluded, force_protocol_repaint, &mut out)?;
         preview_log(format_args!(
             "present_preview_overlay: pdf={pdf_state:?} out_len={}",
             out.len()
@@ -279,7 +343,7 @@ impl App {
         let visual_state = self.present_preview_visual_overlay(
             protocol,
             &excluded,
-            force_iterm_popup_repaint,
+            force_protocol_repaint,
             &mut out,
         )?;
         preview_log(format_args!(
@@ -346,6 +410,20 @@ impl App {
         self.preview.terminal_images.pending_iterm_popup_restore = false;
     }
 
+    pub(in crate::app) fn queue_sixel_repaint(&mut self) {
+        if self.needs_sixel_repaint_workaround() {
+            self.preview.terminal_images.pending_sixel_repaint = true;
+        }
+    }
+
+    pub(in crate::app) fn queue_windows_terminal_pdf_sixel_repaint(&mut self) {
+        if self.preview.terminal_images.protocol == ImageProtocol::Sixel
+            && self.preview.terminal_images.identity == TerminalIdentity::WindowsTerminal
+        {
+            self.preview.terminal_images.pending_sixel_repaint = true;
+        }
+    }
+
     pub(crate) fn clear_preview_overlay(&mut self) -> Result<Vec<u8>> {
         if !self.static_image_overlay_displayed() && !self.pdf_overlay_displayed() {
             return Ok(Vec::new());
@@ -362,7 +440,7 @@ impl App {
     }
 
     pub(crate) fn queue_forced_iterm_preview_erase(&mut self) {
-        if self.preview.terminal_images.protocol != ImageProtocol::ItermInline {
+        if !self.preview.terminal_images.protocol.is_raster() {
             return;
         }
         if let Some(area) = self.displayed_static_image_clear_area() {
@@ -396,6 +474,7 @@ pub(in crate::app) fn place_terminal_image(
     area: Rect,
     excluded: &[Rect],
     inline_payload: Option<&str>,
+    window_size: Option<TerminalWindowSize>,
 ) -> Result<Vec<u8>> {
     match protocol {
         ImageProtocol::KittyGraphics => {
@@ -404,6 +483,12 @@ pub(in crate::app) fn place_terminal_image(
         ImageProtocol::ItermInline => {
             iterm::place_terminal_image_with_iterm_protocol(path, area, inline_payload)
         }
+        ImageProtocol::Sixel => {
+            let ws = window_size.ok_or_else(|| {
+                anyhow::anyhow!("sixel protocol requires terminal window size, but none available")
+            })?;
+            sixel::place_terminal_image_with_sixel_protocol(path, area, ws)
+        }
         ImageProtocol::None => Ok(Vec::new()),
     }
 }
@@ -411,8 +496,10 @@ pub(in crate::app) fn place_terminal_image(
 pub(in crate::app) fn clear_terminal_images(protocol: ImageProtocol) -> Result<Vec<u8>> {
     match protocol {
         ImageProtocol::KittyGraphics => kitty::clear_terminal_images_with_kitty_protocol(),
-        // iTerm2 protocol has no clear primitive — the overlay is erased by
-        // the next ratatui draw call overwriting the cell region.
+        // iTerm2 has no clear primitive — the overlay is erased by the next
+        // ratatui draw call overwriting the cell region.
         ImageProtocol::ItermInline | ImageProtocol::None => Ok(Vec::new()),
+        // Sixel also has no clear primitive (same as iTerm2).
+        ImageProtocol::Sixel => sixel::clear_terminal_images_with_sixel_protocol(),
     }
 }

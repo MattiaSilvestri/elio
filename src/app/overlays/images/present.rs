@@ -1,15 +1,17 @@
 use super::types::DisplayedStaticImagePreview;
 use super::{
-    StaticImageKey, StaticImageOverlayMode, StaticImageOverlayPreparation,
+    SixelDcsKey, StaticImageKey, StaticImageOverlayMode, StaticImageOverlayPreparation,
     StaticImageOverlayRequest,
 };
 use crate::app::App;
 use crate::app::overlays::inline_image::{
     ImageProtocol, OverlayPresentState, RenderedImageDimensions, TerminalWindowSize,
-    fit_image_area, place_terminal_image, preview_log,
+    area_pixel_size, encode_sixel_dcs, fit_image_area, place_sixel_from_dcs, place_terminal_image,
+    preview_log,
 };
 use anyhow::Result;
 use ratatui::layout::Rect;
+use std::{path::Path, sync::Arc};
 
 impl App {
     pub(in crate::app) fn present_static_image_overlay(
@@ -63,7 +65,7 @@ impl App {
         );
         let image_changed = self.preview.image.displayed.as_ref() != Some(&displayed);
         let excluded_changed = excluded != self.preview.image.displayed_excluded.as_slice();
-        let needs_repaint = force_repaint && protocol == ImageProtocol::ItermInline;
+        let needs_repaint = force_repaint && protocol.is_raster();
         if !image_changed && !excluded_changed && !needs_repaint {
             preview_log("present_static_image_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
@@ -74,12 +76,13 @@ impl App {
         if image_changed {
             out.extend(self.clear_preview_overlay()?);
         }
-        match place_terminal_image(
+        match self.place_static_image(
             protocol,
             &prepared.display_path,
             placement,
             excluded,
             prepared.inline_payload.as_deref(),
+            window_size,
         ) {
             Ok(bytes) => {
                 preview_log(format_args!(
@@ -87,6 +90,9 @@ impl App {
                     bytes.len()
                 ));
                 out.extend(bytes);
+                if protocol == ImageProtocol::Sixel && image_changed {
+                    self.queue_sixel_repaint();
+                }
             }
             Err(error) => {
                 preview_log(format_args!(
@@ -153,7 +159,7 @@ impl App {
         );
         let image_changed = self.preview.image.displayed.as_ref() != Some(&displayed);
         let excluded_changed = excluded != self.preview.image.displayed_excluded.as_slice();
-        let needs_repaint = force_repaint && protocol == ImageProtocol::ItermInline;
+        let needs_repaint = force_repaint && protocol.is_raster();
         if !image_changed && !excluded_changed && !needs_repaint {
             preview_log("present_preview_visual_overlay: already displayed → Displayed");
             return Ok(OverlayPresentState::Displayed);
@@ -161,12 +167,13 @@ impl App {
         if image_changed {
             out.extend(self.clear_preview_overlay()?);
         }
-        match place_terminal_image(
+        match self.place_static_image(
             protocol,
             &prepared.display_path,
             placement,
             excluded,
             prepared.inline_payload.as_deref(),
+            window_size,
         ) {
             Ok(bytes) => {
                 preview_log(format_args!(
@@ -174,6 +181,9 @@ impl App {
                     bytes.len()
                 ));
                 out.extend(bytes);
+                if protocol == ImageProtocol::Sixel && image_changed {
+                    self.queue_sixel_repaint();
+                }
             }
             Err(error) => {
                 preview_log(format_args!(
@@ -210,7 +220,7 @@ impl App {
     }
 
     fn static_image_clear_area(&self, request: &StaticImageOverlayRequest) -> Rect {
-        if self.preview.terminal_images.protocol == ImageProtocol::ItermInline {
+        if self.preview.terminal_images.protocol.is_raster() {
             if request.mode == StaticImageOverlayMode::Inline {
                 return self
                     .input
@@ -246,6 +256,10 @@ impl App {
         dimensions: RenderedImageDimensions,
         window_size: TerminalWindowSize,
     ) -> Rect {
+        // Kitty fills the entire cell area and lets the terminal handle scaling
+        // via unicode placeholders, so no fitting is needed.  iTerm2 and Sixel
+        // both paint pixel buffers and need a cell area that matches the image's
+        // aspect ratio so the encoder can produce the correct pixel dimensions.
         if self.preview.terminal_images.protocol == ImageProtocol::KittyGraphics {
             request.area
         } else {
@@ -255,6 +269,43 @@ impl App {
                 dimensions.width_px as f32 / dimensions.height_px as f32,
             )
         }
+    }
+
+    /// Place a static image using the active protocol.
+    ///
+    /// For Sixel, looks up the pre-encoded DCS buffer from cache and prepends
+    /// only the cursor-move prefix (cheap).  On a cache miss it encodes fresh
+    /// and stores the result so subsequent renders are fast.
+    fn place_static_image(
+        &mut self,
+        protocol: ImageProtocol,
+        display_path: &Path,
+        placement: Rect,
+        excluded: &[Rect],
+        inline_payload: Option<&str>,
+        window_size: TerminalWindowSize,
+    ) -> Result<Vec<u8>> {
+        if protocol == ImageProtocol::Sixel {
+            let dcs_key = SixelDcsKey::new(display_path, placement, window_size);
+            let dcs: Arc<[u8]> = match self.cached_sixel_dcs(&dcs_key) {
+                Some(cached) => cached,
+                None => {
+                    let (pw, ph) = area_pixel_size(placement, window_size);
+                    let dcs = encode_sixel_dcs(display_path, pw, ph)?;
+                    self.remember_sixel_dcs(dcs_key, Arc::clone(&dcs));
+                    dcs
+                }
+            };
+            return Ok(place_sixel_from_dcs(&dcs, placement));
+        }
+        place_terminal_image(
+            protocol,
+            display_path,
+            placement,
+            excluded,
+            inline_payload,
+            Some(window_size),
+        )
     }
 }
 

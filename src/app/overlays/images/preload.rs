@@ -1,5 +1,6 @@
 use super::types::StaticImagePreloadViewport;
 use super::{StaticImageKey, StaticImageOverlayRequest};
+use crate::app::overlays::inline_image::ImageProtocol;
 use crate::app::{App, jobs};
 use std::collections::HashSet;
 
@@ -26,8 +27,11 @@ impl App {
             let mut requests = self.nearby_comic_preview_visual_overlay_requests();
             requests.extend(self.nearby_comic_entry_preview_visual_overlay_requests());
             requests.extend(self.nearby_epub_preview_visual_overlay_requests());
+            requests.extend(self.nearby_epub_entry_preview_visual_overlay_requests());
             requests.extend(self.nearby_audio_preview_visual_overlay_requests());
             requests
+        } else if self.preview.terminal_images.protocol == ImageProtocol::Sixel {
+            self.nearby_static_image_overlay_requests(None)
         } else {
             Vec::new()
         };
@@ -71,6 +75,7 @@ impl App {
                 self.ensure_static_image_preload(request, jobs::ImageJobPriority::Nearby);
             }
         }
+        self.prefetch_visible_heavy_preview_entries();
     }
 
     pub(in crate::app) fn refresh_static_image_preloads_if_needed(&mut self) {
@@ -128,6 +133,9 @@ impl App {
                 if let Some(payload) = prepared.inline_payload {
                     self.remember_static_image_inline_payload(key.clone(), payload);
                 }
+                if let (Some(dcs), Some(dcs_key)) = (prepared.sixel_dcs, prepared.sixel_dcs_key) {
+                    self.remember_sixel_dcs(dcs_key, dcs);
+                }
                 if prepared.display_path != build.path {
                     self.remember_rendered_static_image(key, prepared.display_path);
                 }
@@ -150,6 +158,11 @@ impl App {
         &self,
         current: Option<&StaticImageOverlayRequest>,
     ) -> Vec<StaticImageOverlayRequest> {
+        let preload_limit = if self.needs_slow_sixel_navigation_workaround() {
+            super::STATIC_IMAGE_PRELOAD_LIMIT_SLOW_SIXEL
+        } else {
+            super::STATIC_IMAGE_PRELOAD_LIMIT
+        };
         let current_path = current.as_ref().map(|request| &request.path);
         let mut requests = self
             .visible_entry_indices()
@@ -168,7 +181,7 @@ impl App {
         requests
             .into_iter()
             .map(|(_, request)| request)
-            .take(super::STATIC_IMAGE_PRELOAD_LIMIT)
+            .take(preload_limit)
             .collect()
     }
 
@@ -201,6 +214,16 @@ impl App {
         &mut self,
         request: &StaticImageOverlayRequest,
     ) -> jobs::ImagePrepareRequest {
+        let sixel_prepare = if self.preview.terminal_images.protocol == ImageProtocol::Sixel {
+            self.cached_terminal_window()
+                .map(|window_size| jobs::SixelPrepareConfig {
+                    area_width: request.area.width,
+                    area_height: request.area.height,
+                    window_size,
+                })
+        } else {
+            None
+        };
         jobs::ImagePrepareRequest {
             path: request.path.clone(),
             size: request.size,
@@ -212,6 +235,7 @@ impl App {
             magick_available: self.magick_available(),
             force_render_to_cache: request.force_render_to_cache,
             prepare_inline_payload: request.prepare_inline_payload,
+            sixel_prepare,
         }
     }
 }

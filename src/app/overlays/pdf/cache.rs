@@ -4,7 +4,7 @@ use super::{
     PdfRenderKey,
 };
 use crate::app::overlays::inline_image::{
-    RenderedImageDimensions, fit_image_area, read_png_dimensions,
+    ImageProtocol, RenderedImageDimensions, fit_image_area, read_png_dimensions,
 };
 use crate::app::{App, jobs};
 use std::{
@@ -30,6 +30,7 @@ impl App {
                 page: key.page,
                 width_px: key.width_px,
                 height_px: key.height_px,
+                sixel_prepare: self.pdf_sixel_prepare_for_render_key(key),
             },
             jobs::PdfJobPriority::Current,
         ) {
@@ -131,6 +132,16 @@ impl App {
         }
     }
 
+    pub(super) fn invalidate_rendered_pdf(&mut self, key: &PdfRenderKey) {
+        if let Some(path) = self.preview.pdf.rendered_pages.remove(key) {
+            let _ = fs::remove_file(path);
+        }
+        self.preview.pdf.rendered_page_dimensions.remove(key);
+        self.preview.pdf.render_order.retain(|queued| queued != key);
+        self.preview.pdf.pending_renders.remove(key);
+        self.preview.pdf.failed_renders.remove(key);
+    }
+
     pub(super) fn active_pdf_render_key(&self) -> Option<PdfRenderKey> {
         let request = self.active_pdf_overlay_request()?;
         let placement = self.overlay_placement_for_request(&request)?;
@@ -212,5 +223,28 @@ impl App {
         placement: FittedPdfPlacement,
     ) -> PdfRenderKey {
         PdfRenderKey::from_request(request, placement)
+    }
+
+    pub(super) fn pdf_sixel_prepare_for_render_key(
+        &self,
+        key: &PdfRenderKey,
+    ) -> Option<jobs::SixelPrepareConfig> {
+        if self.preview.terminal_images.protocol != ImageProtocol::Sixel {
+            return None;
+        }
+
+        let window_size = self.cached_terminal_window()?;
+        let request = self.pdf_overlay_request_for_page(key.page)?;
+        let placement = self.overlay_placement_for_request(&request)?;
+        let render_key = self.pdf_render_key_from_request(&request, placement);
+        if render_key.width_px != key.width_px || render_key.height_px != key.height_px {
+            return None;
+        }
+
+        Some(jobs::SixelPrepareConfig {
+            area_width: placement.image_area.width,
+            area_height: placement.image_area.height,
+            window_size,
+        })
     }
 }

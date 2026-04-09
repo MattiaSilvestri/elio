@@ -761,7 +761,6 @@ pub(super) fn detect_wheel_profile() -> WheelProfile {
         || env::var_os("ALACRITTY_SOCKET").is_some();
     let is_vte = env::var_os("VTE_VERSION").is_some();
     let is_warp = term_program.contains("warp") || env::var_os("WARP_SESSION_ID").is_some();
-
     if is_ghostty || is_alacritty || is_vte || is_warp {
         WheelProfile::HighFrequency
     } else {
