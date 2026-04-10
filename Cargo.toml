@@ -1,8 +1,14 @@
 [package]
 name = "elio"
-version = "0.1.0"
+version = "1.0.0"
 edition = "2024"
+rust-version = "1.93"
+description = "Terminal-native file manager with rich previews, inline images, and mouse support."
 license = "MIT"
+repository = "https://github.com/MiguelRegueiro/elio"
+readme = "README.md"
+keywords = ["terminal", "file-manager", "tui", "preview", "images"]
+categories = ["command-line-utilities", "filesystem"]
 
 [dependencies]
 anyhow = "1.0"

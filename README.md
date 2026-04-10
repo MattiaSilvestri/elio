@@ -25,13 +25,20 @@ It combines rich previews, customizable Places, trash, and quick actions like Go
 
 ## Installation
 
-Requires a Rust stable toolchain and a terminal with 24-bit color and mouse support.
+```bash
+cargo install elio
+```
+
+`elio` starts in your current working directory.
+
+<details>
+<summary><strong>Running From Source</strong></summary>
 
 ```bash
 cargo run --release
 ```
 
-`elio` starts in your current working directory.
+</details>
 
 ---
 
