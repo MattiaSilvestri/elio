@@ -1,0 +1,361 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      crate_name: ${{ steps.meta.outputs.crate_name }}
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Read crate metadata and validate tag
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          crate_name="$(sed -n 's/^name = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          lock_version="$(
+            awk -v crate_name="${crate_name}" '
+              $0 == "[[package]]" { in_pkg = 0; next }
+              $0 == "name = \"" crate_name "\"" { in_pkg = 1; next }
+              in_pkg && $1 == "version" {
+                gsub(/"/, "", $3)
+                print $3
+                exit
+              }
+            ' Cargo.lock
+          )"
+
+          if [[ -z "${crate_name}" || -z "${cargo_version}" || -z "${lock_version}" ]]; then
+            echo "Could not read crate metadata from Cargo.toml" >&2
+            exit 1
+          fi
+
+          if [[ "${cargo_version}" != "${lock_version}" ]]; then
+            echo "Cargo.toml version ${cargo_version} does not match Cargo.lock version ${lock_version}" >&2
+            exit 1
+          fi
+
+          if [[ "${version}" != "${cargo_version}" ]]; then
+            echo "Tag ${tag} does not match Cargo.toml version ${cargo_version}" >&2
+            exit 1
+          fi
+
+          {
+            echo "crate_name=${crate_name}"
+            echo "tag=${tag}"
+            echo "version=${version}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag points to mainline history
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+
+          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"; then
+            echo "Tagged commit ${GITHUB_SHA} is not reachable from origin/main" >&2
+            exit 1
+          fi
+
+      - name: Extract release notes from changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.meta.outputs.version }}"
+          awk -v version="${version}" '
+            $0 ~ "^## \\[" version "\\]" { in_section = 1; next }
+            in_section && $0 ~ "^## \\[" { exit }
+            in_section && $0 ~ "^\\[[^]]+\\]: " { exit }
+            in_section { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+
+          sed -i '/./,$!d' RELEASE_NOTES.md
+
+          if ! grep -q '[^[:space:]]' RELEASE_NOTES.md; then
+            echo "Failed to extract release notes for ${version} from CHANGELOG.md" >&2
+            exit 1
+          fi
+
+      - name: Fail if version already exists on crates.io
+        env:
+          CRATE_NAME: ${{ steps.meta.outputs.crate_name }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
+
+          crate_name = os.environ["CRATE_NAME"]
+          version = os.environ["VERSION"]
+          url = f"https://crates.io/api/v1/crates/{crate_name}"
+
+          try:
+              with urllib.request.urlopen(url) as response:
+                  payload = json.load(response)
+          except urllib.error.HTTPError as error:
+              if error.code == 404:
+                  sys.exit(0)
+              raise
+
+          versions = {entry["num"] for entry in payload.get("versions", [])}
+          if version in versions:
+              print(
+                  f"{crate_name} {version} is already published on crates.io",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+          PY
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: RELEASE_NOTES.md
+
+      - name: Install preview test tooling
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            ffmpeg \
+            genisoimage \
+            imagemagick \
+            libarchive-tools \
+            poppler-utils \
+            xz-utils
+
+          if ! command -v 7z >/dev/null 2>&1; then
+            if sudo apt-get install -y p7zip-full; then
+              :
+            else
+              sudo apt-get install -y 7zip
+              if command -v 7zz >/dev/null 2>&1 && ! command -v 7z >/dev/null 2>&1; then
+                sudo ln -s "$(command -v 7zz)" /usr/local/bin/7z
+              fi
+            fi
+          fi
+
+      - name: Install Rust 1.93.0
+        uses: dtolnay/rust-toolchain@1.93.0
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run release gate tests
+        run: cargo test --locked
+
+  build-linux:
+    name: Build release artifact (Linux)
+    needs: validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust 1.93.0
+        uses: dtolnay/rust-toolchain@1.93.0
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --locked --release
+
+      - name: Package Linux artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.validate.outputs.version }}"
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          bundle_dir="dist/elio-${version}-${host_target}"
+
+          mkdir -p "${bundle_dir}"
+          cp target/release/elio "${bundle_dir}/"
+          cp README.md LICENSE-MIT "${bundle_dir}/"
+          tar -C dist -czf "dist/elio-${version}-${host_target}.tar.gz" "$(basename "${bundle_dir}")"
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-asset-linux
+          path: dist/*.tar.gz
+
+  build-macos:
+    name: Build release artifact (macOS)
+    needs: validate
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust 1.93.0
+        uses: dtolnay/rust-toolchain@1.93.0
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --locked --release
+
+      - name: Package macOS artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.validate.outputs.version }}"
+          host_target="$(rustc -vV | sed -n 's/^host: //p')"
+          bundle_dir="dist/elio-${version}-${host_target}"
+
+          mkdir -p "${bundle_dir}"
+          cp target/release/elio "${bundle_dir}/"
+          cp README.md LICENSE-MIT "${bundle_dir}/"
+          tar -C dist -czf "dist/elio-${version}-${host_target}.tar.gz" "$(basename "${bundle_dir}")"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-asset-macos
+          path: dist/*.tar.gz
+
+  build-windows:
+    name: Build release artifact (Windows)
+    needs: validate
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust 1.93.0
+        uses: dtolnay/rust-toolchain@1.93.0
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --locked --release
+
+      - name: Package Windows artifact
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          $hostTarget = ((rustc -vV | Select-String '^host: ').ToString().Split(':')[1]).Trim()
+          $bundleDir = "dist/elio-$env:RELEASE_VERSION-$hostTarget"
+
+          New-Item -ItemType Directory -Path $bundleDir -Force | Out-Null
+          Copy-Item "target/release/elio.exe" "$bundleDir/"
+          Copy-Item "README.md" "$bundleDir/"
+          Copy-Item "LICENSE-MIT" "$bundleDir/"
+          Compress-Archive -Path $bundleDir -DestinationPath "dist/elio-$env:RELEASE_VERSION-$hostTarget.zip" -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-asset-windows
+          path: dist/*.zip
+
+  github-release:
+    name: Create GitHub release
+    needs:
+      - validate
+      - build-linux
+      - build-macos
+      - build-windows
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download release notes
+        uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-asset-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ needs.validate.outputs.tag }}"
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release edit "${tag}" \
+              --title "${tag}" \
+              --notes-file release-notes/RELEASE_NOTES.md
+          else
+            gh release create "${tag}" \
+              --title "${tag}" \
+              --notes-file release-notes/RELEASE_NOTES.md
+          fi
+
+          gh release upload "${tag}" dist/* --clobber
+
+  publish-crates:
+    name: Publish crate
+    needs:
+      - validate
+      - github-release
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Rust 1.93.0
+        uses: dtolnay/rust-toolchain@1.93.0
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Authenticate with crates.io
+        id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish --locked
