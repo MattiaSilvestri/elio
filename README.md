@@ -11,7 +11,7 @@ It combines rich previews, customizable Places, trash, and quick actions like Go
 ## Features
 
 - **Three-pane layout** — Places, Files, and Preview side by side
-- **Rich previews** — text, code, documents, archives, media, and more; see [Preview Types](#preview-types)
+- **Rich previews** — text, code, documents, archives, media, and more; see [Preview Coverage](#preview-coverage)
 - **Inline images** — rendered directly in the terminal on supported terminals
 - **Customizable Places and devices** — pinned folders plus auto-detected drives and mounts
 - **Quick actions** — Go-to, Open With, and copy-to-clipboard
@@ -25,11 +25,22 @@ It combines rich previews, customizable Places, trash, and quick actions like Go
 
 ## Installation
 
+On Arch Linux, install from the AUR with your preferred AUR helper:
+
+```bash
+paru -S elio
+```
+
+Or install with Cargo:
+
 ```bash
 cargo install elio
 ```
 
 `elio` starts in your current working directory.
+
+> [!TIP]
+> Recommended: use a Nerd Font in your terminal so icons display correctly.
 
 <details>
 <summary><strong>Running From Source</strong></summary>
