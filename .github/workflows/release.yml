@@ -6,7 +6,7 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -295,6 +295,8 @@ jobs:
       - build-macos
       - build-windows
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Download release notes
@@ -367,6 +369,7 @@ jobs:
       - publish-crates
     runs-on: ubuntu-latest
     environment: release
+    permissions: {}
     container:
       image: archlinux:base-devel
     env:
@@ -467,3 +470,52 @@ jobs:
 
           git commit -m "Update to ${RELEASE_VERSION}"
           git push
+
+  update-copr:
+    name: Trigger COPR build
+    needs:
+      - validate
+      - publish-crates
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: {}
+    container:
+      image: fedora:43
+    env:
+      COPR_PROJECT: elio
+      COPR_CLONE_URL: https://github.com/${{ github.repository }}.git
+      RELEASE_COMMIT: ${{ github.sha }}
+
+    steps:
+      - name: Install COPR CLI
+        shell: bash
+        run: |
+          set -euxo pipefail
+          dnf -y install copr-cli
+
+      - name: Configure COPR credentials
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${COPR_CONFIG:-}" ]]; then
+            echo "COPR_CONFIG is not configured" >&2
+            exit 1
+          fi
+
+          mkdir -p ~/.config
+          printf '%s\n' "${COPR_CONFIG}" > ~/.config/copr
+          chmod 600 ~/.config/copr
+
+      - name: Build COPR package from release commit
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          copr-cli buildscm "${COPR_PROJECT}" \
+            --clone-url "${COPR_CLONE_URL}" \
+            --commit "${RELEASE_COMMIT}" \
+            --spec packaging/fedora/elio.spec \
+            --method make_srpm
