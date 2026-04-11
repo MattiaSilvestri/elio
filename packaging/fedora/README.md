@@ -19,7 +19,7 @@ from the branch that contains it:
 
 ```bash
 copr-cli buildscm elio \
-  --clone-url https://github.com/MiguelRegueiro/elio.git \
+  --clone-url https://github.com/elio-fm/elio.git \
   --commit main \
   --spec packaging/fedora/elio.spec \
   --method make_srpm

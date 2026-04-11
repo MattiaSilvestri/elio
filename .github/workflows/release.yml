@@ -529,7 +529,7 @@ jobs:
     environment: release
     permissions: {}
     env:
-      HOMEBREW_TAP_REPO: MiguelRegueiro/homebrew-elio
+      HOMEBREW_TAP_REPO: elio-fm/homebrew-elio
 
     steps:
       - name: Install tooling
@@ -564,7 +564,7 @@ jobs:
           set -euo pipefail
 
           formula="Formula/elio.rb"
-          source_url="https://github.com/MiguelRegueiro/elio/archive/refs/tags/${RELEASE_TAG}.tar.gz"
+          source_url="https://github.com/elio-fm/elio/archive/refs/tags/${RELEASE_TAG}.tar.gz"
           sha256="$(curl -fsSL "${source_url}" | sha256sum | awk '{print $1}')"
 
           sed -i "s|^  url \".*\"|  url \"${source_url}\"|" "${formula}"

@@ -47,7 +47,7 @@ sudo dnf install elio
 Install from the Homebrew tap:
 
 ```bash
-brew install MiguelRegueiro/elio/elio
+brew install elio-fm/elio/elio
 ```
 
 ### Cargo

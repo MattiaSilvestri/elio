@@ -7,7 +7,7 @@ Release:        1%{?dist}
 Summary:        Terminal-native file manager with rich previews and inline images
 
 License:        MIT
-URL:            https://github.com/MiguelRegueiro/elio
+URL:            https://github.com/elio-fm/elio
 Source0:        %{name}-%{version}.tar.gz
 Source1:        vendor-%{version}.tar.zst
 

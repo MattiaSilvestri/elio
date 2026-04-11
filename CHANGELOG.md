@@ -25,5 +25,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Trash and restore support for safer file management workflows.
 - Optional external-tool integrations such as Poppler, ffmpeg, ffprobe, resvg, and 7-Zip for richer previews and metadata.
 
-[Unreleased]: https://github.com/MiguelRegueiro/elio/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/MiguelRegueiro/elio/releases/tag/v1.0.0
+[Unreleased]: https://github.com/elio-fm/elio/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/elio-fm/elio/releases/tag/v1.0.0
