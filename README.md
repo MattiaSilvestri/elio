@@ -25,13 +25,26 @@ It combines rich previews, customizable Places, trash, and quick actions like Go
 
 ## Installation
 
-On Arch Linux, install from the AUR with your preferred AUR helper:
+### Arch Linux
+
+Install from the AUR with your preferred AUR helper:
 
 ```bash
 paru -S elio
 ```
 
-Or install with Cargo:
+### Fedora
+
+Enable the COPR repository and install with `dnf`:
+
+```bash
+sudo dnf copr enable miguelregueiro/elio
+sudo dnf install elio
+```
+
+### Cargo
+
+Install from crates.io:
 
 ```bash
 cargo install elio
