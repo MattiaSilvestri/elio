@@ -14,7 +14,7 @@ srpm:
 	workdir="$$(mktemp -d)"; \
 	trap 'rm -rf "$$workdir"' EXIT; \
 	if [[ "$$(id -u)" -eq 0 ]] && command -v dnf >/dev/null 2>&1; then \
-		dnf -y install cargo rpm-build zstd; \
+		dnf -y install cargo git rpm-build zstd; \
 	fi; \
 	mkdir -p "$$outdir" "$$workdir/build" "$$workdir/rpms"; \
 	git -C "$(REPO_ROOT)" archive --format=tar --prefix="$(NAME)-$$version/" HEAD | tar -C "$$workdir" -xf -; \
