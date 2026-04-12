@@ -103,7 +103,7 @@ jobs:
           fi
 
       - name: Upload release notes
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-notes
           path: RELEASE_NOTES.md
@@ -172,7 +172,7 @@ jobs:
           tar -C dist -czf "dist/elio-${version}-${host_target}.tar.gz" "$(basename "${bundle_dir}")"
 
       - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-asset-linux
           path: dist/*.tar.gz
@@ -209,7 +209,7 @@ jobs:
           tar -C dist -czf "dist/elio-${version}-${host_target}.tar.gz" "$(basename "${bundle_dir}")"
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-asset-macos
           path: dist/*.tar.gz
@@ -247,7 +247,7 @@ jobs:
           Compress-Archive -Path $bundleDir -DestinationPath "dist/elio-$env:RELEASE_VERSION-$hostTarget.zip" -Force
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-asset-windows
           path: dist/*.zip
@@ -265,13 +265,13 @@ jobs:
 
     steps:
       - name: Download release notes
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: release-notes
           path: release-notes
 
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           pattern: release-asset-*
           path: dist
@@ -285,17 +285,19 @@ jobs:
           set -euo pipefail
           tag="${{ needs.validate.outputs.tag }}"
 
-          if gh release view "${tag}" >/dev/null 2>&1; then
+          if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release edit "${tag}" \
+              --repo "${GITHUB_REPOSITORY}" \
               --title "${tag}" \
               --notes-file release-notes/RELEASE_NOTES.md
           else
             gh release create "${tag}" \
+              --repo "${GITHUB_REPOSITORY}" \
               --title "${tag}" \
               --notes-file release-notes/RELEASE_NOTES.md
           fi
 
-          gh release upload "${tag}" dist/* --clobber
+          gh release upload "${tag}" dist/* --clobber --repo "${GITHUB_REPOSITORY}"
 
   publish-crates:
     name: Publish crate
@@ -373,7 +375,7 @@ jobs:
         run: echo "${CRATE_NAME} ${RELEASE_VERSION} is already published on crates.io"
 
   update-aur:
-    name: Update AUR package (${{ matrix.package.name }})
+    name: Publish AUR package (${{ matrix.package.name }})
     needs:
       - validate
       - publish-crates
@@ -529,7 +531,7 @@ jobs:
           git push
 
   update-copr:
-    name: Trigger COPR build
+    name: Publish COPR package
     needs:
       - validate
       - publish-crates
@@ -596,7 +598,7 @@ jobs:
           copr-cli build "${COPR_PROJECT}" "${srpm_path}"
 
   update-homebrew:
-    name: Update Homebrew tap
+    name: Publish Homebrew tap
     needs:
       - validate
       - publish-crates
