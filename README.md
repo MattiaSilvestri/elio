@@ -1,7 +1,4 @@
-<h1 align="left">
-  <img src="assets/logo.png" width="64" alt="elio logo" style="vertical-align: middle; margin-right: 8px;" />
-  elio
-</h1>
+<h1 align="left"><img src="assets/logo.png" width="64" alt="elio logo" align="absmiddle" />&nbsp;elio</h1>
 
 A terminal-native file manager with a three-pane layout, rich previews, and inline images.
 
