@@ -69,16 +69,9 @@ body:
     validations:
       required: true
   - type: textarea
-    id: expected-behavior
-    attributes:
-      label: Expected Behavior
-      description: What did you expect to happen?
-    validations:
-      required: true
-  - type: textarea
     id: context
     attributes:
       label: Additional Context
-      description: Include package manager versions, logs, links, or downstream package details if relevant.
+      description: Include what you expected, package manager versions, logs, links, or downstream package details if relevant.
     validations:
       required: false

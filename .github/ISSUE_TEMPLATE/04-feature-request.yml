@@ -45,16 +45,9 @@ body:
     validations:
       required: true
   - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternatives
-      description: What workarounds or alternative designs have you considered?
-    validations:
-      required: false
-  - type: textarea
     id: compatibility
     attributes:
-      label: Compatibility Notes
-      description: Mention any platform, terminal, config, theme, keybinding, or dependency implications.
+      label: Additional Context
+      description: Mention alternatives, workarounds, or platform, terminal, config, theme, keybinding, and dependency implications.
     validations:
       required: false

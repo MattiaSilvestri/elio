@@ -16,7 +16,7 @@ body:
       options:
         - label: I have searched the existing issues.
           required: true
-        - label: I have tested the latest released version, or the current `main` branch when practical.
+        - label: I can reproduce this on the latest released version, or on `main` when practical.
           required: false
   - type: input
     id: version
@@ -48,24 +48,18 @@ body:
     validations:
       required: true
   - type: input
-    id: terminal
+    id: environment
     attributes:
       label: Terminal
-      placeholder: "Example: Ghostty 1.1, Kitty 0.39, WezTerm nightly, Windows Terminal"
+      description: Include terminal name and version if relevant.
+      placeholder: "Example: Ghostty 1.1"
     validations:
       required: false
   - type: textarea
-    id: current-behavior
+    id: behavior
     attributes:
-      label: Current Behavior
-      description: What happened?
-    validations:
-      required: true
-  - type: textarea
-    id: expected-behavior
-    attributes:
-      label: Expected Behavior
-      description: What did you expect to happen?
+      label: What Happened?
+      description: Include what you expected to happen instead.
     validations:
       required: true
   - type: textarea
@@ -81,25 +75,9 @@ body:
     validations:
       required: true
   - type: textarea
-    id: config
-    attributes:
-      label: Relevant Config or Theme
-      description: Paste only the relevant `config.toml` or `theme.toml` entries, if any.
-      render: toml
-    validations:
-      required: false
-  - type: textarea
-    id: logs
-    attributes:
-      label: Logs or Terminal Output
-      description: Paste warnings, panic output, or relevant command output.
-      render: shell
-    validations:
-      required: false
-  - type: textarea
     id: context
     attributes:
-      label: Additional Context
-      description: Add screenshots, recordings, links, or notes that help reproduce the issue.
+      label: Logs, Config, or Additional Context
+      description: Paste relevant logs, warnings, config/theme entries, screenshots, recordings, or links.
     validations:
       required: false

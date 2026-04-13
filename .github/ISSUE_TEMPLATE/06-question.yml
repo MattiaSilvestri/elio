@@ -41,22 +41,9 @@ body:
     validations:
       required: true
   - type: textarea
-    id: tried
+    id: context
     attributes:
-      label: What Have You Tried?
-      description: Include commands, config, docs, or workarounds you already checked.
-    validations:
-      required: false
-  - type: textarea
-    id: environment
-    attributes:
-      label: Environment
-      description: Include elio version, OS, terminal, and install source if relevant.
-      value: |
-        - elio:
-        - OS:
-        - Terminal:
-        - Install source:
-      render: markdown
+      label: Additional Context
+      description: Include commands, config, docs, workarounds, elio version, OS, terminal, or install source if relevant.
     validations:
       required: false

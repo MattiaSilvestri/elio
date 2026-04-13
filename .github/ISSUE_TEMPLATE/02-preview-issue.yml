@@ -16,7 +16,7 @@ body:
       options:
         - label: I have searched the existing issues.
           required: true
-        - label: I can reproduce this with the latest released version, or the current `main` branch when practical.
+        - label: I can reproduce this on the latest released version, or on `main` when practical.
           required: false
   - type: input
     id: version
@@ -68,32 +68,15 @@ body:
     id: helper-tools
     attributes:
       label: Optional Helper Tools
-      description: Include versions or command output for tools involved in the preview.
-      value: |
-        - ffmpeg:
-        - ffprobe:
-        - pdfinfo:
-        - pdftocairo:
-        - resvg:
-        - magick:
-        - 7z:
-        - bsdtar:
-        - isoinfo:
-      render: markdown
+      description: List any relevant installed tools and versions, such as `ffmpeg`, `pdfinfo`, `pdftocairo`, `resvg`, `magick`, `7z`, `bsdtar`, or `isoinfo`.
+      placeholder: "Example: pdfinfo 25.03.0, pdftocairo 25.03.0"
     validations:
       required: false
   - type: textarea
-    id: current-behavior
+    id: behavior
     attributes:
-      label: Current Preview Behavior
-      description: What does elio show now?
-    validations:
-      required: true
-  - type: textarea
-    id: expected-behavior
-    attributes:
-      label: Expected Preview Behavior
-      description: What should elio show instead?
+      label: Preview Behavior
+      description: What does elio show now, and what should it show instead?
     validations:
       required: true
   - type: textarea
@@ -108,17 +91,9 @@ body:
     validations:
       required: true
   - type: textarea
-    id: debug-log
+    id: context
     attributes:
-      label: Preview Debug Output
-      description: If relevant, set `ELIO_DEBUG_PREVIEW=1` and paste the useful lines from `elio-preview.log`.
-      render: shell
-    validations:
-      required: false
-  - type: textarea
-    id: sample-file
-    attributes:
-      label: Sample File or Screenshot
-      description: Attach a minimal public sample file, screenshot, or recording if it helps reproduce the issue.
+      label: Debug Output or Sample File
+      description: If relevant, set `ELIO_DEBUG_PREVIEW=1` and paste useful lines from `elio-preview.log`. Attach a minimal public sample file, screenshot, or recording if it helps reproduce the issue.
     validations:
       required: false
