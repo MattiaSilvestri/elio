@@ -1,0 +1,64 @@
+# Security Policy
+
+## Supported Versions
+
+Security fixes are provided for the latest released version of `elio`.
+
+If possible, test suspected vulnerabilities against the newest release before
+reporting. If you can only reproduce the issue on an older version, include that
+version in the report.
+
+## Reporting a Vulnerability
+
+Please do not open a public GitHub issue for suspected security
+vulnerabilities.
+
+Report vulnerabilities through GitHub private vulnerability reporting for this
+repository:
+
+<https://github.com/elio-fm/elio/security/advisories/new>
+
+When reporting, please include:
+
+- the affected `elio` version or commit
+- your operating system and terminal
+- a clear description of the issue
+- reproduction steps or a proof of concept, when possible
+- whether the issue depends on a crafted file, archive, path, config, theme, or
+  terminal escape sequence
+- whether the issue depends on optional external tools such as `ffmpeg`,
+  `ffprobe`, `pdfinfo`, `pdftocairo`, `resvg`, `magick`, `7z`, `bsdtar`, or
+  `isoinfo`
+
+We aim to acknowledge new reports within 7 days. Reports will be triaged, and
+confirmed vulnerabilities will be fixed and disclosed with appropriate release
+notes once a fix is available.
+
+## Project Security Scope
+
+`elio` is a local terminal file manager. It does not run a server, accept remote
+logins, or intentionally process untrusted network requests.
+
+Security-sensitive areas include:
+
+- previewing malformed or malicious local files, archives, documents, media, or
+  images
+- invoking optional external preview tools
+- opening files or folders with platform launchers and discovered applications
+- handling unusual filenames, paths, symlinks, mounts, and trash operations
+- copying file metadata to the clipboard, including through OSC52 and platform
+  clipboard helpers
+- rendering terminal output, including terminal escape sequences
+- parsing user-provided config and theme files
+
+If you are unsure whether a behavior is security-sensitive, report it privately.
+
+## Dependency Advisories
+
+Rust dependency advisories are tracked as part of regular maintenance.
+
+The contributor workflow for local dependency auditing is documented in
+[`CONTRIBUTING.md`](CONTRIBUTING.md). `unsound` RustSec advisories are treated
+as release blockers. Known `unmaintained` advisories in transitive dependencies
+may be tracked without blocking a release when there is no practical fixed
+upgrade path.

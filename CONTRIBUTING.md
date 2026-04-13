@@ -136,6 +136,8 @@ During release preparation, `Unreleased` entries are curated into a dated versio
 
 ## Security Auditing
 
+For vulnerability reporting and supported-version policy, see [`SECURITY.md`](SECURITY.md).
+
 Run `cargo audit --deny unsound` to check for security advisories.
 
 The project currently has known `unmaintained` advisories in transitive dependencies. Those are tracked, but they are not release blockers. `unsound` advisories are treated as hard blockers.
