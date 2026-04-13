@@ -42,7 +42,7 @@ body:
     id: operating-system
     attributes:
       label: Operating System
-      placeholder: "Example: Fedora 41, Arch Linux, macOS 15, Windows 11"
+      placeholder: "Example: Fedora, Arch Linux, macOS, Windows, BSD (include version if known)"
     validations:
       required: true
   - type: input
