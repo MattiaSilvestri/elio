@@ -1,4 +1,4 @@
-name: Preview or File Type Issue
+name: 👁️ Preview or File Type Issue
 description: Report incorrect or missing previews for files, archives, documents, media, or images.
 title: "[Preview]: "
 labels: ["bug"]
@@ -9,15 +9,6 @@ body:
         Use this when the main problem is in the Preview pane, file classification, inline images, thumbnails, metadata, or optional helper-tool behavior.
 
         Do not attach private or sensitive files. If possible, use a minimal public sample file.
-  - type: checkboxes
-    id: checks
-    attributes:
-      label: Before Opening
-      options:
-        - label: I have searched the existing issues.
-          required: true
-        - label: I can reproduce this on the latest released version, or on `main` when practical.
-          required: false
   - type: input
     id: version
     attributes:
@@ -43,9 +34,9 @@ body:
   - type: input
     id: file-type
     attributes:
-      label: File Type
+      label: File or Preview Type
       description: Include the extension and what the file contains.
-      placeholder: "Example: PDF, EPUB, DOCX, SVG, PNG, MP4, ZIP, CBZ, ISO, SQLite"
+      placeholder: "Example: PDF page preview, SVG image preview, ZIP archive listing"
     validations:
       required: true
   - type: dropdown
@@ -75,15 +66,15 @@ body:
   - type: textarea
     id: behavior
     attributes:
-      label: Preview Behavior
-      description: What does elio show now, and what should it show instead?
+      label: What Happened?
+      description: Describe what elio shows now, and what you expected instead.
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
       label: Steps to Reproduce
-      description: Include where the file is located, how it is selected, and any relevant environment variables.
+      description: Describe how to reproduce the issue.
       placeholder: |
         1. Run `elio` in ...
         2. Select a file named ...

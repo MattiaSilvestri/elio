@@ -1,4 +1,4 @@
-name: Installation or Packaging Issue
+name: 📦 Installation or Packaging Issue
 description: Report install, update, package, or release artifact problems.
 title: "[Install]: "
 labels: ["bug"]

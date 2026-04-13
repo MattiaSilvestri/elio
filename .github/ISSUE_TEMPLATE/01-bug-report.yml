@@ -1,4 +1,4 @@
-name: Bug Report
+name: 🐛 Bug Report
 description: Report broken behavior in elio.
 title: "[Bug]: "
 labels: ["bug"]
@@ -30,6 +30,7 @@ body:
     id: install-source
     attributes:
       label: Installation Source
+      description: How did you install elio?
       options:
         - AUR
         - Fedora COPR
@@ -48,7 +49,7 @@ body:
     validations:
       required: true
   - type: input
-    id: environment
+    id: terminal
     attributes:
       label: Terminal
       description: Include terminal name and version if relevant.
@@ -59,14 +60,14 @@ body:
     id: behavior
     attributes:
       label: What Happened?
-      description: Include what you expected to happen instead.
+      description: Describe what happened, and what you expected instead.
     validations:
       required: true
   - type: textarea
     id: steps
     attributes:
       label: Steps to Reproduce
-      description: Include the folder layout, config, key sequence, mouse action, or command that triggers the issue.
+      description: Describe how to reproduce the issue (commands, key presses, file layout, etc.).
       placeholder: |
         1. Open `elio` in ...
         2. Select ...
@@ -78,6 +79,6 @@ body:
     id: context
     attributes:
       label: Logs, Config, or Additional Context
-      description: Paste relevant logs, warnings, config/theme entries, screenshots, recordings, or links.
+      description: Paste logs, warnings, config/theme entries, screenshots, recordings, or links.
     validations:
       required: false

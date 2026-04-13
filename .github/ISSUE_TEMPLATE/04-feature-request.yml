@@ -1,4 +1,4 @@
-name: Feature Request
+name: ✨ Feature Request
 description: Propose a user-visible change or enhancement.
 title: "[Feature]: "
 labels: ["enhancement"]
@@ -7,45 +7,15 @@ body:
     attributes:
       value: |
         Use this for new behavior, preview coverage, platform support, configuration, theming, or workflow improvements.
-  - type: checkboxes
-    id: checks
+  - type: textarea
+    id: request
     attributes:
-      label: Before Opening
-      options:
-        - label: I have searched the existing issues.
-          required: true
-  - type: dropdown
-    id: area
-    attributes:
-      label: Area
-      options:
-        - Navigation and file operations
-        - Preview support
-        - Inline images
-        - Terminal or platform integration
-        - Configuration
-        - Theming
-        - Installation or packaging
-        - Documentation
-        - Other
+      label: Request
+      description: What should elio do, and what problem would it solve?
     validations:
       required: true
   - type: textarea
-    id: problem
-    attributes:
-      label: Problem
-      description: What problem would this solve?
-    validations:
-      required: true
-  - type: textarea
-    id: proposal
-    attributes:
-      label: Proposed Solution
-      description: What should elio do?
-    validations:
-      required: true
-  - type: textarea
-    id: compatibility
+    id: context
     attributes:
       label: Additional Context
       description: Mention alternatives, workarounds, or platform, terminal, config, theme, keybinding, and dependency implications.
