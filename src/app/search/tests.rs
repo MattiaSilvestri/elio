@@ -5,7 +5,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 fn temp_path(label: &str) -> PathBuf {
@@ -16,6 +16,29 @@ fn temp_path(label: &str) -> PathBuf {
     let path = std::env::temp_dir().join(format!("elio-searching-{label}-{unique}"));
     std::fs::create_dir_all(&path).ok();
     path.canonicalize().unwrap_or(path)
+}
+
+fn base_cache_entry(pool: Vec<usize>) -> SearchMatchCacheEntry {
+    super::build_base_search_cache_entry(pool)
+}
+
+fn wait_for_search_candidates(app: &mut App, expected: usize) {
+    for _ in 0..300 {
+        let _ = app.process_background_jobs();
+        if app.search_is_open()
+            && !app.search_is_loading()
+            && app.search_candidate_count() == expected
+        {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!(
+        "timed out waiting for search candidates: expected={}, actual={}, loading={}",
+        expected,
+        app.search_candidate_count(),
+        app.search_is_loading(),
+    );
 }
 
 #[test]
@@ -47,6 +70,7 @@ fn opening_search_ignores_hidden_cache_when_browser_hides_dotfiles() {
         cwd: root.clone(),
         scope: SearchScope::Folders,
         show_hidden: true,
+        fingerprint: app.navigation.directory_runtime.fingerprint,
         candidates: Arc::new(vec![crate::fs::search::SearchCandidate {
             path: root.join(".hidden-root/needle"),
             name: "needle".to_string(),
@@ -62,6 +86,46 @@ fn opening_search_ignores_hidden_cache_when_browser_hides_dotfiles() {
 
     assert_eq!(app.search_candidate_count(), 0);
     assert!(app.search_is_loading());
+
+    fs::remove_dir_all(root).expect("failed to remove temp tree");
+}
+
+#[test]
+fn directory_reload_invalidates_closed_search_cache() {
+    let root = temp_path("reload-invalidates-cache");
+    fs::create_dir_all(root.join("alpha")).expect("failed to create initial folder");
+
+    let mut app = App::new_at(root.clone()).expect("failed to create app");
+    app.open_fuzzy_finder(SearchScope::Folders)
+        .expect("failed to open search");
+    wait_for_search_candidates(&mut app, 1);
+    app.overlays.search = None;
+
+    fs::create_dir_all(root.join("beta")).expect("failed to create new folder");
+    let snapshot = crate::fs::load_directory_snapshot(&root, false, app.navigation.sort_mode)
+        .expect("failed to load directory snapshot");
+    app.apply_directory_snapshot(
+        PendingDirectoryLoad {
+            token: 0,
+            target_cwd: root.clone(),
+            previous_cwd: root.clone(),
+            previous_selected_path: None,
+            previous_selection_name: None,
+            reselect_path: None,
+            history_mode: DirectoryHistoryMode::None,
+            refresh_search: false,
+            completion: DirectoryLoadCompletion::Keep,
+        },
+        snapshot,
+    );
+
+    app.open_fuzzy_finder(SearchScope::Folders)
+        .expect("failed to reopen search");
+    assert!(
+        app.search_is_loading(),
+        "reopening search should rebuild instead of reusing the stale cache"
+    );
+    wait_for_search_candidates(&mut app, 2);
 
     fs::remove_dir_all(root).expect("failed to remove temp tree");
 }
@@ -99,7 +163,7 @@ fn refining_query_rechecks_full_candidate_set() {
         query_cursor: 1,
         candidates: Arc::new(candidates),
         matches: Vec::new(),
-        cached_matches: HashMap::from([(String::new(), (0..301).collect())]),
+        cached_matches: HashMap::from([(String::new(), base_cache_entry((0..301).collect()))]),
         selected: 0,
         scroll: 0,
         loading: false,
@@ -149,7 +213,7 @@ fn search_query_cursor_inserts_and_deletes_in_place() {
         query_cursor: 2,
         candidates: Arc::new(Vec::new()),
         matches: Vec::new(),
-        cached_matches: HashMap::from([(String::new(), Vec::new())]),
+        cached_matches: HashMap::from([(String::new(), base_cache_entry(Vec::new()))]),
         selected: 0,
         scroll: 0,
         loading: false,
@@ -183,7 +247,7 @@ fn search_query_ctrl_arrows_move_across_word_boundaries() {
         query_cursor: "foo bar/baz".chars().count(),
         candidates: Arc::new(Vec::new()),
         matches: Vec::new(),
-        cached_matches: HashMap::from([(String::new(), Vec::new())]),
+        cached_matches: HashMap::from([(String::new(), base_cache_entry(Vec::new()))]),
         selected: 0,
         scroll: 0,
         loading: false,
@@ -229,7 +293,7 @@ fn search_query_ctrl_backspace_and_delete_remove_word_units() {
         query_cursor: 8,
         candidates: Arc::new(Vec::new()),
         matches: Vec::new(),
-        cached_matches: HashMap::from([(String::new(), Vec::new())]),
+        cached_matches: HashMap::from([(String::new(), base_cache_entry(Vec::new()))]),
         selected: 0,
         scroll: 0,
         loading: false,
@@ -266,7 +330,7 @@ fn search_query_terminal_fallback_word_delete_bindings_work() {
         query_cursor: 8,
         candidates: Arc::new(Vec::new()),
         matches: Vec::new(),
-        cached_matches: HashMap::from([(String::new(), Vec::new())]),
+        cached_matches: HashMap::from([(String::new(), base_cache_entry(Vec::new()))]),
         selected: 0,
         scroll: 0,
         loading: false,
@@ -318,7 +382,7 @@ fn search_rows_ignore_stale_match_indexes() {
         query_cursor: 0,
         candidates: Arc::new(Vec::new()),
         matches: vec![3],
-        cached_matches: HashMap::from([(String::new(), vec![3])]),
+        cached_matches: HashMap::from([(String::new(), base_cache_entry(vec![3]))]),
         selected: 0,
         scroll: 0,
         loading: false,
@@ -357,7 +421,7 @@ fn confirm_search_selection_selects_file_already_in_current_directory() {
             is_dir: false,
         }]),
         matches: vec![0],
-        cached_matches: HashMap::from([(String::new(), vec![0])]),
+        cached_matches: HashMap::from([(String::new(), base_cache_entry(vec![0]))]),
         selected: 0,
         scroll: 0,
         loading: false,
@@ -398,7 +462,7 @@ fn confirm_search_selection_keeps_overlay_open_when_reveal_fails() {
             is_dir: false,
         }]),
         matches: vec![0],
-        cached_matches: HashMap::from([(String::new(), vec![0])]),
+        cached_matches: HashMap::from([(String::new(), base_cache_entry(vec![0]))]),
         selected: 0,
         scroll: 0,
         loading: false,
