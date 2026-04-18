@@ -1,5 +1,5 @@
 %bcond_with check
-%global fallback_version 1.0.1
+%global fallback_version 1.1.0
 %global fallback_release 1
 
 Name:           elio
@@ -44,6 +44,12 @@ install -Dpm0755 target/rpm/%{name} %{buildroot}%{_bindir}/%{name}
 %{_bindir}/elio
 
 %changelog
+* Sat Apr 18 2026 Miguel Regueiro <miguelpr4242@gmail.com> - 1.1.0-1
+- Add RAR, comic archive, and Kindle ebook previews
+- Improve fuzzy search refresh and large-tree responsiveness
+- Clarify metadata preview sections
+- Improve trash handling and documentation
+
 * Sun Apr 12 2026 Miguel Regueiro <miguelpr4242@gmail.com> - 1.0.1-1
 - Add CLI help and version flags
 - Add release packaging automation
