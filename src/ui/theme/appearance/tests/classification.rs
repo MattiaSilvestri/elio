@@ -101,6 +101,90 @@ fn resolve_entry_cache_respects_entry_metadata_when_builtin_class_changes() {
 }
 
 #[test]
+fn resolve_browser_entry_preserves_canonical_license_appearance() {
+    let (root, path) = write_temp_file(
+        "browser-canonical-license",
+        "LICENSE.md",
+        "# SPDX-License-Identifier: Apache-2.0\n\nFixture license notes.\n",
+    );
+
+    let metadata = fs::metadata(&path).expect("metadata should exist");
+    let entry = Entry {
+        path: path.clone(),
+        name: "LICENSE.md".to_string(),
+        name_key: "license.md".to_string(),
+        kind: EntryKind::File,
+        size: metadata.len(),
+        modified: metadata.modified().ok(),
+        readonly: false,
+    };
+
+    let browser = resolve_browser_entry(&entry);
+    let preview = resolve_entry(&entry);
+
+    assert_eq!(browser.class, FileClass::License);
+    assert_eq!(preview.class, FileClass::License);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn resolve_browser_entry_preserves_non_canonical_spdx_license_appearance() {
+    let (root, path) = write_temp_file(
+        "browser-noncanonical-license",
+        "third-party.txt",
+        "SPDX-License-Identifier: Apache-2.0\n",
+    );
+
+    let metadata = fs::metadata(&path).expect("metadata should exist");
+    let entry = Entry {
+        path: path.clone(),
+        name: "third-party.txt".to_string(),
+        name_key: "third-party.txt".to_string(),
+        kind: EntryKind::File,
+        size: metadata.len(),
+        modified: metadata.modified().ok(),
+        readonly: false,
+    };
+
+    let browser = resolve_browser_entry(&entry);
+    let preview = resolve_entry(&entry);
+
+    assert_eq!(browser.class, FileClass::License);
+    assert_eq!(preview.class, FileClass::License);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
+fn resolve_browser_entry_preserves_standalone_license_text_without_canonical_filename() {
+    let (root, path) = write_temp_file(
+        "browser-standalone-license",
+        "third-party.txt",
+        "Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/LICENSE-2.0\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n",
+    );
+
+    let metadata = fs::metadata(&path).expect("metadata should exist");
+    let entry = Entry {
+        path: path.clone(),
+        name: "third-party.txt".to_string(),
+        name_key: "third-party.txt".to_string(),
+        kind: EntryKind::File,
+        size: metadata.len(),
+        modified: metadata.modified().ok(),
+        readonly: false,
+    };
+
+    let browser = resolve_browser_entry(&entry);
+    let preview = resolve_entry(&entry);
+
+    assert_eq!(browser.class, FileClass::License);
+    assert_eq!(preview.class, FileClass::License);
+
+    fs::remove_dir_all(root).expect("failed to remove temp root");
+}
+
+#[test]
 fn type_labels_cover_supported_special_files() {
     assert_eq!(
         specific_type_label(Path::new("cover.xcf"), EntryKind::File),

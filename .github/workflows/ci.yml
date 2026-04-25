@@ -133,11 +133,16 @@ jobs:
       - name: Build and test on FreeBSD
         uses: vmactions/freebsd-vm@v1
         with:
+          release: "14.4"
           usesh: true
           prepare: |
+            env ASSUME_ALWAYS_YES=yes pkg bootstrap -f
+            pkg update -f
             pkg install -y rust 7-zip
-            # 7-zip provides 7zz; create a 7z alias so elio's archive preview finds it
-            ln -sf /usr/local/bin/7zz /usr/local/bin/7z
+            # Some FreeBSD package versions ship 7zz only; keep a 7z fallback for elio's archive preview.
+            if [ ! -x /usr/local/bin/7z ] && [ -x /usr/local/bin/7zz ]; then
+              ln -sf /usr/local/bin/7zz /usr/local/bin/7z
+            fi
           run: |
             cargo build --locked
             cargo test --locked
