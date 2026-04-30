@@ -252,12 +252,33 @@ fn disk_space(_path: &Path) -> Option<(u64, u64)> {
 
 pub(super) fn render_status(frame: &mut Frame<'_>, area: Rect, app: &App, palette: Palette) {
     // The bar sits on a slightly elevated background to lift it off the body.
-    let bar_bg = palette.surface;
+    let bar_bg = palette.bg;
     helpers::fill_area(frame, area, bar_bg, palette.text);
 
+    // Outer layout: left edge (1) | content | right edge (1)
+    let outer = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Min(STATUS_MIN_LEFT_WIDTH),
+            Constraint::Length(1),
+        ])
+        .split(area);
+
+    let edge_style = Style::default().fg(palette.accent).bg(palette.accent);
+    frame.render_widget(
+        Paragraph::new(Span::styled("█", edge_style)),
+        outer[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled("█", edge_style)),
+        outer[2],
+    );
+
+    let content_area = outer[1];
     let status_message = app.status_message();
-    let wide = area.width >= STATUS_NARROW_THRESHOLD;
-    let right_width = status_section_width(area.width, status_message, wide);
+    let wide = content_area.width >= STATUS_NARROW_THRESHOLD;
+    let right_width = status_section_width(content_area.width, status_message, wide);
 
     let sections = Layout::default()
         .direction(Direction::Horizontal)
@@ -265,7 +286,7 @@ pub(super) fn render_status(frame: &mut Frame<'_>, area: Rect, app: &App, palett
             Constraint::Min(STATUS_MIN_LEFT_WIDTH),
             Constraint::Length(right_width),
         ])
-        .split(area);
+        .split(content_area);
 
     // ── Left section ──────────────────────────────────────────────────────────
     let left_line = build_left_line(app, sections[0].width, bar_bg, palette);
