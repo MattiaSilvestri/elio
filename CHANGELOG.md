@@ -13,9 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed Linux/BSD default-app dispatch and Open With MIME detection to prefer GLib's MIME resolution before falling back to `xdg-open` or `xdg-mime`, keeping system default launches aligned with desktop MIME associations.
-- Fixed Warp inline image and PDF previews by using Kitty direct placement instead of Kitty Unicode placeholders. (#75)
-- Fixed tmux relaying of Kitty Graphics preview sequences so inline image and PDF previews can render inside tmux when `KittyGraphics` is selected and `allow-passthrough` is enabled. Some tmux setups may still require preserved terminal markers or `ELIO_IMAGE_PREVIEWS=1`. (#74, #70)
+- Fixed Linux/BSD default-app dispatch and Open With MIME detection to prefer GLib's MIME resolution before falling back to `xdg-open` or `xdg-mime`, keeping system default launches aligned with desktop MIME associations. ([#77])
+- Fixed Warp inline image and PDF previews by using Kitty direct placement instead of Kitty Unicode placeholders. ([#75])
+- Fixed tmux relaying of Kitty Graphics preview sequences so inline image and PDF previews can render inside tmux when `KittyGraphics` is selected and `allow-passthrough` is enabled. Some tmux setups may still require preserved terminal markers or `ELIO_IMAGE_PREVIEWS=1`. ([#74], [#70])
 
 ## [1.3.0] - 2026-04-28
 
@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed `cargo install elio` from crates.io by upgrading `lofty` from the yanked `0.23` series to `0.24`. Thanks @jprobichaud for catching this in #66.
+- Fixed `cargo install elio` from crates.io by upgrading `lofty` from the yanked `0.23` series to `0.24`. Thanks @jprobichaud for catching this in [#66].
 
 ## [1.2.0] - 2026-04-25
 
@@ -103,3 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.1.0]: https://github.com/elio-fm/elio/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/elio-fm/elio/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/elio-fm/elio/releases/tag/v1.0.0
+[#77]: https://github.com/elio-fm/elio/pull/77
+[#75]: https://github.com/elio-fm/elio/issues/75
+[#74]: https://github.com/elio-fm/elio/pull/74
+[#70]: https://github.com/elio-fm/elio/issues/70
+[#66]: https://github.com/elio-fm/elio/pull/66
