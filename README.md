@@ -56,7 +56,7 @@ Install from crates.io:
 cargo install elio
 ```
 
-`elio` starts in your current working directory.
+`elio` starts in your current working directory by default. Pass a directory path to start there instead, for example `elio path/to/directory`.
 
 > [!TIP]
 > Recommended: use a Nerd Font in your terminal so icons display correctly.
@@ -94,10 +94,10 @@ Inline visual previews, including images, covers, thumbnails, and rendered pages
 |---|---|---|
 | [Kitty](https://sw.kovidgoyal.net/kitty/) | Kitty Graphics Protocol | ✓ Auto-detected |
 | [Ghostty](https://ghostty.org/) | Kitty Graphics Protocol | ✓ Auto-detected |
-| [Warp](https://www.warp.dev/) | Kitty Graphics Protocol | ✓ Auto-detected |
+| [Warp](https://www.warp.dev/) | Kitty direct-placement protocol | ✓ Auto-detected |
 | [WezTerm](https://wezfurlong.org/wezterm/) | iTerm2 Inline Protocol | ✓ Auto-detected |
 | [iTerm2](https://iterm2.com/) | iTerm2 Inline Protocol | ✓ Auto-detected |
-| [Konsole](https://konsole.kde.org/) | Kitty-based image protocol | ✓ Auto-detected |
+| [Konsole](https://konsole.kde.org/) | Kitty direct-placement protocol | ✓ Auto-detected |
 | [foot](https://codeberg.org/dnkl/foot) | Sixel | ✓ Auto-detected |
 | [Windows Terminal](https://github.com/microsoft/terminal) | Sixel | ✓ Auto-detected |
 | Alacritty | — | Not supported |
@@ -163,11 +163,24 @@ Most users do **not** need these, but they can help in edge cases:
 
 ---
 
+## Using elio over SSH
+
+`elio` works well over SSH for navigation, file operations, text and code previews, and terminal-based workflows. Rich visual previews and open actions depend on the local terminal and the remote host.
+
+- Text and code previews work well, including plain text, source code, Markdown, logs, JSON, YAML, TOML, and HTML previewed as source code.
+- Rich visual previews such as images, rendered PDF pages, video thumbnails, album art, SVG previews, and archive extras depend on terminal image protocol support and optional preview tools on the remote machine.
+- Terminal apps chosen through `Open With`, including default terminal app matches, run inside the current SSH session.
+- `Enter`, `o`, fallback system openers, and GUI-style `Open With` entries use the remote host's opener stack, so they may open there, fail, or do nothing useful from an SSH session.
+
+See [Image Previews](#image-previews) and [Optional Preview Tools](#optional-preview-tools).
+
+---
+
 ## Workflow
 
 ### Opening Files
 
-`Enter` enters folders and opens files with the system default application. `o` always opens the selected file or folder externally using the system launcher: `open` on macOS, `cmd /c start` on Windows, and `xdg-open` or `gio` on Linux and BSD desktop sessions.
+`Enter` enters folders and opens files with the system default application. `o` always opens the selected file or folder externally using the system launcher: `open` on macOS, `cmd /c start` on Windows, and `gio` (with `xdg-open` as fallback) on Linux and BSD desktop sessions.
 
 `O` is for files. On macOS and Linux/BSD desktop sessions, elio discovers matching applications, opens the file directly when there is one match, and shows the Open With chooser when there are multiple. Terminal apps such as `nvim` are supported too. When no match is found, or on platforms without app discovery, elio falls back to the default opener.
 
@@ -325,7 +338,14 @@ Keys marked with `*` are configurable in `[keys]` in `config.toml`; the defaults
 | `+` / `-` | Grid zoom in / out |
 | `.` `*` | Show / hide dotfiles |
 | `s` `*` | Cycle sort (Name → Modified → Size) |
-| `<` / `>` `*` | Scroll preview left / right |
+
+### Preview
+
+| Key | Action |
+|---|---|
+| `Shift+K` / `Shift+J` `*` | Step page (PDF, comic, EPUB) or scroll preview up / down |
+| `Shift+H` / `Shift+L` `*` | Scroll preview left / right |
+| `[` / `]` | Step page (PDF, comic, EPUB) or scroll text/code |
 
 ### Selection and Clipboard
 
